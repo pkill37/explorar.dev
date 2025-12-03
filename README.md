@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Linux Kernel Explorer
+
+A standalone Next.js 16 application for exploring the Linux kernel source code with an interactive, VS Code-like interface.
+
+## Features
+
+- **Interactive File Browser**: Navigate the Linux kernel source tree
+- **Code Editor**: Monaco Editor with syntax highlighting for C, assembly, and more
+- **Guided Learning**: Chapter-based learning paths with quizzes
+- **Data Structures View**: Browse and explore kernel data structures
+- **GitHub Integration**: Browse any GitHub repository's source code
+- **Kernel Study Mode**: Annotated code with kernel concepts and markers
 
 ## Getting Started
 
-First, run the development server:
+### Installation
+
+```bash
+npm install
+```
+
+### Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser. The app will automatically redirect to `/linux-kernel-explorer`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
 
-## Learn More
+### Start Production Server
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├── app/
+│   ├── linux-kernel-explorer/
+│   │   ├── page.tsx          # Main explorer page
+│   │   ├── layout.tsx         # Page metadata
+│   │   └── vscode.css         # VS Code theme styles
+│   ├── layout.tsx             # Root layout
+│   └── page.tsx               # Home page (redirects)
+├── components/
+│   ├── ChapterQuiz.tsx        # Quiz component
+│   ├── CodeEditorContainer.tsx # Editor wrapper
+│   ├── DataStructuresView.tsx # Data structures browser
+│   ├── FileTree.tsx           # File tree component
+│   ├── GuidePanel.tsx         # Learning guide panel
+│   ├── KernelStudyEditor.tsx  # Annotated kernel editor
+│   ├── MonacoCodeEditor.tsx   # Standard code editor
+│   └── TabBar.tsx             # Tab bar component
+├── hooks/
+│   └── useKernelProgress.ts   # Progress tracking hook
+├── lib/
+│   ├── cross-reference.ts     # Code cross-referencing
+│   ├── github-api.ts          # GitHub API client
+│   ├── github-cache.ts        # IndexedDB caching
+│   ├── kernel-markers.ts      # Kernel code markers
+│   └── kernel-suggestions.ts # Learning suggestions
+└── types/
+    └── index.ts               # TypeScript definitions
+```
 
-## Deploy on Vercel
+## Technologies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Next.js 16**: React framework
+- **React 19**: UI library
+- **Monaco Editor**: VS Code editor component
+- **TypeScript**: Type safety
+- **IndexedDB**: Client-side caching
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Environment Variables
+
+Optional environment variables:
+
+- `NEXT_PUBLIC_SITE_URL`: Site URL for metadata (default: `https://explorar.dev`)
+
+## License
+
+Private project.
