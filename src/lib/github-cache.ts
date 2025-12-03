@@ -80,7 +80,7 @@ async function setCache<T>(key: string, data: T): Promise<void> {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
-      
+
       const entry: CacheEntry<T> = {
         key,
         data,
@@ -130,7 +130,13 @@ export async function clearCache(): Promise<void> {
   }
 }
 
-export function getCacheKey(owner: string, repo: string, branch: string, path: string, type: 'file' | 'directory' | 'tags'): string {
+export function getCacheKey(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string,
+  type: 'file' | 'directory' | 'tags' | 'default-branch'
+): string {
   return `${owner}/${repo}/${branch}/${type}/${path}`;
 }
 
@@ -141,4 +147,3 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
 export async function setCachedData<T>(key: string, data: T): Promise<void> {
   return setCache<T>(key, data);
 }
-

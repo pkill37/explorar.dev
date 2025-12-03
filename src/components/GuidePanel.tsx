@@ -1,5 +1,5 @@
-"use client";
-import React, { useState } from "react";
+'use client';
+import React, { useState } from 'react';
 
 interface Section {
   id: string;
@@ -16,17 +16,17 @@ interface GuidePanelProps {
   chapterProgress?: Record<string, boolean>; // chapterId -> isCompleted
 }
 
-export default function GuidePanel({ 
-  sections, 
+export default function GuidePanel({
+  sections,
   defaultOpenIds = [],
   overallProgress = 0,
-  chapterProgress = {}
+  chapterProgress = {},
 }: GuidePanelProps) {
   const [open, setOpen] = useState<Record<string, boolean>>(
-    Object.fromEntries(sections.map(s => [s.id, defaultOpenIds.includes(s.id)]))
+    Object.fromEntries(sections.map((s) => [s.id, defaultOpenIds.includes(s.id)]))
   );
 
-  const toggle = (id: string) => setOpen(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggle = (id: string) => setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
     <div className="vscode-panel-content">
@@ -38,10 +38,7 @@ export default function GuidePanel({
             <span className="guide-progress-percentage">{overallProgress}%</span>
           </div>
           <div className="guide-progress-bar">
-            <div 
-              className="guide-progress-fill"
-              style={{ width: `${overallProgress}%` }}
-            />
+            <div className="guide-progress-fill" style={{ width: `${overallProgress}%` }} />
           </div>
         </div>
       )}
@@ -49,14 +46,11 @@ export default function GuidePanel({
       {/* Chapter Sections */}
       {sections.map((s) => {
         const isCompleted = chapterProgress[s.id] || false;
-        
+
         return (
           <div key={s.id} className="vscode-guide-section">
-            <div 
-              className="vscode-guide-header"
-              onClick={() => toggle(s.id)}
-            >
-              <span className="guide-expand-icon">{open[s.id] ? "▾" : "▸"}</span>
+            <div className="vscode-guide-header" onClick={() => toggle(s.id)}>
+              <span className="guide-expand-icon">{open[s.id] ? '▾' : '▸'}</span>
               <span className="guide-title-text">{s.title}</span>
               {isCompleted && (
                 <span className="guide-completion-badge" title="Quiz completed">
@@ -64,11 +58,7 @@ export default function GuidePanel({
                 </span>
               )}
             </div>
-            {open[s.id] && (
-              <div className="vscode-guide-content">
-                {s.body}
-              </div>
-            )}
+            {open[s.id] && <div className="vscode-guide-content">{s.body}</div>}
           </div>
         );
       })}

@@ -13,14 +13,14 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
       id: 'explorer' as const,
       icon: '📁',
       label: 'Explorer',
-      title: 'File Explorer'
+      title: 'File Explorer',
     },
     {
       id: 'data-structures' as const,
       icon: '🔧',
       label: 'Data Structures',
-      title: 'Kernel Data Structures'
-    }
+      title: 'Kernel Data Structures',
+    },
   ];
 
   return (
@@ -34,9 +34,7 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
           aria-label={activity.title}
         >
           <span className="cursor-activity-icon">{activity.icon}</span>
-          {activeView === activity.id && (
-            <span className="cursor-activity-indicator" />
-          )}
+          {activeView === activity.id && <span className="cursor-activity-indicator" />}
         </button>
       ))}
     </div>
@@ -44,4 +42,3 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
 };
 
 export default ActivityBar;
-

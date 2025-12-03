@@ -1,0 +1,30 @@
+# Dependencies
+node_modules
+package-lock.json
+
+# Build outputs
+.next
+out
+build
+dist
+
+# Generated files
+next-env.d.ts
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+

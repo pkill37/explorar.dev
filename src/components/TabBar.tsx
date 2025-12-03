@@ -10,11 +10,7 @@ interface TabBarProps {
   onTabClose: (tabId: string) => void;
 }
 
-const TabBar: React.FC<TabBarProps> = ({
-  tabs,
-  onTabSelect,
-  onTabClose,
-}) => {
+const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
   const getFileIcon = (path: string): string => {
     const extension = path.split('.').pop()?.toLowerCase();
     switch (extension) {
@@ -45,9 +41,9 @@ const TabBar: React.FC<TabBarProps> = ({
   const handleTabClick = (tab: EditorTab, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    
+
     if (tab.isLoading) return;
-    
+
     onTabSelect(tab.id);
   };
 
@@ -58,7 +54,8 @@ const TabBar: React.FC<TabBarProps> = ({
   };
 
   const handleTabMiddleClick = (tab: EditorTab, event: React.MouseEvent) => {
-    if (event.button === 1) { // Middle mouse button
+    if (event.button === 1) {
+      // Middle mouse button
       event.preventDefault();
       event.stopPropagation();
       onTabClose(tab.id);
@@ -86,15 +83,11 @@ const TabBar: React.FC<TabBarProps> = ({
               getFileIcon(tab.path)
             )}
           </span>
-          
-          <span className="name">
-            {getFileName(tab.title || tab.path)}
-          </span>
-          
+
+          <span className="name">{getFileName(tab.title || tab.path)}</span>
+
           {tab.isDirty && (
-            <span style={{ color: '#dcdcaa', fontSize: '12px', marginLeft: '4px' }}>
-              •
-            </span>
+            <span style={{ color: '#dcdcaa', fontSize: '12px', marginLeft: '4px' }}>•</span>
           )}
 
           <div
@@ -110,4 +103,4 @@ const TabBar: React.FC<TabBarProps> = ({
   );
 };
 
-export default TabBar; 
+export default TabBar;

@@ -71,7 +71,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
     setIsExpanded(!isExpanded);
     node.isExpanded = !isExpanded;
   };
-  
+
   const handleIconClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     handleToggle();
@@ -86,11 +86,22 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
         style={{ paddingLeft: `${level * 20 + 8}px` }}
         onClick={handleToggle}
       >
-        <span 
-          className="icon" 
+        <span
+          className="icon"
           onClick={handleIconClick}
-          style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-block', minWidth: '16px' }}
-          title={node.type === 'directory' ? (isExpanded ? 'Collapse directory' : 'Expand directory') : 'Open file'}
+          style={{
+            cursor: 'pointer',
+            userSelect: 'none',
+            display: 'inline-block',
+            minWidth: '16px',
+          }}
+          title={
+            node.type === 'directory'
+              ? isExpanded
+                ? 'Collapse directory'
+                : 'Expand directory'
+              : 'Open file'
+          }
         >
           {isLoading ? (
             <div className="vscode-spinner" style={{ width: '12px', height: '12px' }} />
@@ -100,12 +111,10 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
         </span>
         <span className="name">{node.name}</span>
         {node.size && node.type === 'file' && (
-          <span className="size">
-            {formatFileSize(node.size)}
-          </span>
+          <span className="size">{formatFileSize(node.size)}</span>
         )}
       </div>
-      
+
       {isExpanded && children.length > 0 && (
         <div>
           {children.map((child) => (
@@ -131,7 +140,14 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, selectedFile, listDirectory, refreshKey, onDirectoryExpand, expandDirectoryRequest }) => {
+const FileTree: React.FC<FileTreeProps> = ({
+  onFileSelect,
+  selectedFile,
+  listDirectory,
+  refreshKey,
+  onDirectoryExpand,
+  expandDirectoryRequest,
+}) => {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,9 +158,7 @@ const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, selectedFile, listDir
       try {
         setIsLoading(true);
         setError(null);
-        const nodes = listDirectory
-          ? await listDirectory('')
-          : await buildFileTree('');
+        const nodes = listDirectory ? await listDirectory('') : await buildFileTree('');
         setRootNodes(nodes);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file tree');
@@ -219,9 +233,7 @@ const FileTree: React.FC<FileTreeProps> = ({ onFileSelect, selectedFile, listDir
     return (
       <div className="vscode-loading">
         <div>⚠️ Failed to load</div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>
-          {error}
-        </div>
+        <div style={{ fontSize: '12px', marginTop: '4px' }}>{error}</div>
       </div>
     );
   }

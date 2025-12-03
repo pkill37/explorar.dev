@@ -22,11 +22,14 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, comman
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const filteredCommands = useMemo(() => 
-    commands.filter((cmd) =>
-      cmd.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cmd.category?.toLowerCase().includes(searchQuery.toLowerCase())
-    ), [commands, searchQuery]
+  const filteredCommands = useMemo(
+    () =>
+      commands.filter(
+        (cmd) =>
+          cmd.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          cmd.category?.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [commands, searchQuery]
   );
 
   useEffect(() => {
@@ -88,9 +91,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, comman
         </div>
         <div className="cursor-command-palette-list" ref={listRef}>
           {filteredCommands.length === 0 ? (
-            <div className="cursor-command-palette-empty">
-              No commands found
-            </div>
+            <div className="cursor-command-palette-empty">No commands found</div>
           ) : (
             filteredCommands.map((command, index) => (
               <div
@@ -119,4 +120,3 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, comman
 };
 
 export default CommandPalette;
-

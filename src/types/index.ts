@@ -65,4 +65,3 @@ export const GITHUB_CONFIG = {
   apiBase: 'https://api.github.com/repos',
   rawBase: 'https://raw.githubusercontent.com',
 } as const;
-

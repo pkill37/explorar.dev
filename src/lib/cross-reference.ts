@@ -22,16 +22,16 @@ const MACRO_PATTERN = /^#define\s+(\w+)/;
 export function findSymbolsInFile(content: string, filePath: string): SymbolReference[] {
   const symbols: SymbolReference[] = [];
   const lines = content.split('\n');
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     const lineNum = i + 1;
-    
+
     // Skip comments and preprocessor directives (except #define)
     if (line.startsWith('//') || (line.startsWith('/*') && !line.includes('*/'))) {
       continue;
     }
-    
+
     // Function definitions
     const funcDefMatch = line.match(FUNCTION_DEF_PATTERN);
     if (funcDefMatch) {
@@ -48,7 +48,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
         });
       }
     }
-    
+
     // Function declarations
     const funcDeclMatch = line.match(FUNCTION_DECL_PATTERN);
     if (funcDeclMatch && !funcDefMatch) {
@@ -65,7 +65,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
         });
       }
     }
-    
+
     // Struct definitions
     const structDefMatch = line.match(STRUCT_DEF_PATTERN);
     if (structDefMatch) {
@@ -79,7 +79,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
         isDeclaration: false,
       });
     }
-    
+
     // Struct declarations
     const structDeclMatch = line.match(STRUCT_DECL_PATTERN);
     if (structDeclMatch && !structDefMatch) {
@@ -93,7 +93,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
         isDeclaration: true,
       });
     }
-    
+
     // Typedefs
     const typedefMatch = line.match(TYPEDEF_PATTERN);
     if (typedefMatch) {
@@ -107,7 +107,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
         isDeclaration: false,
       });
     }
-    
+
     // Macros
     const macroMatch = line.match(MACRO_PATTERN);
     if (macroMatch) {
@@ -122,28 +122,34 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
       });
     }
   }
-  
+
   return symbols;
 }
 
-export function findReferencesToSymbol(content: string, symbolName: string, filePath: string): SymbolReference[] {
+export function findReferencesToSymbol(
+  content: string,
+  symbolName: string,
+  filePath: string
+): SymbolReference[] {
   const references: SymbolReference[] = [];
   const lines = content.split('\n');
-  
+
   // Create a regex that matches the symbol name as a whole word
   const symbolRegex = new RegExp(`\\b${symbolName}\\b`, 'g');
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let match;
-    
+
     // Skip if this line defines the symbol
-    if (line.includes(`struct ${symbolName}`) || 
-        line.includes(`typedef`) && line.includes(symbolName) ||
-        line.match(new RegExp(`^\\s*${symbolName}\\s*\\(`))) {
+    if (
+      line.includes(`struct ${symbolName}`) ||
+      (line.includes(`typedef`) && line.includes(symbolName)) ||
+      line.match(new RegExp(`^\\s*${symbolName}\\s*\\(`))
+    ) {
       continue;
     }
-    
+
     while ((match = symbolRegex.exec(line)) !== null) {
       references.push({
         name: symbolName,
@@ -156,15 +162,20 @@ export function findReferencesToSymbol(content: string, symbolName: string, file
       });
     }
   }
-  
+
   return references;
 }
 
-export function findDefinition(symbolName: string, symbols: SymbolReference[]): SymbolReference | null {
-  return symbols.find(s => s.name === symbolName && s.isDefinition) || null;
+export function findDefinition(
+  symbolName: string,
+  symbols: SymbolReference[]
+): SymbolReference | null {
+  return symbols.find((s) => s.name === symbolName && s.isDefinition) || null;
 }
 
-export function findAllReferences(symbolName: string, symbols: SymbolReference[]): SymbolReference[] {
-  return symbols.filter(s => s.name === symbolName && !s.isDefinition);
+export function findAllReferences(
+  symbolName: string,
+  symbols: SymbolReference[]
+): SymbolReference[] {
+  return symbols.filter((s) => s.name === symbolName && !s.isDefinition);
 }
-

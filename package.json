@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0",
+    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --check \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\"",
+    "format:fix": "prettier --write \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\"",
+    "check": "npm run type-check && npm run lint && npm run format",
+    "fix": "npm run lint:fix && npm run format:fix && npm audit fix"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -22,6 +28,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "prettier": "^3.7.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

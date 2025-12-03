@@ -1,5 +1,5 @@
-"use client";
-import { useState, useEffect, useCallback } from "react";
+'use client';
+import { useState, useEffect, useCallback } from 'react';
 
 export interface ChapterProgress {
   chapterId: string;
@@ -14,7 +14,7 @@ export interface KernelProgress {
   overallProgress: number;
 }
 
-const STORAGE_KEY = "kernel-study-progress";
+const STORAGE_KEY = 'kernel-study-progress';
 
 const defaultChapterProgress = (chapterId: string): ChapterProgress => ({
   chapterId,
@@ -27,9 +27,7 @@ export function useKernelProgress(chapterIds: string[]) {
   const [progress, setProgress] = useState<KernelProgress>(() => {
     // Initialize with default values (will be overwritten by localStorage if available)
     return {
-      chapters: Object.fromEntries(
-        chapterIds.map(id => [id, defaultChapterProgress(id)])
-      ),
+      chapters: Object.fromEntries(chapterIds.map((id) => [id, defaultChapterProgress(id)])),
       overallProgress: 0,
     };
   });
@@ -38,7 +36,7 @@ export function useKernelProgress(chapterIds: string[]) {
 
   // Load from localStorage after component mounts (client-side only)
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -50,9 +48,9 @@ export function useKernelProgress(chapterIds: string[]) {
         }, 0);
       }
     } catch (error) {
-      console.error("Failed to load kernel progress:", error);
+      console.error('Failed to load kernel progress:', error);
     }
-    
+
     // Use setTimeout to avoid synchronous setState in effect
     setTimeout(() => {
       setIsHydrated(true);
@@ -62,12 +60,12 @@ export function useKernelProgress(chapterIds: string[]) {
   // Save to localStorage whenever progress changes
   useEffect(() => {
     if (!isHydrated) return;
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
     } catch (error) {
-      console.error("Failed to save kernel progress:", error);
+      console.error('Failed to save kernel progress:', error);
     }
   }, [progress, isHydrated]);
 
@@ -75,59 +73,59 @@ export function useKernelProgress(chapterIds: string[]) {
     const totalChapters = Object.keys(chapters).length;
     if (totalChapters === 0) return 0;
 
-    const completedChapters = Object.values(chapters).filter(
-      ch => ch.quizCompleted
-    ).length;
+    const completedChapters = Object.values(chapters).filter((ch) => ch.quizCompleted).length;
 
     return Math.round((completedChapters / totalChapters) * 100);
   }, []);
 
-  const markQuizComplete = useCallback((
-    chapterId: string,
-    score: number,
-    total: number
-  ) => {
-    setProgress(prev => {
-      const updatedChapters = {
-        ...prev.chapters,
-        [chapterId]: {
-          chapterId,
-          quizCompleted: true,
-          quizScore: score,
-          quizTotal: total,
-          lastAttemptDate: new Date().toISOString(),
-        },
-      };
+  const markQuizComplete = useCallback(
+    (chapterId: string, score: number, total: number) => {
+      setProgress((prev) => {
+        const updatedChapters = {
+          ...prev.chapters,
+          [chapterId]: {
+            chapterId,
+            quizCompleted: true,
+            quizScore: score,
+            quizTotal: total,
+            lastAttemptDate: new Date().toISOString(),
+          },
+        };
 
-      return {
-        chapters: updatedChapters,
-        overallProgress: calculateOverallProgress(updatedChapters),
-      };
-    });
-  }, [calculateOverallProgress]);
+        return {
+          chapters: updatedChapters,
+          overallProgress: calculateOverallProgress(updatedChapters),
+        };
+      });
+    },
+    [calculateOverallProgress]
+  );
 
   const resetProgress = useCallback(() => {
     const resetChapters = Object.fromEntries(
-      chapterIds.map(id => [id, defaultChapterProgress(id)])
+      chapterIds.map((id) => [id, defaultChapterProgress(id)])
     );
-    
+
     setProgress({
       chapters: resetChapters,
       overallProgress: 0,
     });
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch (error) {
-        console.error("Failed to reset kernel progress:", error);
+        console.error('Failed to reset kernel progress:', error);
       }
     }
   }, [chapterIds]);
 
-  const getChapterProgress = useCallback((chapterId: string): ChapterProgress => {
-    return progress.chapters[chapterId] || defaultChapterProgress(chapterId);
-  }, [progress.chapters]);
+  const getChapterProgress = useCallback(
+    (chapterId: string): ChapterProgress => {
+      return progress.chapters[chapterId] || defaultChapterProgress(chapterId);
+    },
+    [progress.chapters]
+  );
 
   return {
     progress,
@@ -137,10 +135,3 @@ export function useKernelProgress(chapterIds: string[]) {
     isHydrated,
   };
 }
-
-
-
-
-
-
-

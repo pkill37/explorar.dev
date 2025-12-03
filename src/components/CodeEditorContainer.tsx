@@ -15,14 +15,14 @@ interface CodeEditorContainerProps {
   onCursorChange?: (line: number, column: number) => void;
 }
 
-const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({ 
-  filePath, 
-  onContentLoad, 
-  fetchFile, 
+const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
+  filePath,
+  onContentLoad,
+  fetchFile,
   repoLabel,
   scrollToLine,
   searchPattern,
-  onCursorChange
+  onCursorChange,
 }) => {
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -48,12 +48,11 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       try {
         const fileContent = await (fetchFile ? fetchFile(filePath) : fetchFromGitHub(filePath));
         setContent(fileContent);
-        
+
         // Notify parent component of content load
         if (onContentLoad) {
           onContentLoad(fileContent);
         }
-        
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         setError(errorMessage);
@@ -72,12 +71,8 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       <div className="vscode-editor">
         <div className="vscode-loading">
           <div>⚠️ Failed to load file</div>
-          <div style={{ fontSize: '12px', marginTop: '8px' }}>
-            {error}
-          </div>
-          <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
-            File: {filePath}
-          </div>
+          <div style={{ fontSize: '12px', marginTop: '8px' }}>{error}</div>
+          <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>File: {filePath}</div>
         </div>
       </div>
     );
@@ -85,16 +80,18 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
 
   // Determine if this is a kernel file that would benefit from study annotations
   const isKernelFile = (path: string): boolean => {
-    return path.includes('kernel/') || 
-           path.includes('arch/') || 
-           path.includes('include/linux/') ||
-           path.includes('mm/') ||
-           path.includes('fs/') ||
-           path.includes('drivers/') ||
-           path.includes('init/') ||
-           path.endsWith('.c') || 
-           path.endsWith('.h') ||
-           path.endsWith('.S');
+    return (
+      path.includes('kernel/') ||
+      path.includes('arch/') ||
+      path.includes('include/linux/') ||
+      path.includes('mm/') ||
+      path.includes('fs/') ||
+      path.includes('drivers/') ||
+      path.includes('init/') ||
+      path.endsWith('.c') ||
+      path.endsWith('.h') ||
+      path.endsWith('.S')
+    );
   };
 
   const useKernelStudyEditor = isKernelFile(filePath);

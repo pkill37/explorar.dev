@@ -8,10 +8,10 @@
   --vscode-bg-hover: #2a2d2e;
   --vscode-bg-selected: #094771;
   --vscode-bg-focus: #062f4a;
-  
+
   --vscode-border: #3c3c3c;
   --vscode-border-light: #464647;
-  
+
   --vscode-text-primary: #cccccc;
   --vscode-text-secondary: #969696;
   --vscode-text-tertiary: #6a6a6a;
@@ -19,9 +19,9 @@
   --vscode-text-error: #f48771;
   --vscode-text-warning: #dcdcaa;
   --vscode-text-success: #4ec9b0;
-  
+
   --vscode-sidebar-width: 300px;
-  
+
   /* Syntax highlighting */
   --syntax-keyword: #569cd6;
   --syntax-string: #ce9178;
@@ -35,7 +35,9 @@
 
 /* Reset and base styles for VSCode theme */
 .vscode-container {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Cascadia Code', 'DejaVu Sans Mono', 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family:
+    'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Cascadia Code', 'DejaVu Sans Mono', 'Monaco',
+    'Menlo', 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.4;
   color: var(--vscode-text-primary);
@@ -51,7 +53,6 @@
 .vscode-container * {
   box-sizing: border-box;
 }
-
 
 /* Sidebar */
 .vscode-sidebar {
@@ -293,17 +294,34 @@
   height: 100% !important;
 }
 
-
 /* Syntax Highlighting */
-.syntax-keyword { color: var(--syntax-keyword); }
-.syntax-string { color: var(--syntax-string); }
-.syntax-comment { color: var(--syntax-comment); }
-.syntax-function { color: var(--syntax-function); }
-.syntax-variable { color: var(--syntax-variable); }
-.syntax-type { color: var(--syntax-type); }
-.syntax-number { color: var(--syntax-number); }
-.syntax-operator { color: var(--syntax-operator); }
-.syntax-identifier { color: var(--vscode-text-primary); }
+.syntax-keyword {
+  color: var(--syntax-keyword);
+}
+.syntax-string {
+  color: var(--syntax-string);
+}
+.syntax-comment {
+  color: var(--syntax-comment);
+}
+.syntax-function {
+  color: var(--syntax-function);
+}
+.syntax-variable {
+  color: var(--syntax-variable);
+}
+.syntax-type {
+  color: var(--syntax-type);
+}
+.syntax-number {
+  color: var(--syntax-number);
+}
+.syntax-operator {
+  color: var(--syntax-operator);
+}
+.syntax-identifier {
+  color: var(--vscode-text-primary);
+}
 
 /* Panel (Right Side) */
 .vscode-panel {
@@ -707,8 +725,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .vscode-empty-state {
@@ -740,11 +762,11 @@
     transform: translateX(100%);
     transition: transform 0.3s ease;
   }
-  
+
   .vscode-panel.mobile-open {
     transform: translateX(0);
   }
-  
+
   .vscode-panel-toggle {
     display: block;
   }
@@ -754,7 +776,7 @@
   .vscode-container {
     flex-direction: column;
   }
-  
+
   .vscode-sidebar {
     position: absolute;
     left: 0;
@@ -768,32 +790,32 @@
     min-width: 280px !important;
     max-width: 280px !important;
   }
-  
+
   .vscode-sidebar.mobile-open {
     transform: translateX(0);
   }
-  
+
   .vscode-editor-container {
     width: 100%;
     min-width: 100%;
   }
-  
+
   .vscode-panel {
     width: 100% !important;
     min-width: 100% !important;
     max-width: 100% !important;
   }
-  
+
   .resize-handle {
     display: none;
   }
-  
+
   .vscode-statusbar {
     flex-wrap: wrap;
     padding: 4px 8px;
     font-size: 10px;
   }
-  
+
   .vscode-statusbar input,
   .vscode-statusbar select,
   .vscode-statusbar button {
@@ -801,26 +823,26 @@
     padding: 2px 6px;
     height: 20px;
   }
-  
+
   .vscode-statusbar input {
     width: 150px;
   }
-  
+
   .vscode-tab {
     padding: 0.4rem 0.6rem;
     font-size: 11px;
   }
-  
+
   .vscode-file-item {
     padding: 6px 8px;
     font-size: 12px;
   }
-  
+
   .vscode-empty-state {
     padding: 20px;
     font-size: 12px;
   }
-  
+
   .vscode-empty-icon {
     font-size: 36px;
   }
@@ -832,20 +854,20 @@
     min-width: 100% !important;
     max-width: 100% !important;
   }
-  
+
   .vscode-statusbar {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
   }
-  
+
   .vscode-statusbar > div {
     width: 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
   }
-  
+
   .vscode-statusbar input {
     flex: 1;
     min-width: 120px;
@@ -860,7 +882,9 @@
   cursor: pointer;
   color: var(--vscode-text-secondary);
   border-bottom: 2px solid transparent;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
   font-size: 13px;
   font-family: inherit;
 }
@@ -873,7 +897,6 @@
   color: var(--vscode-text-primary);
   border-bottom-color: var(--vscode-text-accent);
 }
-
 
 /* Resize handles */
 .resize-handle {
@@ -936,7 +959,7 @@
   .vscode-sidebar-toggle {
     display: block;
   }
-  
+
   .vscode-panel-toggle {
     display: block;
   }
@@ -1097,7 +1120,7 @@
 }
 
 .data-structure-details li:before {
-  content: "▸";
+  content: '▸';
   position: absolute;
   left: 0;
   color: var(--vscode-text-accent);
@@ -1419,21 +1442,21 @@
   .cursor-activity-bar {
     display: none;
   }
-  
+
   .cursor-statusbar {
     font-size: 10px;
     padding: 0 4px;
   }
-  
+
   .cursor-statusbar-text {
     font-size: 10px;
   }
-  
+
   .cursor-breadcrumbs {
     font-size: 11px;
     padding: 4px 8px;
   }
-  
+
   .cursor-command-palette {
     width: 95vw;
   }

@@ -19,7 +19,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
   language,
   lineCount,
   fileSize,
-  repoLabel
+  repoLabel,
 }) => {
   return (
     <div className="cursor-statusbar">
@@ -86,4 +86,3 @@ const StatusBar: React.FC<StatusBarProps> = ({
 };
 
 export default StatusBar;
-

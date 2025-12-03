@@ -1,6 +1,6 @@
 /**
  * Kernel Study Markers - Based on "Kernel In The Mind" Guidelines
- * 
+ *
  * This module provides annotations and markers for interesting kernel sections,
  * data structures, and routines as outlined in the SPEC.md guidelines.
  */
@@ -9,7 +9,15 @@ export interface KernelMarker {
   id: string;
   startLine: number;
   endLine: number;
-  type: 'data_structure' | 'routine' | 'concept' | 'critical_section' | 'lock' | 'context_switch' | 'syscall' | 'interrupt';
+  type:
+    | 'data_structure'
+    | 'routine'
+    | 'concept'
+    | 'critical_section'
+    | 'lock'
+    | 'context_switch'
+    | 'syscall'
+    | 'interrupt';
   title: string;
   description: string;
   kernelMindChapter?: string;
@@ -142,12 +150,12 @@ export const KERNEL_CONCEPTS = {
 export function generateKernelMarkers(content: string): KernelMarker[] {
   const markers: KernelMarker[] = [];
   const lines = content.split('\n');
-  
+
   lines.forEach((line, index) => {
     const lineNum = index + 1;
-    
+
     // Detect data structures
-    Object.values(KERNEL_CONCEPTS).forEach(concept => {
+    Object.values(KERNEL_CONCEPTS).forEach((concept) => {
       if (line.includes(concept.name)) {
         markers.push({
           id: `${concept.name}-${lineNum}`,
@@ -189,7 +197,7 @@ export function generateKernelMarkers(content: string): KernelMarker[] {
         type: 'interrupt',
         title: 'Interrupt Handler',
         description: 'Hardware interrupt handler - asynchronous event processing',
-        kernelMindChapter: 'Chapter 6: An Interrupt Is Not a Disruption. It\'s Design.',
+        kernelMindChapter: "Chapter 6: An Interrupt Is Not a Disruption. It's Design.",
         importance: 'high',
         tags: ['interrupt', 'hardware', 'async'],
       });
@@ -235,10 +243,10 @@ export function generateKernelMarkers(content: string): KernelMarker[] {
 export function generateKernelAnnotations(content: string): KernelAnnotation[] {
   const annotations: KernelAnnotation[] = [];
   const lines = content.split('\n');
-  
+
   lines.forEach((line, index) => {
     const lineNum = index + 1;
-    
+
     // Annotate key data structures
     if (line.includes('struct task_struct')) {
       annotations.push({
@@ -249,7 +257,7 @@ export function generateKernelAnnotations(content: string): KernelAnnotation[] {
         color: '#ff6b35',
       });
     }
-    
+
     if (line.includes('struct mm_struct')) {
       annotations.push({
         line: lineNum,
@@ -323,7 +331,11 @@ function getMarkerType(conceptName: string): KernelMarker['type'] {
   if (conceptName.includes('struct') || conceptName.includes('_struct')) {
     return 'data_structure';
   }
-  if (conceptName.includes('lock') || conceptName.includes('mutex') || conceptName.includes('rcu')) {
+  if (
+    conceptName.includes('lock') ||
+    conceptName.includes('mutex') ||
+    conceptName.includes('rcu')
+  ) {
     return 'lock';
   }
   if (conceptName.includes('schedule') || conceptName.includes('switch')) {
@@ -418,14 +430,14 @@ export const RECOMMENDED_STUDY_FILES = [
  * Color scheme for different marker types
  */
 export const MARKER_COLORS = {
-  data_structure: '#ff6b35',   // Orange-red
-  routine: '#4ecdc4',          // Teal
-  concept: '#45b7d1',          // Blue
+  data_structure: '#ff6b35', // Orange-red
+  routine: '#4ecdc4', // Teal
+  concept: '#45b7d1', // Blue
   critical_section: '#96ceb4', // Green
-  lock: '#ffeaa7',            // Yellow
-  context_switch: '#fd79a8',   // Pink
-  syscall: '#6c5ce7',         // Purple
-  interrupt: '#e17055',       // Red-orange
+  lock: '#ffeaa7', // Yellow
+  context_switch: '#fd79a8', // Pink
+  syscall: '#6c5ce7', // Purple
+  interrupt: '#e17055', // Red-orange
 };
 
 /**
