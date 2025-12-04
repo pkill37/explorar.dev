@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: `${siteUrl}/og-image.png`,
+        url: `${siteUrl}/og.png`,
         width: 1200,
         height: 630,
         alt: 'Explorar.dev - Source Code Explorer | explorar.dev',
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Explorar.dev - Source Code Explorer | explorar.dev',
     description: 'Interactive source code browser with guided learning paths.',
-    images: [`${siteUrl}/og-image.png`] as string[],
+    images: [`${siteUrl}/og.png`] as string[],
   },
   alternates: {
     canonical: `${siteUrl}/linux-kernel-explorer`,

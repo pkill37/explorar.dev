@@ -57,7 +57,7 @@ export const metadata: Metadata = {
     description: defaultDescription,
     images: [
       {
-        url: `${siteUrl}/og-image.png`,
+        url: `${siteUrl}/og.png`,
         width: 1200,
         height: 630,
         alt: defaultTitle,
@@ -68,7 +68,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: defaultTitle,
     description: defaultDescription,
-    images: [`${siteUrl}/og-image.png`],
+    images: [`${siteUrl}/og.png`],
     creator: '@explorardev',
   },
   robots: {
@@ -90,6 +90,23 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: siteUrl,
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon1.png', sizes: '16x16', type: 'image/png' },
+      { url: '/icon0.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/apple-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: '/favicon.ico',
+  },
+  manifest: '/manifest.json',
+  themeColor: '#fff9ef',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: siteName,
   },
 };
 
