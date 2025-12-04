@@ -91,44 +91,6 @@ export default function GuidePanel({
             Based on "Kernel In The Mind" by Moon Hee Lee
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            <span className="guide-progress-percentage">{overallProgress}%</span>
-            {onResetProgress && (
-              <button
-                onClick={handleReset}
-                className="guide-reset-button"
-                title={showResetConfirm ? 'Click again to confirm reset' : 'Reset all progress'}
-                style={{
-                  background: showResetConfirm
-                    ? 'var(--vscode-text-error, #f48771)'
-                    : 'transparent',
-                  border: `1px solid ${showResetConfirm ? 'var(--vscode-text-error, #f48771)' : 'var(--vscode-border)'}`,
-                  borderRadius: '3px',
-                  padding: '4px 8px',
-                  cursor: 'pointer',
-                  color: showResetConfirm ? 'white' : 'var(--vscode-text-primary)',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-                onMouseEnter={(e) => {
-                  if (!showResetConfirm) {
-                    e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                    e.currentTarget.style.borderColor = 'var(--vscode-text-error, #f48771)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!showResetConfirm) {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.borderColor = 'var(--vscode-border)';
-                  }
-                }}
-              >
-                {showResetConfirm ? '⚠️ Confirm' : '🔄 Reset'}
-              </button>
-            )}
             <a
               href="https://github.com/pkill37/explorar.dev"
               target="_blank"
@@ -321,8 +283,48 @@ export default function GuidePanel({
             </div>
           </div>
         </div>
-        <div className="guide-progress-bar">
-          <div className="guide-progress-fill" style={{ width: `${overallProgress}%` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="guide-progress-bar" style={{ flex: 1 }}>
+            <div className="guide-progress-fill" style={{ width: `${overallProgress}%` }} />
+          </div>
+          <span className="guide-progress-percentage">{overallProgress}%</span>
+          {onResetProgress && (
+            <button
+              onClick={handleReset}
+              className="guide-reset-button"
+              title={showResetConfirm ? 'Click again to confirm reset' : 'Reset all progress'}
+              style={{
+                background: showResetConfirm
+                  ? 'var(--vscode-text-error, #f48771)'
+                  : 'transparent',
+                border: `1px solid ${showResetConfirm ? 'var(--vscode-text-error, #f48771)' : 'var(--vscode-border)'}`,
+                borderRadius: '3px',
+                padding: '4px 8px',
+                cursor: 'pointer',
+                color: showResetConfirm ? 'white' : 'var(--vscode-text-primary)',
+                fontSize: '11px',
+                fontWeight: 500,
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              onMouseEnter={(e) => {
+                if (!showResetConfirm) {
+                  e.currentTarget.style.background = 'var(--vscode-bg-hover)';
+                  e.currentTarget.style.borderColor = 'var(--vscode-text-error, #f48771)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!showResetConfirm) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--vscode-border)';
+                }
+              }}
+            >
+              {showResetConfirm ? '⚠️ Confirm' : '🔄 Reset'}
+            </button>
+          )}
         </div>
       </div>
 

@@ -1504,21 +1504,20 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       />
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {!isMobile && (
-          <ActivityBar
-            activeView={activeSidebarTab}
-            onViewChange={(view) => {
-              setActiveSidebarTab(view);
-              setIsSidebarOpen(true);
-            }}
-          />
-        )}
-
         <div
           className={`vscode-sidebar ${isSidebarOpen ? 'mobile-open' : ''}`}
           suppressHydrationWarning
           style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '40vw' }}
         >
+          {!isMobile && (
+            <ActivityBar
+              activeView={activeSidebarTab}
+              onViewChange={(view) => {
+                setActiveSidebarTab(view);
+                setIsSidebarOpen(true);
+              }}
+            />
+          )}
           <div className="vscode-sidebar-content">
             {activeSidebarTab === 'explorer' && (
               <FileTree

@@ -34,6 +34,7 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
           aria-label={activity.title}
         >
           <span className="cursor-activity-icon">{activity.icon}</span>
+          <span className="cursor-activity-label">{activity.label}</span>
           {activeView === activity.id && <span className="cursor-activity-indicator" />}
         </button>
       ))}

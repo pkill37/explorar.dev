@@ -1145,30 +1145,33 @@
 
 /* Activity Bar (Left Side) */
 .cursor-activity-bar {
-  width: 48px;
+  width: 100%;
   background: var(--vscode-bg-secondary);
-  border-right: 1px solid var(--vscode-border);
+  border-bottom: 1px solid var(--vscode-border);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  padding: 8px 0;
-  gap: 4px;
+  padding: 0;
+  gap: 0;
   flex-shrink: 0;
 }
 
 .cursor-activity-item {
-  width: 44px;
-  height: 44px;
+  flex: 1;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
   position: relative;
   transition: all 0.2s ease;
   color: var(--vscode-text-secondary);
+  font-size: 12px;
+  padding: 0 8px;
 }
 
 .cursor-activity-item:hover {
@@ -1182,21 +1185,26 @@
 }
 
 .cursor-activity-icon {
-  font-size: 20px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.cursor-activity-label {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .cursor-activity-indicator {
   position: absolute;
+  bottom: 0;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 24px;
+  right: 0;
+  height: 2px;
   background: var(--vscode-text-accent);
-  border-radius: 0 2px 2px 0;
+  border-radius: 2px 2px 0 0;
 }
 
 /* Status Bar (Bottom) */
