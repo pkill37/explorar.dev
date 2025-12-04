@@ -206,6 +206,44 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
         fundamental: [],
       },
     },
+    'bminor/glibc': {
+      id: 'glibc',
+      name: 'GNU C Library (glibc)',
+      owner: 'bminor',
+      repo: 'glibc',
+      defaultBranch: 'master',
+      guides: [
+        {
+          id: 'glibc-guide',
+          name: 'glibc In The Mind',
+          description: 'Understanding glibc Before Code',
+          sections: [], // Will be populated by guide factory
+          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4'],
+        },
+      ],
+      suggestions: {
+        fundamental: [],
+      },
+    },
+    'python/cpython': {
+      id: 'cpython',
+      name: 'CPython',
+      owner: 'python',
+      repo: 'cpython',
+      defaultBranch: 'main',
+      guides: [
+        {
+          id: 'cpython-guide',
+          name: 'CPython In The Mind',
+          description: 'Understanding CPython Before Code',
+          sections: [], // Will be populated by guide factory
+          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'],
+        },
+      ],
+      suggestions: {
+        fundamental: [],
+      },
+    },
   };
 
   const key = `${owner}/${repo}`;

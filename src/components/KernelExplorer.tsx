@@ -22,6 +22,8 @@ import { useProjectProgress } from '@/hooks/useProjectProgress';
 import { getProjectConfig } from '@/lib/project-guides';
 import { createLinuxKernelGuide } from '@/lib/guides/linux-kernel';
 import { createLLVMGuide } from '@/lib/guides/llvm';
+import { createGlibcGuide } from '@/lib/guides/glibc';
+import { createCPythonGuide } from '@/lib/guides/cpython';
 import '@/app/linux-kernel-explorer/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -610,6 +612,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       return createLinuxKernelGuide(openFileInTab, markQuizComplete, getChapterProgress);
     } else if (projectConfig.id === 'llvm') {
       return createLLVMGuide(openFileInTab, markQuizComplete, getChapterProgress);
+    } else if (projectConfig.id === 'glibc') {
+      return createGlibcGuide(openFileInTab, markQuizComplete, getChapterProgress);
+    } else if (projectConfig.id === 'cpython') {
+      return createCPythonGuide(openFileInTab, markQuizComplete, getChapterProgress);
     }
 
     return [];
