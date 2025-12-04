@@ -34,6 +34,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   const [isExpanded, setIsExpanded] = useState(node.isExpanded || false);
   const [children, setChildren] = useState<FileNode[]>(node.children || []);
   const [isLoading, setIsLoading] = useState(false);
+  const itemRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsExpanded(node.isExpanded || false);
@@ -82,6 +83,8 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   return (
     <div>
       <div
+        ref={itemRef}
+        data-file-path={node.path}
         className={`vscode-file-item ${isSelected ? 'selected' : ''}`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
         onClick={handleToggle}
@@ -152,6 +155,8 @@ const FileTree: React.FC<FileTreeProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const handledRequestRef = useRef<number | null>(null);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const loadRootDirectory = async () => {
@@ -220,6 +225,63 @@ const FileTree: React.FC<FileTreeProps> = ({
     expandPath(expandDirectoryRequest.path);
   }, [expandDirectoryRequest, rootNodes, listDirectory]);
 
+  // Smooth scroll to selected file/folder when it changes
+  useEffect(() => {
+    if (!selectedFile || !treeContainerRef.current) return;
+
+    // Clear any pending scroll timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    // Normalize the path (remove trailing slashes) for comparison
+    const normalizedPath = selectedFile.replace(/\/+$/, '');
+
+    // Function to find and scroll to the element
+    const scrollToElement = () => {
+      if (!treeContainerRef.current) return;
+
+      // Try exact match first
+      let targetElement = treeContainerRef.current.querySelector(
+        `[data-file-path="${normalizedPath}"]`
+      ) as HTMLElement;
+
+      // If not found, try with trailing slash (for directories)
+      if (!targetElement && normalizedPath !== selectedFile) {
+        targetElement = treeContainerRef.current.querySelector(
+          `[data-file-path="${selectedFile}"]`
+        ) as HTMLElement;
+      }
+
+      // If still not found, try the other way around
+      if (!targetElement) {
+        const pathWithSlash = `${normalizedPath}/`;
+        targetElement = treeContainerRef.current.querySelector(
+          `[data-file-path="${pathWithSlash}"]`
+        ) as HTMLElement;
+      }
+
+      if (targetElement) {
+        // Scroll the element into view with smooth behavior
+        targetElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+      }
+    };
+
+    // Wait a bit for the DOM to update (especially after directory expansion)
+    // Use a longer delay to ensure directory expansion completes
+    scrollTimeoutRef.current = setTimeout(scrollToElement, 200);
+
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [selectedFile, rootNodes]);
+
   if (isLoading) {
     return (
       <div className="vscode-loading">
@@ -239,7 +301,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   }
 
   return (
-    <div className="vscode-file-tree">
+    <div ref={treeContainerRef} className="vscode-file-tree">
       {rootNodes.map((node) => (
         <FileTreeItem
           key={node.path}

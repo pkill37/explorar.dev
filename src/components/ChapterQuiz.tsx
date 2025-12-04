@@ -72,7 +72,7 @@ export default function ChapterQuiz({
   return (
     <div className="chapter-quiz">
       <div className="quiz-header">
-        <span className="quiz-title">💡 Knowledge Check</span>
+        <span className="quiz-title">💡 KNOWLEDGE CHECK</span>
         {showResults && (
           <span className="quiz-score">
             {score}/{questions.length} correct

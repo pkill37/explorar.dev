@@ -23,7 +23,7 @@ The kernel is not a process but the very foundation that orchestrates the entire
 **Documentation:**
 
 - [Documentation/scheduler/sched-design-CFS.rst](Documentation/scheduler/sched-design-CFS.rst) - Scheduler design and kernel thread management
-- [Documentation/core-api/kthread.rst](Documentation/core-api/kthread.rst) - Kernel thread API
+- [Documentation/core-api/kernel-api.rst](Documentation/core-api/kernel-api.rst) - Kernel thread API
 
 ### Serving the Process: The Kernel's Primary Responsibility
 
@@ -151,7 +151,7 @@ Beneath the abstraction of virtual memory lies a concrete reality: physical memo
 
 - [Documentation/memory-management/](Documentation/memory-management/) - Physical memory management
 - [Documentation/admin-guide/mm/](Documentation/admin-guide/mm/) - Memory zones and NUMA
-- [Documentation/vm/](Documentation/vm/) - Virtual memory documentation
+- [Documentation/virt/](Documentation/virt/) - Virtual memory documentation
 
 ### Memory Lifecycle and the Roles That Shape It
 
@@ -177,7 +177,7 @@ The kernel is always present, managing every interaction between software and ha
 
 **Documentation:**
 
-- [Documentation/x86/x86_64/mm.rst](Documentation/x86/x86_64/mm.rst) - x86_64 memory layout
+- [Documentation/arch/x86/x86_64/mm.rst](Documentation/arch/x86/x86_64/mm.rst) - x86_64 memory layout
 - [Documentation/admin-guide/mm/](Documentation/admin-guide/mm/) - Memory mapping
 
 ### Not Just Code Execution: What the Kernel Actually Enforces
@@ -187,7 +187,6 @@ The Linux kernel goes beyond executing code; it enforces strict control over act
 **Documentation:**
 
 - [Documentation/userspace-api/](Documentation/userspace-api/) - User space APIs
-- [Documentation/admin-guide/namespaces.rst](Documentation/admin-guide/namespaces.rst) - Namespaces
 - [Documentation/security/](Documentation/security/) - Security framework
 
 ---
@@ -347,7 +346,7 @@ Understanding kernel threads is essential for grasping how the kernel manages sy
 
 **Documentation:**
 
-- [Documentation/core-api/kthread.rst](Documentation/core-api/kthread.rst) - Kernel thread API
+- [Documentation/core-api/kernel-api.rst](Documentation/core-api/kernel-api.rst) - Kernel thread API
 - [Documentation/scheduler/](Documentation/scheduler/) - Thread scheduling
 
 ---
