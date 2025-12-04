@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { setGitHubRepo, fetchKernelVersions } from '@/lib/github-api';
+import { setGitHubRepo, fetchBranches, filterStableBranches } from '@/lib/github-api';
 import type { GitHubTag } from '@/types';
 
 export default function Home() {
@@ -10,7 +10,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [branches, setBranches] = useState<GitHubTag[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('master');
+  const [selectedBranch, setSelectedBranch] = useState<string>('linux-6.1.y');
   const [repoInfo, setRepoInfo] = useState<{ owner: string; repo: string } | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,14 +46,20 @@ export default function Home() {
       return;
     }
 
-    const fetchBranches = async () => {
+    const fetchBranchesForRepo = async () => {
       setIsLoadingBranches(true);
       try {
-        setGitHubRepo(parsedRepo.owner, parsedRepo.repo, 'master');
-        const fetchedBranches = await fetchKernelVersions();
-        setBranches(fetchedBranches);
+        setGitHubRepo(parsedRepo.owner, parsedRepo.repo, 'linux-6.1.y');
+        const allBranches = await fetchBranches();
+        const stableBranches = filterStableBranches(allBranches);
+        setBranches(stableBranches);
         setRepoInfo(parsedRepo);
-        setSelectedBranch('master');
+        // Default to linux-6.1.y (very stable 6.x LTS branch) if available, otherwise first stable branch
+        const defaultBranch =
+          stableBranches.find((b) => b.name === 'linux-6.1.y')?.name ||
+          stableBranches[0]?.name ||
+          'linux-6.1.y';
+        setSelectedBranch(defaultBranch);
       } catch (error) {
         console.error('Failed to fetch branches:', error);
         // Don't show alert on auto-fetch, just log
@@ -63,7 +69,7 @@ export default function Home() {
     };
 
     // Debounce the fetch
-    const timer = setTimeout(fetchBranches, 500);
+    const timer = setTimeout(fetchBranchesForRepo, 500);
     return () => clearTimeout(timer);
   }, [parsedRepo, repoInfo, isLoadingBranches]);
 
@@ -85,11 +91,17 @@ export default function Home() {
     if (!repoInfo || repoInfo.owner !== parsedRepo.owner || repoInfo.repo !== parsedRepo.repo) {
       setIsLoadingBranches(true);
       try {
-        setGitHubRepo(parsedRepo.owner, parsedRepo.repo, 'master');
-        const fetchedBranches = await fetchKernelVersions();
-        setBranches(fetchedBranches);
+        setGitHubRepo(parsedRepo.owner, parsedRepo.repo, 'linux-6.1.y');
+        const allBranches = await fetchBranches();
+        const stableBranches = filterStableBranches(allBranches);
+        setBranches(stableBranches);
         setRepoInfo(parsedRepo);
-        setSelectedBranch('master');
+        // Default to linux-6.1.y (very stable 6.x LTS branch) if available, otherwise first stable branch
+        const defaultBranch =
+          stableBranches.find((b) => b.name === 'linux-6.1.y')?.name ||
+          stableBranches[0]?.name ||
+          'linux-6.1.y';
+        setSelectedBranch(defaultBranch);
       } catch (error) {
         console.error('Failed to fetch branches:', error);
         alert(
@@ -192,25 +204,47 @@ export default function Home() {
                   disabled={isLoadingBranches || isLoading || !repoInfo}
                   className="w-full px-3 py-2 rounded-lg border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  <option value="master">master</option>
-                  {isLoadingBranches && <option disabled>Loading branches...</option>}
-                  {branches.length > 0 && (
-                    <optgroup label="Recent">
-                      {branches.slice(0, 10).map((branch) => (
-                        <option key={branch.name} value={branch.name}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {isLoadingBranches && <option disabled>Loading stable branches...</option>}
+                  {branches.length === 0 && !isLoadingBranches && (
+                    <option disabled>No stable branches found</option>
                   )}
-                  {branches.length > 10 && (
-                    <optgroup label="Older">
-                      {branches.slice(10).map((branch) => (
-                        <option key={branch.name} value={branch.name}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {branches.length > 0 && (
+                    <>
+                      {branches.filter((b) => /^linux-6\./.test(b.name)).length > 0 && (
+                        <optgroup label="6.x Series (Stable)">
+                          {branches
+                            .filter((b) => /^linux-6\./.test(b.name))
+                            .map((branch) => (
+                              <option key={branch.name} value={branch.name}>
+                                {branch.name}{' '}
+                                {branch.name === 'linux-6.1.y' ? '(LTS - Recommended)' : ''}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {branches.filter((b) => /^linux-5\./.test(b.name)).length > 0 && (
+                        <optgroup label="5.x Series (Stable)">
+                          {branches
+                            .filter((b) => /^linux-5\./.test(b.name))
+                            .map((branch) => (
+                              <option key={branch.name} value={branch.name}>
+                                {branch.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {branches.filter((b) => /^linux-4\./.test(b.name)).length > 0 && (
+                        <optgroup label="4.x Series (Stable)">
+                          {branches
+                            .filter((b) => /^linux-4\./.test(b.name))
+                            .map((branch) => (
+                              <option key={branch.name} value={branch.name}>
+                                {branch.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                    </>
                   )}
                 </select>
               </div>

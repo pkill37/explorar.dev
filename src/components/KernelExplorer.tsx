@@ -18,7 +18,10 @@ import {
   setGitHubRepoWithDefaultBranch,
 } from '@/lib/github-api';
 import { getAllSuggestionsForFile, getFundamentalConcepts } from '@/lib/kernel-suggestions';
-import { useKernelProgress } from '@/hooks/useKernelProgress';
+import { useProjectProgress } from '@/hooks/useProjectProgress';
+import { getProjectConfig } from '@/lib/project-guides';
+import { createLinuxKernelGuide } from '@/lib/guides/linux-kernel';
+import { createLLVMGuide } from '@/lib/guides/llvm';
 import '@/app/linux-kernel-explorer/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -194,12 +197,31 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   const [treeRefreshKey] = useState<string>('init');
 
   // Kernel version state
-  const [selectedVersion, setSelectedVersion] = useState<string>(branch || 'master');
+  const [selectedVersion, setSelectedVersion] = useState<string>(branch || 'linux-6.1.y');
 
-  // Progress tracking for chapters
-  const chapterIds = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'];
-  const { progress, markQuizComplete, getChapterProgress, resetProgress } =
-    useKernelProgress(chapterIds);
+  // Get project config
+  const projectConfig = useMemo(() => {
+    if (owner && repo) {
+      return getProjectConfig(owner, repo);
+    }
+    return getProjectConfig('torvalds', 'linux'); // Default fallback
+  }, [owner, repo]);
+
+  const projectId = projectConfig?.id || 'linux-kernel';
+
+  // Progress tracking for chapters - dynamically determine chapter IDs
+  const chapterIds = useMemo(() => {
+    if (projectConfig?.guides?.[0]?.sections) {
+      return projectConfig.guides[0].sections.map((s) => s.id);
+    }
+    // Fallback for Linux kernel
+    return ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'];
+  }, [projectConfig]);
+
+  const { progress, markQuizComplete, getChapterProgress, resetProgress } = useProjectProgress(
+    projectId,
+    chapterIds
+  );
 
   // Panel width state - start with defaults to avoid hydration mismatch
   const [sidebarWidth, setSidebarWidth] = useState<number>(220);
@@ -279,10 +301,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       // Priority: URL params > localStorage
       if (owner && repo) {
         // Initialize from URL params - auto-detect default branch if not specified
-        setGitHubRepoWithDefaultBranch(owner, repo, branch || 'master').then(() => {
+        setGitHubRepoWithDefaultBranch(owner, repo, branch || 'linux-6.1.y').then(() => {
           setRepoLabel(`${owner}/${repo}`);
           const actualBranch = getCurrentBranch();
-          setSelectedVersion(branch || actualBranch || 'master');
+          setSelectedVersion(branch || actualBranch || 'linux-6.1.y');
         });
 
         // Save to localStorage for persistence
@@ -296,20 +318,22 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         const savedGitHubUrl = loadFromLocalStorage('kernel-explorer-github-url', '') as string;
         const savedVersion = loadFromLocalStorage(
           'kernel-explorer-selected-version',
-          'master'
+          'linux-6.1.y'
         ) as string;
 
         if (savedGitHubUrl) {
           const urlMatch = savedGitHubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
           if (urlMatch) {
             const [, savedOwner, savedRepo] = urlMatch;
-            setGitHubRepoWithDefaultBranch(savedOwner, savedRepo, savedVersion || 'master').then(
-              () => {
-                setRepoLabel(`${savedOwner}/${savedRepo}`);
-                const actualBranch = getCurrentBranch();
-                setSelectedVersion(savedVersion || actualBranch || 'master');
-              }
-            );
+            setGitHubRepoWithDefaultBranch(
+              savedOwner,
+              savedRepo,
+              savedVersion || 'linux-6.1.y'
+            ).then(() => {
+              setRepoLabel(`${savedOwner}/${savedRepo}`);
+              const actualBranch = getCurrentBranch();
+              setSelectedVersion(savedVersion || actualBranch || 'linux-6.1.y');
+            });
           }
         }
       }
@@ -454,7 +478,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   const generateTabId = (path: string) => `tab-${path.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
 
   const openFileInTab = useCallback(
-    (filePath: string, searchPattern?: string) => {
+    (filePath: string, searchPattern?: string, scrollToLine?: number) => {
       let normalizedPath = filePath.replace(/\/+$/, '');
 
       // Check if this is a Documentation folder - open index.rst instead
@@ -480,6 +504,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             ...t,
             isActive: t.id === existing.id,
             searchPattern: t.id === existing.id ? searchPattern : t.searchPattern,
+            scrollToLine: t.id === existing.id ? scrollToLine : t.scrollToLine,
           }))
         );
         return;
@@ -492,6 +517,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         isDirty: false,
         isLoading: true,
         searchPattern: searchPattern,
+        scrollToLine: scrollToLine,
       };
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
@@ -573,8 +599,25 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     [activeTab]
   );
 
-  // Guide content - complete guide with all 9 chapters
+  // Guide content - dynamically loaded based on project
   const guideSections = useMemo(() => {
+    if (!projectConfig) {
+      return [];
+    }
+
+    // Load guide based on project type
+    if (projectConfig.id === 'linux-kernel') {
+      return createLinuxKernelGuide(openFileInTab, markQuizComplete, getChapterProgress);
+    } else if (projectConfig.id === 'llvm') {
+      return createLLVMGuide(openFileInTab, markQuizComplete, getChapterProgress);
+    }
+
+    return [];
+  }, [projectConfig, openFileInTab, markQuizComplete, getChapterProgress]);
+
+  // Legacy guide content (kept for reference but not used)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _legacyGuideSections = useMemo(() => {
     // Chapter 1 Questions
     const ch1Questions: QuizQuestion[] = [
       {
@@ -868,26 +911,16 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   description: 'Scheduler design and kernel thread management',
                 },
                 { path: 'Documentation/core-api/kernel-api.rst', description: 'Kernel thread API' },
-                {
-                  path: 'Documentation/core-api/',
-                  description: 'Core kernel APIs including system calls',
-                },
-                {
-                  path: 'Documentation/kernel-hacking/locking.rst',
-                  description: 'System call and interrupt handling',
-                },
-                { path: 'Documentation/mm/', description: 'Memory mapping and isolation' },
-                {
-                  path: 'Documentation/admin-guide/mm/',
-                  description: 'Memory management administration',
-                },
               ]}
               source={[
                 { path: 'kernel/sched/', description: 'Scheduler implementation' },
                 { path: 'kernel/sched/core.c', description: 'Core scheduler logic' },
                 { path: 'kernel/sched/fair.c', description: 'CFS scheduler implementation' },
+                { path: 'kernel/sched/rt.c', description: 'Real-time scheduler' },
                 { path: 'include/linux/sched.h', description: 'Process and thread structures' },
+                { path: 'include/linux/sched/task.h', description: 'Task structure definitions' },
                 { path: 'kernel/fork.c', description: 'Process creation' },
+                { path: 'kernel/exit.c', description: 'Process termination' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -921,35 +954,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             </ul>
             <FileRecommendations
               docs={[
-                { path: 'Documentation/scheduler/', description: 'Scheduler documentation' },
-                { path: 'Documentation/mm/', description: 'Memory management' },
-                { path: 'Documentation/filesystems/', description: 'Filesystem documentation' },
-                { path: 'Documentation/kernel-hacking/', description: 'Kernel development guide' },
-                { path: 'Documentation/core-api/', description: 'Core kernel APIs' },
-                {
-                  path: 'Documentation/scheduler/sched-design-CFS.rst',
-                  description: 'Process and thread structures',
-                },
                 {
                   path: 'Documentation/filesystems/vfs.rst',
                   description: 'VFS and inode structures',
                 },
-                { path: 'Documentation/ipc/', description: 'IPC structures' },
-                { path: 'Documentation/locking/', description: 'Locking mechanisms' },
-                { path: 'Documentation/locking/spinlocks.rst', description: 'Spinlock primitives' },
-                { path: 'Documentation/RCU/', description: 'RCU (Read-Copy-Update) mechanism' },
-                {
-                  path: 'Documentation/kernel-hacking/locking.rst',
-                  description: 'Per-thread context and current pointer',
-                },
-                { path: 'Documentation/driver-api/', description: 'Device driver API' },
                 { path: 'Documentation/driver-api/driver-model/', description: 'Device model' },
-                { path: 'Documentation/admin-guide/devices.rst', description: 'Device files' },
-                { path: 'Documentation/kbuild/', description: 'Kernel build system' },
-                {
-                  path: 'Documentation/admin-guide/kernel-parameters.rst',
-                  description: 'Kernel parameters',
-                },
               ]}
               source={[
                 {
@@ -977,11 +986,16 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                 },
                 { path: 'include/linux/sched.h', description: 'task_struct definition' },
                 { path: 'include/linux/fs.h', description: 'File system structures' },
+                { path: 'include/linux/inode.h', description: 'Inode structure definitions' },
                 { path: 'include/linux/spinlock.h', description: 'Spinlock primitives' },
+                { path: 'include/linux/mutex.h', description: 'Mutex definitions' },
                 { path: 'kernel/locking/', description: 'Locking mechanisms' },
                 { path: 'drivers/base/core.c', description: 'Device model core' },
                 { path: 'drivers/base/bus.c', description: 'Bus subsystem' },
+                { path: 'drivers/base/class.c', description: 'Device class management' },
                 { path: 'ipc/', description: 'IPC mechanisms' },
+                { path: 'ipc/msg.c', description: 'Message queues' },
+                { path: 'ipc/sem.c', description: 'Semaphores' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1019,15 +1033,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   path: 'Documentation/core-api/memory-allocation.rst',
                   description: 'Memory allocation APIs',
                 },
-                { path: 'Documentation/mm/', description: 'Memory management overview' },
                 { path: 'Documentation/admin-guide/mm/', description: 'Memory zones and NUMA' },
-                { path: 'Documentation/virt/', description: 'Virtual memory documentation' },
-                {
-                  path: 'Documentation/arch/x86/x86_64/mm.rst',
-                  description: 'x86_64 memory layout',
-                },
-                { path: 'Documentation/userspace-api/', description: 'User space APIs' },
-                { path: 'Documentation/security/', description: 'Security framework' },
               ]}
               source={[
                 { path: 'mm/', description: 'Memory management subsystem' },
@@ -1035,11 +1041,15 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                 { path: 'mm/memory.c', description: 'Memory management core' },
                 { path: 'mm/vmalloc.c', description: 'Virtual memory allocation' },
                 { path: 'mm/slab.c', description: 'Slab allocator' },
+                { path: 'mm/slub.c', description: 'SLUB allocator' },
+                { path: 'mm/kmemleak.c', description: 'Kmemleak memory leak detector' },
                 { path: 'include/linux/gfp.h', description: 'GFP flags for memory allocation' },
                 { path: 'include/linux/mm_types.h', description: 'Memory type definitions' },
                 { path: 'include/linux/mm.h', description: 'Memory management headers' },
+                { path: 'include/linux/slab.h', description: 'Slab allocator definitions' },
                 { path: 'kernel/capability.c', description: 'POSIX capabilities' },
                 { path: 'include/linux/capability.h', description: 'Capability definitions' },
+                { path: 'kernel/user_namespace.c', description: 'User namespace implementation' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1076,25 +1086,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   path: 'Documentation/admin-guide/kernel-parameters.rst',
                   description: 'Kernel boot parameters',
                 },
-                { path: 'Documentation/x86/boot.rst', description: 'x86 boot process' },
-                { path: 'Documentation/kernel-hacking/modules.rst', description: 'Kernel modules' },
-                { path: 'Documentation/bpf/', description: 'eBPF subsystem' },
-                {
-                  path: 'Documentation/admin-guide/module-signing.rst',
-                  description: 'Module interface',
-                },
-                {
-                  path: 'Documentation/admin-guide/binfmt-misc.rst',
-                  description: 'Binary format handlers',
-                },
-                { path: 'Documentation/core-api/', description: 'System call interface' },
-                {
-                  path: 'Documentation/scheduler/sched-design-CFS.rst',
-                  description: 'Process and thread structures',
-                },
+                { path: 'Documentation/arch/x86/boot.rst', description: 'x86 boot process' },
               ]}
               source={[
                 { path: 'init/main.c', description: 'Kernel initialization - start_kernel()' },
+                { path: 'init/initramfs.c', description: 'Initramfs handling' },
                 { path: 'kernel/fork.c', description: 'Process creation with fork() and clone()' },
                 { path: 'kernel/exit.c', description: 'Process termination' },
                 { path: 'kernel/module.c', description: 'Kernel module management' },
@@ -1103,8 +1099,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   path: 'arch/x86/kernel/',
                   description: 'x86 architecture-specific initialization',
                 },
+                { path: 'arch/x86/kernel/head_64.S', description: 'x86_64 boot assembly' },
                 { path: 'fs/exec.c', description: 'execve() implementation' },
+                { path: 'fs/binfmt_elf.c', description: 'ELF binary format handler' },
                 { path: 'include/linux/sched.h', description: 'task_struct definition' },
+                { path: 'include/linux/binfmts.h', description: 'Binary format definitions' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1136,14 +1135,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             </ul>
             <FileRecommendations
               docs={[
-                { path: 'Documentation/core-api/', description: 'System call interface' },
                 { path: 'Documentation/core-api/irq/', description: 'Interrupt handling' },
-                {
-                  path: 'Documentation/kernel-hacking/locking.rst',
-                  description: 'Interrupt context',
-                },
-                { path: 'Documentation/virt/kvm/', description: 'KVM virtualization' },
-                { path: 'Documentation/virt/kvm/api.txt', description: 'KVM API' },
                 {
                   path: 'Documentation/userspace-api/',
                   description: 'User space API documentation',
@@ -1152,11 +1144,16 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               source={[
                 { path: 'arch/x86/entry/', description: 'System call entry points' },
                 { path: 'arch/x86/entry/syscalls/', description: 'System call table' },
+                { path: 'arch/x86/entry/entry_64.S', description: 'x86_64 syscall entry assembly' },
+                { path: 'arch/x86/entry/common.c', description: 'Common syscall handling' },
                 { path: 'kernel/sys.c', description: 'System call implementations' },
                 { path: 'kernel/irq/', description: 'Interrupt handling' },
+                { path: 'kernel/irq_work.c', description: 'Interrupt work queues' },
                 { path: 'kernel/softirq.c', description: 'Software interrupts' },
                 { path: 'include/linux/uaccess.h', description: 'User space access helpers' },
+                { path: 'include/linux/syscalls.h', description: 'System call definitions' },
                 { path: 'arch/x86/lib/usercopy.c', description: 'User space copy functions' },
+                { path: 'arch/x86/lib/usercopy_64.c', description: 'x86_64 user copy routines' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1193,45 +1190,32 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             <FileRecommendations
               docs={[
                 {
-                  path: 'Documentation/scheduler/',
-                  description: 'Context switching and scheduling',
-                },
-                {
                   path: 'Documentation/scheduler/sched-design-CFS.rst',
                   description: 'Task state structures and CFS scheduler design',
                 },
-                { path: 'Documentation/core-api/irq/', description: 'Interrupt handling' },
                 {
                   path: 'Documentation/core-api/workqueue.rst',
                   description: 'Workqueue mechanism',
                 },
-                {
-                  path: 'Documentation/kernel-hacking/locking.rst',
-                  description: 'Preemption control',
-                },
-                {
-                  path: 'Documentation/driver-api/',
-                  description: 'Device driver interrupt handling',
-                },
-                { path: 'Documentation/locking/', description: 'Locking mechanisms' },
-                { path: 'Documentation/locking/spinlocks.rst', description: 'Spinlocks' },
-                { path: 'Documentation/locking/mutex-design.rst', description: 'Mutexes' },
-                { path: 'Documentation/RCU/', description: 'RCU synchronization' },
-                { path: 'Documentation/core-api/kernel-api.rst', description: 'Kernel thread API' },
-                { path: 'Documentation/admin-guide/mm/', description: 'Memory migration' },
               ]}
               source={[
                 { path: 'kernel/sched/', description: 'Scheduler implementation' },
                 { path: 'kernel/sched/core.c', description: 'Core scheduler logic' },
                 { path: 'kernel/sched/fair.c', description: 'CFS scheduler' },
                 { path: 'kernel/sched/rt.c', description: 'Real-time scheduler' },
+                { path: 'kernel/sched/deadline.c', description: 'Deadline scheduler' },
+                { path: 'kernel/sched/idle.c', description: 'Idle task scheduling' },
                 { path: 'kernel/softirq.c', description: 'Software interrupts' },
                 { path: 'kernel/workqueue.c', description: 'Workqueue implementation' },
                 { path: 'kernel/irq/', description: 'Interrupt subsystem' },
+                { path: 'kernel/irq/manage.c', description: 'Interrupt management' },
                 { path: 'kernel/locking/', description: 'Locking primitives' },
+                { path: 'kernel/locking/spinlock.c', description: 'Spinlock implementation' },
+                { path: 'kernel/locking/mutex.c', description: 'Mutex implementation' },
                 { path: 'include/linux/spinlock.h', description: 'Spinlock definitions' },
                 { path: 'include/linux/mutex.h', description: 'Mutex definitions' },
                 { path: 'include/linux/sched.h', description: 'task_struct and scheduling' },
+                { path: 'include/linux/workqueue.h', description: 'Workqueue definitions' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1266,35 +1250,31 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             </ul>
             <FileRecommendations
               docs={[
-                { path: 'Documentation/core-api/workqueue.rst', description: 'Workqueues' },
-                { path: 'Documentation/core-api/irq/', description: 'Soft interrupts' },
-                { path: 'Documentation/core-api/', description: 'Wait queues and synchronization' },
+                { path: 'Documentation/filesystems/vfs.rst', description: 'VFS layer' },
                 {
                   path: 'Documentation/kernel-hacking/modules.rst',
                   description: 'Module management',
                 },
-                { path: 'Documentation/kernel-hacking/symbols.rst', description: 'Symbol export' },
-                { path: 'Documentation/filesystems/', description: 'Filesystem layer' },
-                { path: 'Documentation/block/', description: 'Block layer' },
-                { path: 'Documentation/filesystems/proc.rst', description: '/proc filesystem' },
-                { path: 'Documentation/filesystems/sysfs.rst', description: 'sysfs filesystem' },
-                { path: 'Documentation/bpf/', description: 'eBPF subsystem' },
-                { path: 'Documentation/userspace-api/', description: 'System call interface' },
-                { path: 'Documentation/filesystems/vfs.rst', description: 'VFS layer' },
               ]}
               source={[
                 { path: 'ipc/', description: 'IPC mechanisms' },
                 { path: 'ipc/msg.c', description: 'Message queues' },
                 { path: 'ipc/sem.c', description: 'Semaphores' },
                 { path: 'ipc/shm.c', description: 'Shared memory' },
+                { path: 'ipc/namespace.c', description: 'IPC namespace' },
                 { path: 'include/linux/msg.h', description: 'Message queue structures' },
+                { path: 'include/linux/shm.h', description: 'Shared memory structures' },
                 { path: 'fs/open.c', description: 'open() implementation' },
                 { path: 'fs/namei.c', description: 'Path resolution (namei)' },
                 { path: 'fs/read_write.c', description: 'File read/write operations' },
                 { path: 'fs/inode.c', description: 'Inode operations' },
+                { path: 'fs/dcache.c', description: 'Directory cache' },
+                { path: 'fs/file.c', description: 'File descriptor management' },
                 { path: 'include/linux/fs.h', description: 'File system structures' },
+                { path: 'include/linux/fcntl.h', description: 'File control definitions' },
                 { path: 'kernel/module.c', description: 'Module symbol exports' },
                 { path: 'include/linux/export.h', description: 'EXPORT_SYMBOL macros' },
+                { path: 'kernel/kallsyms.c', description: 'Kernel symbol management' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1332,25 +1312,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             </ul>
             <FileRecommendations
               docs={[
-                { path: 'Documentation/filesystems/', description: 'File I/O operations' },
-                { path: 'Documentation/block/', description: 'Block layer' },
-                { path: 'Documentation/driver-api/', description: 'Device drivers' },
-                { path: 'Documentation/core-api/dma-api.rst', description: 'DMA interface' },
-                { path: 'Documentation/x86/', description: 'x86 architecture documentation' },
-                { path: 'Documentation/core-api/timekeeping.rst', description: 'Time management' },
-                { path: 'Documentation/timers/', description: 'Timer subsystem' },
-                { path: 'Documentation/userspace-api/', description: 'User space I/O APIs' },
                 { path: 'Documentation/core-api/io_uring.rst', description: 'io_uring interface' },
-                {
-                  path: 'Documentation/userspace-api/io_uring/',
-                  description: 'io_uring user space API',
-                },
-                { path: 'Documentation/virtual/', description: 'Virtualization documentation' },
                 { path: 'Documentation/virt/kvm/', description: 'KVM implementation' },
-                { path: 'Documentation/virt/kvm/api.txt', description: 'KVM API' },
-                { path: 'Documentation/virt/kvm/x86/', description: 'x86 virtualization' },
-                { path: 'Documentation/virtual/virtio/', description: 'VirtIO drivers' },
-                { path: 'Documentation/virtual/virtio-net.rst', description: 'VirtIO networking' },
               ]}
               source={[
                 { path: 'fs/', description: 'Filesystem layer' },
@@ -1358,14 +1321,23 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                 { path: 'fs/open.c', description: 'File opening' },
                 { path: 'fs/read_write.c', description: 'File read/write' },
                 { path: 'fs/inode.c', description: 'Inode operations' },
+                { path: 'fs/aio.c', description: 'Asynchronous I/O' },
                 { path: 'block/', description: 'Block layer' },
+                { path: 'block/blk-core.c', description: 'Block core functionality' },
+                { path: 'block/blk-mq.c', description: 'Multi-queue block layer' },
                 { path: 'drivers/', description: 'Device drivers' },
                 { path: 'include/linux/fs.h', description: 'File system structures' },
                 { path: 'include/linux/blkdev.h', description: 'Block device definitions' },
+                { path: 'include/linux/aio.h', description: 'AIO structures' },
                 { path: 'io_uring/', description: 'io_uring implementation' },
+                { path: 'io_uring/io_uring.c', description: 'io_uring core' },
+                { path: 'io_uring/opdef.c', description: 'io_uring operations' },
                 { path: 'kernel/time/', description: 'Time management' },
+                { path: 'kernel/time/tick-common.c', description: 'Tick handling' },
                 { path: 'arch/x86/kvm/', description: 'KVM x86 implementation' },
+                { path: 'arch/x86/kvm/x86.c', description: 'KVM x86 core' },
                 { path: 'drivers/virtio/', description: 'VirtIO drivers' },
+                { path: 'drivers/virtio/virtio_ring.c', description: 'VirtIO ring implementation' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1398,15 +1370,20 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             </ul>
             <FileRecommendations
               docs={[
-                { path: 'Documentation/core-api/', description: 'System call interface' },
-                { path: 'Documentation/x86/', description: 'Architecture entry points' },
                 { path: 'Documentation/kernel-hacking/', description: 'Kernel development guide' },
-                { path: 'Documentation/kbuild/', description: 'Build system' },
               ]}
               source={[
                 { path: 'arch/x86/entry/', description: 'System call entry points' },
                 { path: 'kernel/', description: 'Core kernel subsystems' },
+                { path: 'kernel/sched/', description: 'Scheduler subsystem' },
+                { path: 'kernel/irq/', description: 'Interrupt subsystem' },
+                { path: 'kernel/locking/', description: 'Locking subsystem' },
+                { path: 'mm/', description: 'Memory management subsystem' },
+                { path: 'fs/', description: 'Filesystem subsystem' },
                 { path: 'include/linux/', description: 'Kernel headers' },
+                { path: 'include/linux/kernel.h', description: 'Core kernel definitions' },
+                { path: 'include/linux/types.h', description: 'Kernel type definitions' },
+                { path: 'include/uapi/linux/', description: 'User space API headers' },
               ]}
               onFileClick={openFileInTab}
             />
@@ -1538,8 +1515,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
             {activeSidebarTab === 'data-structures' && (
               <DataStructuresView
-                onFileOpen={(filePath, structName) => {
-                  openFileInTab(filePath, structName);
+                onFileOpen={(filePath, structName, lineNumber) => {
+                  // If we have a line number, use it for precise scrolling
+                  // Otherwise, use struct name as search pattern
+                  openFileInTab(filePath, lineNumber ? undefined : structName, lineNumber);
                 }}
               />
             )}
@@ -1611,7 +1590,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         >
           <GuidePanel
             sections={guideSections}
-            defaultOpenIds={['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9']}
+            defaultOpenIds={projectConfig?.guides?.[0]?.defaultOpenIds || chapterIds}
             overallProgress={progress.overallProgress}
             chapterProgress={Object.fromEntries(
               Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])

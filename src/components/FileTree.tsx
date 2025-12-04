@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { FileNode } from '@/types';
-import { buildFileTree, getFileIcon } from '@/lib/github-api';
+import { buildFileTree, getFileIcon, GitHubApiError } from '@/lib/github-api';
+import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
 
 interface FileTreeProps {
   onFileSelect: (path: string) => void;
@@ -157,6 +158,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   const handledRequestRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { setRateLimit } = useGitHubRateLimit();
 
   useEffect(() => {
     const loadRootDirectory = async () => {
@@ -166,6 +168,10 @@ const FileTree: React.FC<FileTreeProps> = ({
         const nodes = listDirectory ? await listDirectory('') : await buildFileTree('');
         setRootNodes(nodes);
       } catch (err) {
+        // Check if it's a rate limit error
+        if (err instanceof GitHubApiError && err.status === 403) {
+          setRateLimit(err);
+        }
         setError(err instanceof Error ? err.message : 'Failed to load file tree');
         console.error('Failed to load root directory:', err);
       } finally {
@@ -174,7 +180,7 @@ const FileTree: React.FC<FileTreeProps> = ({
     };
 
     loadRootDirectory();
-  }, [listDirectory, refreshKey]);
+  }, [listDirectory, refreshKey, setRateLimit]);
 
   useEffect(() => {
     const expandPath = async (path: string) => {

@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import MonacoCodeEditor from './MonacoCodeEditor';
 import KernelStudyEditor from './KernelStudyEditor';
-import { fetchFileContent as fetchFromGitHub } from '@/lib/github-api';
+import { fetchFileContent as fetchFromGitHub, GitHubApiError } from '@/lib/github-api';
+import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
 
 interface CodeEditorContainerProps {
   filePath: string;
@@ -28,6 +29,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFilePath, setCurrentFilePath] = useState<string>('');
+  const { setRateLimit } = useGitHubRateLimit();
 
   useEffect(() => {
     const loadFileContent = async () => {
@@ -54,6 +56,10 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
           onContentLoad(fileContent);
         }
       } catch (err) {
+        // Check if it's a rate limit error
+        if (err instanceof GitHubApiError && err.status === 403) {
+          setRateLimit(err);
+        }
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         setError(errorMessage);
         setContent(''); // Clear content on error
@@ -64,7 +70,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
     };
 
     loadFileContent();
-  }, [filePath, fetchFile, currentFilePath, onContentLoad]);
+  }, [filePath, fetchFile, currentFilePath, onContentLoad, setRateLimit]);
 
   if (error) {
     return (

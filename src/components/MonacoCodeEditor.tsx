@@ -2,10 +2,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { findSymbolsInFile, findDefinition, type SymbolReference } from '@/lib/cross-reference';
 
 // Dynamically import Monaco Editor to avoid SSR issues
@@ -39,19 +35,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 }) => {
   const editorRef = useRef<unknown>(null);
   const [language, setLanguage] = useState<string>('text');
-  const [userWantsPreview, setUserWantsPreview] = useState<boolean>(false);
   const decorationsRef = useRef<string[]>([]);
   const symbolsRef = useRef<SymbolReference[]>([]);
-
-  // Get filename for README detection
-  const fileName = filePath.split('/').pop()?.toLowerCase() || '';
-
-  // Check if file supports preview (markdown)
-  const supportsPreview =
-    filePath.endsWith('.md') || filePath.endsWith('.mdx') || fileName === 'readme';
-
-  // Derived state: preview mode is only enabled if user wants it AND file supports it
-  const isPreviewMode = userWantsPreview && supportsPreview;
 
   const getMonacoLanguage = useCallback((filename: string): string => {
     const extension = filename.split('.').pop()?.toLowerCase();
@@ -86,7 +71,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       case 'yml':
         return 'yaml';
       case 'md':
-        return 'markdown';
+        return 'plaintext';
       case 'txt':
         return 'plaintext';
       case 'Makefile':
@@ -109,21 +94,6 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       }, 0);
     }
   }, [filePath, getMonacoLanguage]);
-
-  // Keyboard shortcut handler for Cmd+Shift+V / Ctrl+Shift+V
-  useEffect(() => {
-    if (!supportsPreview) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'V') {
-        e.preventDefault();
-        setUserWantsPreview((prev) => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [supportsPreview]);
 
   // Extract symbols from content when it changes
   useEffect(() => {
@@ -466,374 +436,34 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
   return (
     <div className="vscode-editor">
-      {/* Preview toggle button - floating */}
-      {supportsPreview && (
-        <button
-          onClick={() => setUserWantsPreview(!userWantsPreview)}
-          className="preview-toggle-button"
-          title={`${isPreviewMode ? 'Show source' : 'Show preview'} (Cmd+Shift+V)`}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            zIndex: 10,
-            padding: '4px 8px',
-            fontSize: '11px',
-            background: isPreviewMode ? 'var(--vscode-text-accent)' : 'var(--vscode-bg-tertiary)',
-            color: isPreviewMode ? 'white' : 'var(--vscode-text-primary)',
-            border: `1px solid ${isPreviewMode ? 'var(--vscode-text-accent)' : 'var(--vscode-border)'}`,
-            borderRadius: '3px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => {
-            if (!isPreviewMode) {
-              e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isPreviewMode) {
-              e.currentTarget.style.background = 'var(--vscode-bg-tertiary)';
-            }
-          }}
-        >
-          {isPreviewMode ? '📄 Source' : '👁️ Preview'}
-        </button>
-      )}
-
-      {/* Monaco Editor or Preview */}
+      {/* Monaco Editor */}
       <div style={{ flex: 1, overflow: 'hidden', height: '100%', minHeight: '300px' }}>
-        {isPreviewMode && supportsPreview ? (
-          <div
-            className="markdown-preview"
-            style={{
-              height: '100%',
-              overflow: 'auto',
-              padding: '24px',
-              background: 'var(--vscode-editor-background, #1e1e1e)',
-              color: 'var(--vscode-editor-foreground, #d4d4d4)',
-              fontFamily:
-                '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-              fontSize: '14px',
-              lineHeight: '1.6',
-            }}
-          >
-            {fileName === 'readme' || filePath.endsWith('.md') || filePath.endsWith('.mdx') ? (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  h1: ({ children, ...props }) => (
-                    <h1
-                      style={{
-                        fontSize: '2em',
-                        fontWeight: 600,
-                        marginTop: '24px',
-                        marginBottom: '16px',
-                        paddingBottom: '8px',
-                        borderBottom: '1px solid var(--vscode-border)',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </h1>
-                  ),
-                  h2: ({ children, ...props }) => (
-                    <h2
-                      style={{
-                        fontSize: '1.5em',
-                        fontWeight: 600,
-                        marginTop: '20px',
-                        marginBottom: '12px',
-                        paddingBottom: '6px',
-                        borderBottom: '1px solid var(--vscode-border)',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </h2>
-                  ),
-                  h3: ({ children, ...props }) => (
-                    <h3
-                      style={{
-                        fontSize: '1.25em',
-                        fontWeight: 600,
-                        marginTop: '16px',
-                        marginBottom: '8px',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </h3>
-                  ),
-                  h4: ({ children, ...props }) => (
-                    <h4
-                      style={{
-                        fontSize: '1.1em',
-                        fontWeight: 600,
-                        marginTop: '14px',
-                        marginBottom: '6px',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </h4>
-                  ),
-                  p: ({ children, ...props }) => (
-                    <p
-                      style={{
-                        marginBottom: '12px',
-                        lineHeight: '1.6',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </p>
-                  ),
-                  code: ({
-                    inline,
-                    className,
-                    children,
-                    ...props
-                  }: React.ComponentPropsWithoutRef<'code'> & {
-                    inline?: boolean;
-                  }) => {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const language = match ? match[1] : '';
-                    const codeString = String(children).replace(/\n$/, '');
-
-                    if (!inline && language) {
-                      return (
-                        <SyntaxHighlighter
-                          style={vscDarkPlus}
-                          language={language}
-                          PreTag="div"
-                          customStyle={{
-                            margin: '12px 0',
-                            borderRadius: '4px',
-                            border: '1px solid var(--vscode-border)',
-                            background: 'var(--vscode-bg-secondary)',
-                          }}
-                        >
-                          {codeString}
-                        </SyntaxHighlighter>
-                      );
-                    }
-
-                    if (inline) {
-                      return (
-                        <code
-                          style={{
-                            background:
-                              'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.1))',
-                            padding: '2px 6px',
-                            borderRadius: '3px',
-                            fontSize: '0.9em',
-                            fontFamily: 'monospace',
-                            color: 'var(--syntax-keyword, #569cd6)',
-                          }}
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      );
-                    }
-
-                    return (
-                      <SyntaxHighlighter
-                        style={vscDarkPlus}
-                        language="text"
-                        PreTag="div"
-                        customStyle={{
-                          margin: '12px 0',
-                          borderRadius: '4px',
-                          border: '1px solid var(--vscode-border)',
-                          background: 'var(--vscode-bg-secondary)',
-                        }}
-                      >
-                        {codeString}
-                      </SyntaxHighlighter>
-                    );
-                  },
-                  pre: ({ children, ...props }: React.ComponentPropsWithoutRef<'pre'>) => {
-                    return <pre {...props}>{children}</pre>;
-                  },
-                  a: ({ href, children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
-                    <a
-                      href={href}
-                      style={{
-                        color: 'var(--vscode-textLink-foreground, #4a9eff)',
-                        textDecoration: 'none',
-                      }}
-                      {...props}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.textDecoration = 'underline';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.textDecoration = 'none';
-                      }}
-                    >
-                      {children}
-                    </a>
-                  ),
-                  ul: ({ children, ...props }) => (
-                    <ul
-                      style={{
-                        marginLeft: '20px',
-                        marginBottom: '12px',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </ul>
-                  ),
-                  ol: ({ children, ...props }) => (
-                    <ol
-                      style={{
-                        marginLeft: '20px',
-                        marginBottom: '12px',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </ol>
-                  ),
-                  li: ({ children, ...props }) => (
-                    <li style={{ marginBottom: '4px' }} {...props}>
-                      {children}
-                    </li>
-                  ),
-                  blockquote: ({ children, ...props }) => (
-                    <blockquote
-                      style={{
-                        borderLeft: '4px solid var(--vscode-text-accent)',
-                        paddingLeft: '16px',
-                        marginLeft: '0',
-                        marginTop: '12px',
-                        marginBottom: '12px',
-                        color: 'var(--vscode-text-secondary)',
-                        fontStyle: 'italic',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </blockquote>
-                  ),
-                  table: ({ children, ...props }) => (
-                    <div style={{ overflowX: 'auto', marginBottom: '12px' }}>
-                      <table
-                        style={{
-                          borderCollapse: 'collapse',
-                          width: '100%',
-                          border: '1px solid var(--vscode-border)',
-                        }}
-                        {...props}
-                      >
-                        {children}
-                      </table>
-                    </div>
-                  ),
-                  th: ({ children, ...props }) => (
-                    <th
-                      style={{
-                        border: '1px solid var(--vscode-border)',
-                        padding: '8px',
-                        background: 'var(--vscode-bg-tertiary)',
-                        fontWeight: 600,
-                        textAlign: 'left',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children, ...props }) => (
-                    <td
-                      style={{
-                        border: '1px solid var(--vscode-border)',
-                        padding: '8px',
-                        color: 'var(--vscode-text-primary)',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </td>
-                  ),
-                  hr: ({ ...props }) => (
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--vscode-border)',
-                        margin: '24px 0',
-                      }}
-                      {...props}
-                    />
-                  ),
-                  img: ({ src, alt, ...props }: React.ComponentPropsWithoutRef<'img'>) => {
-                    // Convert src to string if it's a Blob
-                    const srcString =
-                      typeof src === 'string'
-                        ? src
-                        : src instanceof Blob
-                          ? URL.createObjectURL(src)
-                          : undefined;
-                    return (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={srcString}
-                        alt={alt}
-                        style={{
-                          maxWidth: '100%',
-                          height: 'auto',
-                          borderRadius: '4px',
-                          margin: '12px 0',
-                        }}
-                        {...props}
-                      />
-                    );
-                  },
-                }}
-              >
-                {content}
-              </ReactMarkdown>
-            ) : null}
-          </div>
-        ) : (
-          <Editor
-            height="100%"
-            language={language}
-            value={content}
-            theme="vs-dark"
-            onMount={handleEditorDidMount}
-            options={{
-              readOnly: true,
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              minimap: { enabled: true },
-              fontSize: 14,
-              fontFamily:
-                "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace",
-              lineNumbers: 'on',
-              wordWrap: 'off',
-              renderWhitespace: 'selection',
-              showFoldingControls: 'always',
-              folding: true,
-              matchBrackets: 'always',
-              renderLineHighlight: 'line',
-              selectOnLineNumbers: true,
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-            }}
-          />
-        )}
+        <Editor
+          height="100%"
+          language={language}
+          value={content}
+          theme="vs-dark"
+          onMount={handleEditorDidMount}
+          options={{
+            readOnly: true,
+            automaticLayout: true,
+            scrollBeyondLastLine: false,
+            minimap: { enabled: true },
+            fontSize: 14,
+            fontFamily:
+              "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace",
+            lineNumbers: 'on',
+            wordWrap: 'off',
+            renderWhitespace: 'selection',
+            showFoldingControls: 'always',
+            folding: true,
+            matchBrackets: 'always',
+            renderLineHighlight: 'line',
+            selectOnLineNumbers: true,
+            smoothScrolling: true,
+            cursorBlinking: 'smooth',
+          }}
+        />
       </div>
     </div>
   );

@@ -155,11 +155,198 @@ const dataStructures: DataStructure[] = [
       'Holds CPU-specific state of a task including page fault information, register sets, and architecture-specific data. Must be at the end of task_struct on x86.',
     usage: ['CPU register state', 'Page fault handling', 'Context switching'],
   },
+  // Security category
+  {
+    name: 'struct task_security_struct',
+    category: 'Security',
+    description: 'Security information for tasks',
+    location: '/security/selinux/include/objsec.h',
+    filePath: 'security/selinux/include/objsec.h',
+    lineNumber: 19,
+    introduction:
+      'Contains security-related information for tasks, including security identifiers (SIDs) used by security modules like SELinux. Links process security attributes with access control decisions.',
+    usage: ['SELinux security contexts', 'Access control decisions', 'Security policy enforcement'],
+    examples: ['Process security labeling', 'SELinux enforcement', 'LSM security attributes'],
+  },
+  {
+    name: 'struct inode_security_struct',
+    category: 'Security',
+    description: 'Security information for inodes',
+    location: '/security/selinux/include/objsec.h',
+    filePath: 'security/selinux/include/objsec.h',
+    lineNumber: 28,
+    introduction:
+      'Stores security attributes for filesystem objects (inodes). Used by security modules to enforce file access policies and maintain security labels on files and directories.',
+    usage: ['File security labeling', 'Access control enforcement', 'Security policy storage'],
+    examples: ['SELinux file contexts', 'File access decisions', 'Security attribute persistence'],
+  },
+  {
+    name: 'struct security_operations',
+    category: 'Security',
+    description: 'Security module operations structure',
+    location: '/include/linux/security.h',
+    filePath: 'include/linux/security.h',
+    lineNumber: 200,
+    introduction:
+      'Defines function pointers for security operations, allowing different Linux Security Modules (LSM) to implement their specific access control mechanisms. Part of the LSM framework.',
+    usage: ['LSM hook implementations', 'Security module registration', 'Access control callbacks'],
+    examples: ['SELinux operations', 'AppArmor operations', 'Custom security modules'],
+  },
+  // SELinux category
+  {
+    name: 'struct selinux_state',
+    category: 'SELinux',
+    description: 'SELinux state structure',
+    location: '/security/selinux/include/security.h',
+    filePath: 'security/selinux/include/security.h',
+    introduction:
+      'Represents the current state of SELinux, including policy status, enforcement mode (enforcing/permissive/disabled), and policy version information.',
+    usage: ['SELinux state management', 'Policy enforcement control', 'SELinux mode switching'],
+    examples: ['Enforcing mode', 'Permissive mode', 'Policy reload'],
+  },
+  {
+    name: 'struct selinux_policy',
+    category: 'SELinux',
+    description: 'SELinux policy structure',
+    location: '/security/selinux/ss/policydb.h',
+    filePath: 'security/selinux/ss/policydb.h',
+    introduction:
+      'Holds the active SELinux security policy rules and configurations. Contains type enforcement rules, role-based access control (RBAC) information, and MLS/MCS labels.',
+    usage: ['Policy rule storage', 'Access vector cache', 'Policy decision making'],
+    examples: ['Type enforcement rules', 'RBAC policies', 'MLS/MCS labels'],
+  },
+  {
+    name: 'struct selinux_audit_rule',
+    category: 'SELinux',
+    description: 'SELinux audit rule structure',
+    location: '/security/selinux/avc.h',
+    filePath: 'security/selinux/avc.h',
+    introduction:
+      'Represents audit rules for SELinux access vector cache (AVC) decisions. Used to determine which security events should be audited.',
+    usage: ['Audit rule configuration', 'AVC audit decisions', 'Security event logging'],
+    examples: ['Access denial auditing', 'Policy violation logging'],
+  },
+  // Task category
+  {
+    name: 'struct task_struct',
+    category: 'Task',
+    description: 'Process descriptor - core structure for tasks/processes',
+    location: '/include/linux/sched.h',
+    filePath: 'include/linux/sched.h',
+    lineNumber: 748,
+    introduction:
+      'The central data structure representing a process or thread in the Linux kernel. Contains all information needed to manage and schedule a task, including credentials, memory, files, and scheduling state.',
+    usage: [
+      'Process/thread management',
+      'Scheduling',
+      'Resource tracking',
+      'Task state management',
+    ],
+    examples: ['Process control block', 'Thread descriptor', 'Scheduler entity'],
+  },
+  {
+    name: 'struct task_group',
+    category: 'Task',
+    description: 'Task group structure for cgroup scheduling',
+    location: '/include/linux/sched.h',
+    filePath: 'include/linux/sched.h',
+    lineNumber: 380,
+    introduction:
+      'Represents a task group in the control group (cgroup) hierarchy. Used for hierarchical scheduling and resource management, allowing groups of tasks to share CPU and other resources.',
+    usage: ['Cgroup scheduling', 'Resource allocation', 'Task grouping'],
+    examples: ['CFS group scheduling', 'Cgroup hierarchies', 'Resource limits'],
+  },
+  {
+    name: 'struct sched_entity',
+    category: 'Task',
+    description: 'Scheduling entity structure',
+    location: '/include/linux/sched.h',
+    filePath: 'include/linux/sched.h',
+    lineNumber: 447,
+    introduction:
+      'Represents a schedulable entity in the CFS (Completely Fair Scheduler). Contains scheduling statistics, virtual runtime, and load information used by the scheduler to make scheduling decisions.',
+    usage: ['CFS scheduling', 'Load balancing', 'Fair scheduling calculations'],
+    examples: ['Process scheduling', 'Thread scheduling', 'Group scheduling'],
+  },
+  // Task Credentials category
+  {
+    name: 'struct cred',
+    category: 'Task Credentials',
+    description: 'Task credentials structure',
+    location: '/include/linux/cred.h',
+    filePath: 'include/linux/cred.h',
+    lineNumber: 118,
+    introduction:
+      'Represents the credentials of a task, including user IDs (UID/GID), group IDs, capabilities, and security context. Used for access control decisions throughout the kernel. Credentials are reference-counted and can be shared among tasks.',
+    usage: [
+      'Access control',
+      'Permission checking',
+      'Capability management',
+      'User/group ID tracking',
+    ],
+    examples: ['UID/GID checks', 'Capability checks', 'Security context storage'],
+  },
+  {
+    name: 'struct user_struct',
+    category: 'Task Credentials',
+    description: 'User accounting structure',
+    location: '/include/linux/sched/user.h',
+    filePath: 'include/linux/sched/user.h',
+    introduction:
+      'Tracks resource usage and accounting information for a user ID. Contains process count, file handle limits, and other per-user resource limits. Used for enforcing per-user resource constraints.',
+    usage: ['User resource accounting', 'Process limit enforcement', 'File handle limits'],
+    examples: ['RLIMIT_NPROC enforcement', 'User process counting', 'Resource limit tracking'],
+  },
+  {
+    name: 'struct group_info',
+    category: 'Task Credentials',
+    description: 'Group information structure',
+    location: '/include/linux/cred.h',
+    filePath: 'include/linux/cred.h',
+    introduction:
+      'Stores supplementary group information for a task. Contains an array of group IDs that the task belongs to, used for group-based access control decisions.',
+    usage: ['Group membership tracking', 'Access control', 'Permission checking'],
+    examples: ['File group permissions', 'Supplementary groups', 'Group-based access'],
+  },
+  // MAC category
+  {
+    name: 'struct security_operations',
+    category: 'MAC',
+    description: 'Mandatory Access Control operations',
+    location: '/include/linux/security.h',
+    filePath: 'include/linux/security.h',
+    introduction:
+      'Defines the interface for Mandatory Access Control (MAC) implementations through the Linux Security Module (LSM) framework. Contains function pointers for security hooks that enforce access control policies.',
+    usage: ['LSM framework', 'MAC policy enforcement', 'Security hook implementation'],
+    examples: ['SELinux MAC', 'AppArmor MAC', 'SMACK MAC'],
+  },
+  {
+    name: 'struct lsm_info',
+    category: 'MAC',
+    description: 'Linux Security Module information',
+    location: '/include/linux/lsm_hooks.h',
+    filePath: 'include/linux/lsm_hooks.h',
+    introduction:
+      'Contains metadata about a Linux Security Module (LSM), including its name, initialization function, and order. Used by the LSM framework to manage and initialize security modules.',
+    usage: ['LSM registration', 'Module initialization', 'LSM ordering'],
+    examples: ['SELinux module info', 'AppArmor module info', 'Custom LSM registration'],
+  },
+  {
+    name: 'struct security_hook_list',
+    category: 'MAC',
+    description: 'Security hook list structure',
+    location: '/include/linux/lsm_hooks.h',
+    filePath: 'include/linux/lsm_hooks.h',
+    introduction:
+      'Represents a single security hook in the LSM framework. Contains the hook function pointer and metadata. Multiple hooks are chained together to allow multiple security modules to participate in access control decisions.',
+    usage: ['Hook chaining', 'LSM hook registration', 'Security callback management'],
+    examples: ['File access hooks', 'Process creation hooks', 'Network access hooks'],
+  },
 ];
 
 interface DataStructureItemProps {
   ds: DataStructure;
-  onFileOpen?: (filePath: string, structName: string) => void;
+  onFileOpen?: (filePath: string, structName: string, lineNumber?: number) => void;
 }
 
 const DataStructureItem: React.FC<DataStructureItemProps> = ({ ds, onFileOpen }) => {
@@ -168,7 +355,7 @@ const DataStructureItem: React.FC<DataStructureItemProps> = ({ ds, onFileOpen })
   const handleViewSource = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (ds.filePath && onFileOpen) {
-      onFileOpen(ds.filePath, ds.name);
+      onFileOpen(ds.filePath, ds.name, ds.lineNumber);
     }
   };
 
@@ -235,7 +422,7 @@ const DataStructureItem: React.FC<DataStructureItemProps> = ({ ds, onFileOpen })
 
 interface DataStructuresViewProps {
   onStructSelect?: (ds: DataStructure) => void;
-  onFileOpen?: (filePath: string, structName: string) => void;
+  onFileOpen?: (filePath: string, structName: string, lineNumber?: number) => void;
 }
 
 const DataStructuresView: React.FC<DataStructuresViewProps> = ({ onFileOpen }) => {

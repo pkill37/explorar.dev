@@ -6,23 +6,24 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
 // Only override specific fields that need to be different for this page
 // Note: When overriding openGraph, we must explicitly include images to ensure they're not lost
 export const metadata: Metadata = {
-  title: 'Linux Kernel Explorer',
+  title: 'Explorar.dev - Source Code Explorer',
   description:
-    'Interactive Linux kernel source code browser with guided learning paths and comprehensive kernel exploration tools. Explore the Linux kernel, Python CPython, glibc, and LLVM source code with an intuitive VS Code-like interface.',
+    'Interactive source code browser with guided learning paths. Explore the Linux kernel, Python CPython, glibc, LLVM, and any GitHub repository with an intuitive VS Code-like interface.',
   keywords: [
-    'Linux kernel explorer',
-    'kernel source code browser',
-    'interactive kernel learning',
-    'Linux kernel study',
-    'kernel code exploration',
+    'source code explorer',
+    'code browser',
+    'interactive learning',
+    'Linux kernel',
     'CPython source code',
     'glibc exploration',
     'LLVM code browser',
+    'GitHub repository explorer',
+    'software learning',
   ],
   openGraph: {
-    title: 'Linux Kernel Explorer | explorar.dev',
+    title: 'Explorar.dev - Source Code Explorer | explorar.dev',
     description:
-      'Interactive Linux kernel source code browser with guided learning paths and comprehensive kernel exploration tools.',
+      'Interactive source code browser with guided learning paths. Explore any software source code with an intuitive VS Code-like interface.',
     url: `${siteUrl}/linux-kernel-explorer`,
     type: 'website',
     images: [
@@ -30,14 +31,14 @@ export const metadata: Metadata = {
         url: `${siteUrl}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'Linux Kernel Explorer | explorar.dev',
+        alt: 'Explorar.dev - Source Code Explorer | explorar.dev',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Linux Kernel Explorer | explorar.dev',
-    description: 'Interactive Linux kernel source code browser with guided learning paths.',
+    title: 'Explorar.dev - Source Code Explorer | explorar.dev',
+    description: 'Interactive source code browser with guided learning paths.',
     images: [`${siteUrl}/og-image.png`] as string[],
   },
   alternates: {

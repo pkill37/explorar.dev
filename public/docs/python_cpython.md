@@ -52,26 +52,147 @@ CPython uses a combination of reference counting and a cyclic garbage collector 
 
 ---
 
+## Learning Path for CPython Exploration
+
+This guide follows a structured learning path designed to master Python internals:
+
+### Beginner Path (Months 1-3)
+
+1. **Python Basics**: Solid understanding of Python language features
+2. **C Programming**: Comfortable reading C code
+3. **Bytecode Exploration**: Use `dis` module to see bytecode
+4. **Simple Tracing**: Trace Python execution with sys.settrace
+
+**Practical Start:**
+
+```python
+import dis
+
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+# See the bytecode
+dis.dis(factorial)
+```
+
+### Intermediate Path (Months 4-6)
+
+1. **Object Model**: Study PyObject and type system
+2. **Memory Management**: Understand reference counting and GC
+3. **Built-in Types**: Deep dive into list, dict, str implementations
+4. **Extension Modules**: Write C extensions for Python
+
+**Key Projects:**
+
+- Write a simple C extension module
+- Implement a custom Python type in C
+- Study how built-in functions work
+
+### Advanced Path (Months 7-12)
+
+1. **Evaluation Loop**: Master ceval.c and bytecode execution
+2. **Compiler Pipeline**: Study compilation from AST to bytecode
+3. **GIL Internals**: Understand GIL acquisition and release
+4. **Advanced Features**: Generators, coroutines, metaclasses
+
+**Advanced Projects:**
+
+- Modify CPython to add a custom bytecode
+- Implement a tracing JIT for specific operations
+- Profile and optimize CPython performance
+
+### Expert Path (Year 2+)
+
+1. **CPython Contribution**: Submit patches to CPython
+2. **Performance Optimization**: Profile and optimize critical paths
+3. **Alternative Implementations**: Study PyPy, Cython
+4. **Research**: Implement PEPs or research papers
+
+---
+
 ## Chapter 2 — Source Code Structure
 
 ### A Walk Through the CPython Source: Understanding Its Organization
 
 The CPython source code is organized into clear directories, each serving a specific purpose. Understanding this structure provides a roadmap for exploring the interpreter's internals.
 
-**Key Directories:**
+**Detailed Directory Structure:**
 
-- `Python/` - Core interpreter: bytecode evaluation, frame management, and runtime
-- `Objects/` - Python object implementations: all built-in types and their operations
-- `Include/` - Header files: public C API and internal definitions
-- `Parser/` - Python parser: converts source code to abstract syntax trees
-- `Modules/` - Standard library modules: implemented in C for performance
-- `Lib/` - Standard library: pure Python modules
-- `Doc/` - Documentation: official Python documentation source
+```
+cpython/
+├── Python/                    # Core interpreter (~100k lines)
+│   ├── ceval.c               # Main evaluation loop (~6,000 lines!)
+│   ├── compile.c             # Bytecode compiler (~6,000 lines)
+│   ├── ast.c                 # AST manipulation
+│   ├── import.c              # Import system
+│   ├── bltinmodule.c         # Built-in functions
+│   ├── pystate.c             # Interpreter state
+│   └── frame.c               # Frame objects
+├── Objects/                   # Object implementations (~150k lines)
+│   ├── object.c              # Base PyObject
+│   ├── typeobject.c          # Type system (~8,000 lines)
+│   ├── longobject.c          # Integer implementation (~5,000 lines)
+│   ├── unicodeobject.c       # String implementation (~15,000 lines!)
+│   ├── listobject.c          # List implementation (~3,000 lines)
+│   ├── dictobject.c          # Dictionary (~6,000 lines)
+│   ├── setobject.c           # Set implementation
+│   ├── funcobject.c          # Function objects
+│   ├── classobject.c         # Class/method objects
+│   ├── genobject.c           # Generator objects
+│   └── descrobject.c         # Descriptors (properties, etc.)
+├── Include/                   # Header files
+│   ├── Python.h              # Main header (includes everything)
+│   ├── object.h              # PyObject definition
+│   ├── cpython/              # CPython-specific (not stable API)
+│   │   ├── object.h          # Internal object details
+│   │   └── pystate.h         # Interpreter state internals
+│   ├── internal/             # Internal CPython APIs
+│   │   ├── pycore_*.h        # Core internal headers
+│   │   └── pycore_gc.h       # GC internals
+│   ├── methodobject.h        # Method objects
+│   ├── funcobject.h          # Function objects
+│   └── code.h                # Code objects
+├── Parser/                    # Parsing (~30k lines)
+│   ├── tokenizer.c           # Lexical analysis
+│   ├── parser.c              # PEG parser (new in 3.9)
+│   ├── pegen/                # PEG parser generator
+│   └── token.c               # Token definitions
+├── Modules/                   # C extension modules
+│   ├── _abc.c                # ABC (abstract base classes)
+│   ├── gcmodule.c            # Garbage collector (~2,000 lines)
+│   ├── _threadmodule.c       # Threading primitives
+│   ├── _io/                  # I/O implementation
+│   ├── _json.c               # JSON parser
+│   └── mathmodule.c          # Math functions
+├── Lib/                       # Pure Python stdlib
+│   ├── collections/          # Collections module
+│   ├── asyncio/              # Async I/O
+│   ├── importlib/            # Import implementation
+│   ├── dis.py                # Bytecode disassembler
+│   └── ast.py                # AST utilities
+├── Programs/                  # Main programs
+│   └── python.c              # Python executable entry point
+└── Doc/                       # Documentation source
+    ├── c-api/                # C API documentation
+    ├── library/              # Standard library docs
+    └── reference/            # Language reference
+```
+
+**Key File Statistics:**
+
+- Total C code: ~500,000 lines
+- Core interpreter (Python/): ~100,000 lines
+- Object implementations (Objects/): ~150,000 lines
+- Standard library (Lib/): ~500,000+ lines of Python
 
 **Documentation:**
 
 - [Doc/](Doc/) - Official Python documentation
 - [Doc/using/](Doc/using/) - Using Python
+- [Doc/c-api/](Doc/c-api/) - Complete C API reference
+- [InternalDocs/](InternalDocs/) - Internal implementation notes
 
 ### The Compilation Pipeline: From Source to Bytecode
 

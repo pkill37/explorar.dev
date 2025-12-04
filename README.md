@@ -1,45 +1,50 @@
-# Linux Kernel Explorer
+# 🚀 Explorar.dev
 
-A standalone Next.js 16 application for exploring the Linux kernel source code with an interactive, VS Code-like interface.
+A standalone [Next.js 16](https://nextjs.org/) application for exploring and learning from arbitrary software source code with an interactive, VS Code-like interface. Perfect for studying the Linux kernel, Python CPython, glibc, LLVM, and any GitHub repository.
 
-## Features
+🌐 **Live Site**: [explorar.dev](https://explorar.dev)  
+🔓 **GitHub**: [pkill37/explorar.dev](https://github.com/pkill37/explorar.dev)
 
-- **Interactive File Browser**: Navigate the Linux kernel source tree
-- **Code Editor**: Monaco Editor with syntax highlighting for C, assembly, and more
-- **Guided Learning**: Chapter-based learning paths with quizzes
-- **Data Structures View**: Browse and explore kernel data structures
-- **GitHub Integration**: Browse any GitHub repository's source code
-- **Kernel Study Mode**: Annotated code with kernel concepts and markers
+## ✨ Features
 
-## Getting Started
+- 📁 **Interactive File Browser**: Navigate any software source tree
+- 💻 **Code Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) with syntax highlighting for C, assembly, and more
+- 📚 **Guided Learning**: Chapter-based learning paths with quizzes
+- 🗂️ **Data Structures View**: Browse and explore kernel data structures
+- 🔗 **GitHub Integration**: Browse any GitHub repository's source code
+- 📖 **Kernel Study Mode**: Annotated code with kernel concepts and markers
+- 🔄 **Smart Caching**: IndexedDB caching with exponential backoff retry logic
+- 🛡️ **Fault Tolerance**: Circuit breaker pattern for resilient API calls
 
-### Installation
+## 🚀 Getting Started
+
+### 📦 Installation
 
 ```bash
 npm install
 ```
 
-### Development
+### 🛠️ Development
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser. The app will automatically redirect to `/linux-kernel-explorer`.
+Open [http://localhost:3000](http://localhost:3000) in your browser. The app will automatically redirect to `/linux-kernel-explorer` (or navigate to any repository path like `/torvalds/linux`).
 
-### Build
+### 🏗️ Build
 
 ```bash
 npm run build
 ```
 
-### Start Production Server
+### 🚢 Start Production Server
 
 ```bash
 npm start
 ```
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 src/
@@ -65,26 +70,68 @@ src/
 │   ├── cross-reference.ts     # Code cross-referencing
 │   ├── github-api.ts          # GitHub API client
 │   ├── github-cache.ts        # IndexedDB caching
+│   ├── github-retry.ts        # Retry logic with exponential backoff
+│   ├── github-debug.ts        # Debugging and logging utilities
 │   ├── kernel-markers.ts      # Kernel code markers
 │   └── kernel-suggestions.ts # Learning suggestions
 └── types/
     └── index.ts               # TypeScript definitions
 ```
 
-## Technologies
+## 🛠️ Technologies
 
-- **Next.js 16**: React framework
-- **React 19**: UI library
-- **Monaco Editor**: VS Code editor component
-- **TypeScript**: Type safety
-- **IndexedDB**: Client-side caching
+- **[Next.js 16](https://nextjs.org/)**: React framework
+- **[React 19](https://react.dev/)**: UI library
+- **[Monaco Editor](https://microsoft.github.io/monaco-editor/)**: VS Code editor component
+- **[TypeScript](https://www.typescriptlang.org/)**: Type safety
+- **[IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)**: Client-side caching
 
-## Environment Variables
+## ⚙️ Environment Variables
 
 Optional environment variables:
 
 - `NEXT_PUBLIC_SITE_URL`: Site URL for metadata (default: `https://explorar.dev`)
 
-## License
+## 🔧 Advanced Features
+
+### 🗄️ Caching System
+
+The application uses a sophisticated caching system with:
+
+- **IndexedDB** as primary storage with **localStorage** fallback
+- Automatic cache size management (50MB limit)
+- Cache versioning and migration support
+- Debug mode for cache inspection
+
+### 🔄 Retry Logic
+
+Built-in fault tolerance with:
+
+- Exponential backoff retry mechanism
+- Configurable retry strategies
+- Circuit breaker pattern to prevent cascading failures
+- Automatic recovery after service restoration
+
+### 🐛 Debugging
+
+Enable debug mode for detailed logging:
+
+- Set `localStorage.setItem('github_api_debug', 'true')` for API debugging
+- Set `localStorage.setItem('github_cache_debug', 'true')` for cache debugging
+- Performance metrics and error tracking
+
+## 🤝 Contributing
+
+This is a private project, but contributions and feedback are welcome!
+
+## 📄 License
 
 Private project.
+
+## 🔗 Links
+
+- 🌐 **Website**: [explorar.dev](https://explorar.dev)
+- 🔓 **GitHub**: [github.com/pkill37/explorar.dev](https://github.com/pkill37/explorar.dev)
+- 💬 **Discord**: [Join our community](https://discord.gg/fuXYz44tSs)
+- 🧠 **BrainSpeed.ai**: [AI-powered development tools](https://brainspeed.ai)
+- 🔄 **Reverser.dev**: [Reverse engineering platform](https://reverser.dev)

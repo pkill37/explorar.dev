@@ -14,16 +14,100 @@ Each post began as a self-contained reflection. Taken together, they offer a con
 
 ---
 
+## Learning Path for Linux Kernel Exploration
+
+This guide follows a structured learning path designed to build deep understanding progressively:
+
+### Beginner Path (Months 1-3)
+
+1. **Foundation**: Start with Chapter 1 to build mental models
+2. **Architecture**: Study Chapter 2 to understand overall structure
+3. **Simple Exploration**: Read `kernel/` directory basics
+4. **First Dive**: Examine simple system calls in `kernel/sys.c`
+
+### Intermediate Path (Months 4-6)
+
+1. **Memory Deep Dive**: Study Chapter 3 thoroughly
+2. **Process Management**: Explore `kernel/fork.c` and `kernel/exit.c`
+3. **Scheduling**: Read Chapter 6 and examine `kernel/sched/`
+4. **Build Experience**: Configure and build a minimal kernel
+
+### Advanced Path (Months 7-12)
+
+1. **Concurrency**: Master Chapter 6's synchronization concepts
+2. **I/O Subsystems**: Study Chapter 8 in detail
+3. **Driver Development**: Write simple character device drivers
+4. **Performance**: Use tracing tools (ftrace, perf) to analyze kernel behavior
+
+### Expert Path (Year 2+)
+
+1. **Subsystem Mastery**: Choose a subsystem (networking, filesystems, etc.)
+2. **Contributing**: Read patches on LKML, understand review process
+3. **Complex Features**: Study eBPF, io_uring, or KVM internals
+4. **Original Research**: Propose and implement kernel improvements
+
+---
+
 ## Chapter 1 — Understanding Linux Kernel Before Code
 
 ### The Kernel Is Not a Process. It Is the System.
 
 The kernel is not a process but the very foundation that orchestrates the entire system. Understanding this distinction reveals how the kernel operates as an ever-present, reactive environment that bridges hardware and software without being tied to traditional process management. By grasping this concept, the dynamic role of kernel threads and their interaction with user processes and hardware becomes clear.
 
+**Core Concepts:**
+
+The kernel exists in a fundamentally different way than user processes:
+
+- **No PID**: The kernel itself has no process ID; it's the framework that creates PIDs
+- **Always Mapped**: Every process's address space includes kernel mappings (at high addresses)
+- **Context-Driven**: The kernel executes in response to syscalls, interrupts, or explicit kernel threads
+- **Privilege Level**: Runs in ring 0 (x86) with full hardware access
+
+**Deep Dive - How This Works:**
+
+When you execute `ls`, the kernel doesn't "run" alongside it. Instead:
+
+1. Your process runs in user space (ring 3)
+2. When `ls` needs to read directory entries, it makes a syscall (`getdents`)
+3. The CPU switches to kernel mode (ring 0) using a trap instruction
+4. The same CPU core now executes kernel code in the context of your process
+5. The kernel uses `current` pointer to access your process's `task_struct`
+6. After completing the operation, it returns to user space
+
+**Key Files to Study:**
+
+- `arch/x86/entry/entry_64.S` - How syscalls enter the kernel (lines 80-120)
+- `kernel/fork.c` - How `task_struct` is created and managed
+- `include/linux/sched.h` - The `task_struct` definition (~850 lines of state!)
+- `kernel/kthread.c` - How kernel threads differ from user processes
+
+**Practical Exercise:**
+
+```c
+// Trace a syscall path
+strace -e openat ls /tmp  // See syscalls from user space
+// Then examine in kernel:
+// 1. entry_64.S - Entry point
+// 2. do_syscall_64() - Dispatcher
+// 3. sys_openat() - Handler
+// 4. do_sys_open() - Implementation
+// 5. Return through entry_64.S
+```
+
+**Why This Matters:**
+
+Understanding this distinction is critical because:
+
+- It explains why kernel code must be non-blocking (no process to schedule away)
+- It reveals why kernel memory management differs from user space
+- It clarifies why synchronization is so complex (multiple contexts, same code)
+- It shows why kernel bugs can crash the entire system
+
 **Documentation:**
 
 - [Documentation/scheduler/sched-design-CFS.rst](Documentation/scheduler/sched-design-CFS.rst) - Scheduler design and kernel thread management
 - [Documentation/core-api/kernel-api.rst](Documentation/core-api/kernel-api.rst) - Kernel thread API
+- [Documentation/kernel-hacking/hacking.rst](Documentation/kernel-hacking/hacking.rst) - Kernel context rules
 
 ### Serving the Process: The Kernel's Primary Responsibility
 
@@ -59,20 +143,184 @@ The Linux kernel is a modular, secure core that manages hardware, memory, proces
 
 The Linux kernel is a highly modular and organized system, with each directory playing a specific role in hardware management, process scheduling, security enforcement, and more. Exploring its structure provides a deeper understanding of how these subsystems work together to form a robust and flexible operating system.
 
-**Key Directories:**
+**Key Directories with Deep Exploration:**
 
-- `kernel/` - Core kernel functionality: scheduling, process management, system calls
-- `mm/` - Memory management: allocation, page tables, and virtual memory
-- `fs/` - Filesystem layer: VFS, inodes, and file operations
-- `net/` - Networking stack: protocols, sockets, and network interfaces
-- `drivers/` - Device drivers: hardware abstraction and device model
-- `arch/x86/` - x86 architecture-specific code: entry points and low-level operations
+**1. `kernel/` - Core Kernel Functionality (~60,000 lines)**
+
+The heart of the kernel's process and execution management:
+
+- `sched/` - The scheduler subsystem (CFS, real-time, deadline schedulers)
+  - Start with: `core.c` (~11,000 lines) - Main scheduler logic
+  - Study: `fair.c` (~12,000 lines) - Completely Fair Scheduler
+  - Advanced: `rt.c` - Real-time scheduling policies
+- `fork.c` - Process creation via `fork()`, `clone()`, `vfork()`
+  - Trace `_do_fork()` to see `task_struct` duplication
+  - Understand copy-on-write memory optimization
+- `signal.c` - Signal delivery and handling
+- `sys.c` - Miscellaneous system calls
+- `time/` - Time management, timers, and clocksources
+
+**Learning Exercise for kernel/:**
+
+```bash
+# Trace process creation
+strace -f -e clone,fork,vfork bash -c "ls | wc"
+# Then read kernel/fork.c starting at _do_fork()
+```
+
+**2. `mm/` - Memory Management (~100,000 lines)**
+
+Physical and virtual memory management:
+
+- `page_alloc.c` (~9,000 lines) - The buddy allocator for page allocation
+  - Core function: `__alloc_pages()` - Allocates pages
+  - Study zone watermarks, allocation flags, fallback zones
+- `slab.c`, `slub.c`, `slob.c` - Small object allocators
+  - `slub.c` is the default (~6,000 lines)
+  - Provides fast allocation for kernel objects
+- `mmap.c` - Virtual memory area (VMA) management
+  - How `mmap()` syscall creates memory mappings
+  - File-backed vs anonymous mappings
+- `page_table.c` - Page table manipulation
+- `oom_kill.c` - Out-of-memory killer (last resort)
+
+**Key Data Structures:**
+
+- `struct page` - Represents a physical page frame
+- `struct mm_struct` - Process memory descriptor
+- `struct vm_area_struct` - Virtual memory area
+
+**Learning Path for mm/:**
+
+1. Week 1: Study physical memory representation (`page_alloc.c`)
+2. Week 2: Understand virtual memory (`mmap.c`, VMA structure)
+3. Week 3: Learn slab/slub allocation
+4. Week 4: Study page faults and demand paging
+
+**3. `fs/` - Filesystem Layer (~250,000 lines)**
+
+Virtual Filesystem Switch and filesystem implementations:
+
+- `namei.c` (~4,000 lines) - Path name lookup
+  - Follow `path_openat()` to see how `/home/user/file.txt` is resolved
+  - Understand dentry cache optimization
+- `open.c` - File opening logic
+- `read_write.c` - Read/write system calls
+- `inode.c` - Inode management
+- `dcache.c` - Directory entry cache
+- Filesystem implementations: `ext4/`, `btrfs/`, `xfs/`, `nfs/`
+
+**VFS Core Objects:**
+
+- `struct super_block` - Mounted filesystem
+- `struct inode` - File metadata
+- `struct dentry` - Directory entry (path component)
+- `struct file` - Open file description
+
+**Practical Study:**
+
+```c
+// Trace file open path
+// 1. sys_openat() in fs/open.c
+// 2. do_sys_open() -> do_filp_open()
+// 3. path_openat() in fs/namei.c
+// 4. Filesystem-specific ->open() callback
+```
+
+**4. `net/` - Networking Stack (~500,000 lines)**
+
+Protocol implementations and socket interface:
+
+- `socket.c` - Socket system call interface
+- `core/` - Core networking infrastructure
+  - `skbuff.c` - Socket buffer (sk_buff) management
+  - `dev.c` - Network device handling
+- `ipv4/`, `ipv6/` - Internet Protocol implementations
+  - `tcp.c`, `tcp_input.c`, `tcp_output.c` - TCP protocol
+  - `udp.c` - UDP protocol
+- `netfilter/` - Packet filtering (iptables/nftables)
+
+**Learning Exercise:**
+
+```bash
+# Trace a network connection
+strace -e socket,bind,listen,accept nc -l 8080
+# Study: net/socket.c -> sys_socket() -> sock_create()
+```
+
+**5. `drivers/` - Device Drivers (~20 million lines!)**
+
+Hardware abstraction and device-specific code:
+
+- `base/` - Core driver model
+- `char/` - Character devices (terminals, /dev/random, etc.)
+- `block/` - Block devices (hard disks, SSDs)
+- `net/` - Network device drivers
+- `gpu/` - Graphics drivers
+- `pci/` - PCI bus support
+
+**Driver Model Core Concepts:**
+
+- Bus-Device-Driver model
+- kobject and sysfs integration
+- Device probe and remove
+- Power management
+
+**6. `arch/x86/` - x86 Architecture Code (~150,000 lines)**
+
+x86-specific implementation:
+
+- `kernel/` - Core x86 functionality
+  - `entry_64.S` - Syscall and interrupt entry points
+  - `cpu/` - CPU-specific features
+  - `irq.c` - Interrupt routing
+- `mm/` - x86 memory management
+  - `fault.c` - Page fault handler
+  - `tlb.c` - TLB management
+- `boot/` - Boot process and setup
+- `kvm/` - KVM virtualization support
+
+**Critical Files to Master:**
+
+- `entry_64.S:80-200` - SYSCALL entry
+- `entry_64.S:800-1100` - Interrupt/exception handling
+- `traps.c` - Exception handlers
+
+**How Subsystems Interact - Example: Reading a File**
+
+```
+User calls: read(fd, buf, 1024)
+    ↓
+arch/x86/entry/entry_64.S - Syscall entry
+    ↓
+kernel/sys_read() - System call dispatcher
+    ↓
+fs/read_write.c:vfs_read() - VFS layer
+    ↓
+fs/ext4/file.c:ext4_file_read_iter() - Filesystem
+    ↓
+mm/filemap.c:generic_file_buffered_read() - Page cache
+    ↓
+fs/ext4/inode.c:ext4_readpages() - Read from disk
+    ↓
+block/bio.c - Block I/O request
+    ↓
+drivers/ata/ahci.c - SATA driver
+    ↓
+Hardware interrupt when complete
+    ↓
+arch/x86/entry/entry_64.S - IRQ entry
+    ↓
+Return to user space with data
+```
 
 **Documentation:**
 
 - [Documentation/scheduler/](Documentation/scheduler/) - Scheduler documentation
 - [Documentation/memory-management/](Documentation/memory-management/) - Memory management
 - [Documentation/filesystems/](Documentation/filesystems/) - Filesystem documentation
+- [Documentation/networking/](Documentation/networking/) - Networking stack
+- [Documentation/driver-api/](Documentation/driver-api/) - Driver development
 
 ### Monolithic Form, Coordinated Behavior: The Real Kernel Model
 

@@ -1,4 +1,4 @@
-// Linux Kernel Explorer - Type Definitions
+// Explorar.dev - Type Definitions
 
 export interface FileNode {
   name: string;
@@ -61,7 +61,7 @@ export interface GitHubTag {
 export const GITHUB_CONFIG = {
   owner: 'torvalds',
   repo: 'linux',
-  branch: 'master',
+  branch: 'v6.1', // Very stable 6.x LTS branch
   apiBase: 'https://api.github.com/repos',
   rawBase: 'https://raw.githubusercontent.com',
 } as const;
