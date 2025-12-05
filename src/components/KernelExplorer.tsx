@@ -19,11 +19,12 @@ import {
 } from '@/lib/github-api';
 import { getAllSuggestionsForFile, getFundamentalConcepts } from '@/lib/kernel-suggestions';
 import { useProjectProgress } from '@/hooks/useProjectProgress';
-import { getProjectConfig } from '@/lib/project-guides';
+import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { createLinuxKernelGuide } from '@/lib/guides/linux-kernel';
 import { createLLVMGuide } from '@/lib/guides/llvm';
 import { createGlibcGuide } from '@/lib/guides/glibc';
 import { createCPythonGuide } from '@/lib/guides/cpython';
+import LoadingScreen from '@/components/LoadingScreen';
 import '@/app/linux-kernel-explorer/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -215,6 +216,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   const chapterIds = useMemo(() => {
     if (projectConfig?.guides?.[0]?.sections) {
       return projectConfig.guides[0].sections.map((s) => s.id);
+    }
+    // For generic guide, use the contribute section ID
+    if (!projectConfig) {
+      return ['contribute'];
     }
     // Fallback for Linux kernel
     return ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'];
@@ -604,7 +609,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   // Guide content - dynamically loaded based on project
   const guideSections = useMemo(() => {
     if (!projectConfig) {
-      return [];
+      // No project config - use generic guide
+      return createGenericGuide(owner || 'torvalds', repo || 'linux');
     }
 
     // Load guide based on project type
@@ -618,8 +624,9 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       return createCPythonGuide(openFileInTab, markQuizComplete, getChapterProgress);
     }
 
-    return [];
-  }, [projectConfig, openFileInTab, markQuizComplete, getChapterProgress]);
+    // Project config exists but no specific guide - use generic guide
+    return createGenericGuide(projectConfig.owner, projectConfig.repo);
+  }, [projectConfig, owner, repo, openFileInTab, markQuizComplete, getChapterProgress]);
 
   // Legacy guide content (kept for reference but not used)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1437,45 +1444,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
   // Loading screen
   if (isInitialLoading) {
-    return (
-      <>
-        <style>{`
-          @keyframes vscode-loading-pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.9; }
-          }
-          .vscode-loading-container {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: var(--vscode-editor-background, #1e1e1e);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 9999;
-          }
-        `}</style>
-        <div className="vscode-loading-container">
-          <div
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}
-          >
-            <div
-              style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #007acc 0%, #005a9e 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '40px',
-              }}
-            >
-              🏴‍☠️
-            </div>
-            <div style={{ color: 'var(--vscode-foreground, #cccccc)', fontSize: '16px' }}>
-              Loading Explorer...
-            </div>
-          </div>
-        </div>
-      </>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -1596,7 +1565,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         >
           <GuidePanel
             sections={guideSections}
-            defaultOpenIds={projectConfig?.guides?.[0]?.defaultOpenIds || chapterIds}
+            defaultOpenIds={
+              projectConfig?.guides?.[0]?.defaultOpenIds ||
+              (guideSections.length > 0 ? [guideSections[0].id] : chapterIds)
+            }
             overallProgress={progress.overallProgress}
             chapterProgress={Object.fromEntries(
               Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])

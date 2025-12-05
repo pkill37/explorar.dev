@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import RepositoryExplorerClient from './client';
+import LoadingScreen from '@/components/LoadingScreen';
 
 // For static export, we need to provide generateStaticParams
 // Pre-generate common repository routes for static export
@@ -23,7 +24,7 @@ export default async function RepositoryExplorerPage({ params }: PageProps) {
   const { owner, repo } = await params;
 
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <RepositoryExplorerClient owner={owner} repo={repo} />
     </Suspense>
   );
