@@ -25,17 +25,47 @@ type GitHubConfig = {
 let currentConfig: GitHubConfig = { ...GITHUB_CONFIG };
 
 /**
- * Trusted kernel versions recommended for learning
- * One LTS version from each major series (4.x, 5.x, 6.x)
- * These are well-documented and reliable versions suitable for learning
+ * Trusted versions for each repository
+ * Only these specific versions are allowed - exactly 3 per repository
  */
-const TRUSTED_LEARNING_VERSIONS = [
-  'v6.1', // 6.x LTS - Very stable, recommended for learning
-  'v5.15', // 5.x LTS - Well-established
-  'v4.19', // 4.x LTS - Long-term support
-] as const;
+const TRUSTED_VERSIONS: Record<string, readonly [string, string, string]> = {
+  'torvalds/linux': ['v6.1', 'v5.14', 'v4.19'] as const,
+  'llvm/llvm-project': ['main', 'release/18.x', 'release/17.x'] as const,
+  'bminor/glibc': ['master', 'release/2.39/master', 'release/2.38/master'] as const,
+  'python/cpython': ['main', '3.12', '3.11'] as const,
+} as const;
+
+/**
+ * Get trusted versions for a repository
+ * Returns the 3 trusted versions for the repo, or empty array if not configured
+ */
+export function getTrustedVersions(owner: string, repo: string): string[] {
+  const key = `${owner}/${repo}`;
+  const versions = TRUSTED_VERSIONS[key];
+  return versions ? [...versions] : [];
+}
+
+/**
+ * Check if a branch/version is trusted for a repository
+ */
+export function isTrustedVersion(owner: string, repo: string, branch: string): boolean {
+  const trusted = getTrustedVersions(owner, repo);
+  return trusted.length > 0 ? trusted.includes(branch) : false;
+}
+
+/**
+ * Legacy constant for backward compatibility (deprecated, use getTrustedVersions instead)
+ * @deprecated Use getTrustedVersions('torvalds', 'linux') instead
+ */
+const TRUSTED_LEARNING_VERSIONS = getTrustedVersions('torvalds', 'linux');
 
 export function setGitHubRepo(owner: string, repo: string, branch: string = 'v6.1') {
+  // Validate branch is one of the trusted versions
+  const trusted = getTrustedVersions(owner, repo);
+  if (trusted.length > 0 && !trusted.includes(branch)) {
+    // Default to first trusted version if invalid branch is provided
+    branch = trusted[0];
+  }
   currentConfig = { ...currentConfig, owner, repo, branch };
 }
 
@@ -47,12 +77,22 @@ export async function setGitHubRepoWithDefaultBranch(
   repo: string,
   branch: string = 'v6.1'
 ): Promise<void> {
-  // If branch is 'master' or 'main', use a stable branch instead
-  if (branch === 'master' || branch === 'main') {
-    // Use stable branch instead of potentially unstable default
-    currentConfig = { ...currentConfig, owner, repo, branch: 'v6.1' };
-    return;
+  const trusted = getTrustedVersions(owner, repo);
+  
+  if (trusted.length > 0) {
+    // If branch is not in trusted list, use first trusted version
+    if (!trusted.includes(branch)) {
+      currentConfig = { ...currentConfig, owner, repo, branch: trusted[0] };
+      return;
+    }
+  } else {
+    // No trusted versions configured, use provided branch or default
+    if (branch === 'master' || branch === 'main') {
+      currentConfig = { ...currentConfig, owner, repo, branch: 'v6.1' };
+      return;
+    }
   }
+  
   currentConfig = { ...currentConfig, owner, repo, branch };
 }
 
@@ -271,48 +311,50 @@ export async function fetchBranches(): Promise<GitHubTag[]> {
 }
 
 /**
- * Filter branches to only include stable 4.x, 5.x, and 6.x branches
- * Recommended stable branches:
- * - 4.x: linux-4.19.y (LTS)
- * - 5.x: linux-5.4.y (LTS), linux-5.10.y (LTS), linux-5.15.y (LTS)
- * - 6.x: linux-6.1.y (LTS - very stable), linux-6.6.y, linux-6.8.y
+ * Get trusted branches as GitHubTag[] format for UI display
+ * This creates GitHubTag objects from the hardcoded trusted versions
  */
-export function filterStableBranches(branches: GitHubTag[]): GitHubTag[] {
-  // Patterns for stable branches
-  const stablePatterns = [
-    // 4.x series - focus on LTS branches
-    /^v4\.(19|20)/,
+export function getTrustedBranches(owner: string, repo: string): GitHubTag[] {
+  const trusted = getTrustedVersions(owner, repo);
+  return trusted.map((name) => ({
+    name,
+    commit: { sha: '', url: '' },
+    zipball_url: '',
+    tarball_url: '',
+    node_id: '',
+  }));
+}
 
-    // 5.x series - focus on LTS branches
-    /^v5\.(4|10|15)/,
+/**
+ * Filter branches to only include trusted versions
+ * @deprecated Use getTrustedBranches instead - this function is kept for backward compatibility
+ */
+export function filterStableBranches(
+  branches: GitHubTag[],
+  owner?: string,
+  repo?: string
+): GitHubTag[] {
+  if (!owner || !repo) {
+    return branches;
+  }
 
-    // 6.x series - focus on stable branches, especially 6.1 (LTS)
-    /^v6\.(1|6|8)/,
-  ];
+  const trusted = getTrustedVersions(owner, repo);
+  if (trusted.length === 0) {
+    // No trusted versions configured, return empty array
+    return [];
+  }
 
+  // Filter to only include trusted versions
   return branches
-    .filter((branch) => {
-      const name = branch.name;
-      return stablePatterns.some((pattern) => pattern.test(name));
-    })
+    .filter((branch) => trusted.includes(branch.name))
     .sort((a, b) => {
-      // Sort by version number (newer first)
-      const extractVersion = (name: string): number[] => {
-        const match = name.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
-        if (!match) return [0, 0, 0];
-        return [parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3] || '0', 10)];
-      };
-
-      const versionA = extractVersion(a.name);
-      const versionB = extractVersion(b.name);
-
-      // Compare major, minor, patch
-      for (let i = 0; i < 3; i++) {
-        if (versionA[i] !== versionB[i]) {
-          return versionB[i] - versionA[i]; // Descending order
-        }
-      }
-      return 0;
+      // Sort by trusted order (first in array is preferred)
+      const indexA = trusted.indexOf(a.name);
+      const indexB = trusted.indexOf(b.name);
+      if (indexA === -1 && indexB === -1) return 0;
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
     });
 }
 
@@ -437,7 +479,8 @@ async function tryTrustedVersions(
   logger.debug('Trying trusted versions', { owner, repo, currentBranch });
 
   // Try each trusted version in order
-  for (const version of TRUSTED_LEARNING_VERSIONS) {
+  const trusted = getTrustedVersions(owner, repo);
+  for (const version of trusted) {
     // Skip if it's the same as the current branch (already tried)
     if (version === currentBranch) {
       continue;
@@ -490,6 +533,17 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
         400
       );
       logger.error('Repository not configured', error);
+      throw error;
+    }
+
+    // Validate branch is one of the trusted versions
+    const trusted = getTrustedVersions(currentConfig.owner, currentConfig.repo);
+    if (trusted.length > 0 && !trusted.includes(currentConfig.branch)) {
+      const error = new GitHubApiError(
+        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted versions are allowed: ${trusted.join(', ')}`,
+        400
+      );
+      logger.error('Invalid branch for repository', error);
       throw error;
     }
 
@@ -726,6 +780,17 @@ export async function fetchFileContent(path: string): Promise<string> {
     if (!path) {
       const error = new GitHubApiError(`File path is required`, 400);
       logger.error('File path required', error);
+      throw error;
+    }
+
+    // Validate branch is one of the trusted versions
+    const trusted = getTrustedVersions(currentConfig.owner, currentConfig.repo);
+    if (trusted.length > 0 && !trusted.includes(currentConfig.branch)) {
+      const error = new GitHubApiError(
+        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted versions are allowed: ${trusted.join(', ')}`,
+        400
+      );
+      logger.error('Invalid branch for repository', error);
       throw error;
     }
 

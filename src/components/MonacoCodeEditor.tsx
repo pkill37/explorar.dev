@@ -34,7 +34,9 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   onCursorChange,
 }) => {
   const editorRef = useRef<unknown>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [language, setLanguage] = useState<string>('text');
+  const [editorHeight, setEditorHeight] = useState<number>(600);
   const decorationsRef = useRef<string[]>([]);
   const symbolsRef = useRef<SymbolReference[]>([]);
 
@@ -94,6 +96,36 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       }, 0);
     }
   }, [filePath, getMonacoLanguage]);
+
+  // Calculate and update editor height based on container
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const height = containerRef.current.clientHeight;
+        if (height > 0) {
+          setEditorHeight(height);
+        }
+      }
+    };
+
+    // Initial height calculation with a small delay to ensure DOM is ready
+    const timeoutId = setTimeout(updateHeight, 100);
+    
+    // Use ResizeObserver to track container size changes
+    const resizeObserver = new ResizeObserver(updateHeight);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // Also listen to window resize as fallback
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
 
   // Extract symbols from content when it changes
   useEffect(() => {
@@ -437,9 +469,12 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   return (
     <div className="vscode-editor">
       {/* Monaco Editor */}
-      <div style={{ flex: 1, overflow: 'hidden', height: '100%', minHeight: '300px' }}>
+      <div 
+        ref={containerRef}
+        style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      >
         <Editor
-          height="100%"
+          height={editorHeight}
           language={language}
           value={content}
           theme="vs-dark"

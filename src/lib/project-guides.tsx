@@ -173,7 +173,7 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
       name: 'Linux Kernel',
       owner: 'torvalds',
       repo: 'linux',
-      defaultBranch: 'linux-6.1.y',
+      defaultBranch: 'v6.1',
       guides: [
         {
           id: 'linux-kernel-guide',

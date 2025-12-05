@@ -42,7 +42,9 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
 }) => {
   const editorRef = useRef<unknown>(null);
   const monacoRef = useRef<unknown>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [language, setLanguage] = useState<string>('text');
+  const [editorHeight, setEditorHeight] = useState<number>(600);
   const [markers, setMarkers] = useState<KernelMarker[]>([]);
   const [annotations, setAnnotations] = useState<KernelAnnotation[]>([]);
   const decorationsRef = useRef<string[]>([]);
@@ -103,6 +105,36 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
       }, 0);
     }
   }, [filePath, getMonacoLanguage]);
+
+  // Calculate and update editor height based on container
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const height = containerRef.current.clientHeight;
+        if (height > 0) {
+          setEditorHeight(height);
+        }
+      }
+    };
+
+    // Initial height calculation with a small delay to ensure DOM is ready
+    const timeoutId = setTimeout(updateHeight, 100);
+    
+    // Use ResizeObserver to track container size changes
+    const resizeObserver = new ResizeObserver(updateHeight);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // Also listen to window resize as fallback
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
 
   // Search for pattern and scroll to it
   useEffect(() => {
@@ -498,9 +530,12 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
       </div>
 
       {/* Monaco Editor with kernel study features */}
-      <div style={{ flex: 1, overflow: 'hidden', height: '100%', minHeight: '300px' }}>
+      <div 
+        ref={containerRef}
+        style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      >
         <Editor
-          height="100%"
+          height={editorHeight}
           language={language}
           value={content}
           theme="vs-dark"

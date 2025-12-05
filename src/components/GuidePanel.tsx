@@ -175,7 +175,7 @@ export default function GuidePanel({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0, overflow: 'hidden', flex: '1 1 0%' }}>
       {/* Overall Progress Bar - Fixed at top */}
       <div className="guide-progress-container">
         <div className="guide-progress-header">

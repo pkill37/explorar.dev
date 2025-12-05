@@ -48,6 +48,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding-bottom: 0;
 }
 
 .vscode-container * {
@@ -265,6 +266,7 @@
   font-size: 14px;
   line-height: 19px;
   height: 100%;
+  min-height: 0;
 }
 
 .vscode-editor-header {
@@ -288,10 +290,19 @@
 .vscode-editor .monaco-editor .overflow-guard,
 .vscode-editor .monaco-editor .monaco-scrollable-element {
   height: 100% !important;
+  min-height: 0 !important;
 }
 
 .vscode-editor .monaco-editor .view-lines {
   height: 100% !important;
+}
+
+/* Ensure Monaco editor wrapper fills available space */
+.vscode-editor > div {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Syntax Highlighting */
@@ -330,6 +341,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+  align-self: stretch;
 }
 
 .vscode-panel-header {
@@ -404,15 +419,18 @@
   border-bottom: 1px solid var(--vscode-border);
   padding: 12px;
   flex-shrink: 0;
+  flex-grow: 0;
   z-index: 10;
 }
 
 /* Guide panel sections container - Scrollable */
 .guide-sections-container {
-  flex: 1;
+  flex: 1 1 0%;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
   min-height: 0;
+  position: relative;
 }
 
 .guide-progress-header {
@@ -757,67 +775,82 @@
   opacity: 0.5;
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .vscode-panel {
-    position: fixed;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 100;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-  }
-
-  .vscode-panel.mobile-open {
-    transform: translateX(0);
-  }
-
-  .vscode-panel-toggle {
-    display: block;
-  }
-}
-
-@media (max-width: 768px) {
+/* Mobile-first: Show one pane at a time on screens < 1024px */
+@media (max-width: 1023px) {
   .vscode-container {
     flex-direction: column;
+    padding-bottom: 56px; /* Space for mobile nav bar */
   }
 
   .vscode-sidebar {
     position: absolute;
     left: 0;
     top: 0;
-    bottom: 0;
+    bottom: 56px; /* Above mobile nav bar */
     z-index: 100;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    width: 280px !important;
-    min-width: 280px !important;
-    max-width: 280px !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
   }
 
   .vscode-sidebar.mobile-open {
     transform: translateX(0);
   }
 
+  .vscode-sidebar.mobile-hidden {
+    display: none;
+  }
+
   .vscode-editor-container {
     width: 100%;
     min-width: 100%;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 56px; /* Above mobile nav bar */
+  }
+
+  .vscode-editor-container.mobile-hidden {
+    display: none;
   }
 
   .vscode-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 56px; /* Above mobile nav bar */
+    z-index: 100;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
     width: 100% !important;
     min-width: 100% !important;
     max-width: 100% !important;
+  }
+
+  .vscode-panel.mobile-open {
+    transform: translateX(0);
+  }
+
+  .vscode-panel.mobile-hidden {
+    display: none;
   }
 
   .resize-handle {
     display: none;
   }
 
-  .vscode-statusbar {
+  /* Status bar should be above mobile nav */
+  .vscode-status-bar {
+    bottom: 56px;
+  }
+
+  .cursor-statusbar {
+    bottom: 56px !important;
     flex-wrap: wrap;
     padding: 4px 8px;
     font-size: 10px;
@@ -1438,12 +1471,19 @@
 .vscode-container > div:first-of-type {
   display: flex;
   flex-direction: row;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 0; /* Force flex item to respect flex: 1 */
+  overflow: hidden;
 }
 
 /* Update editor container to include breadcrumbs */
 .vscode-editor-container {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .vscode-editor-header {

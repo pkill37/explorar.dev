@@ -6,30 +6,22 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0",
-    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
-    "type-check": "tsc --noEmit",
-    "format": "prettier --write \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\"",
-    "check": "npm run type-check && npm run format && npm run lint",
-    "fix": "npm run lint:fix && npm run format && npm audit fix"
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && depcheck --ignores '@tailwindcss/postcss,@types/node,@types/react-dom,tailwindcss'",
+    "fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix && prettier --write \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\" && npm audit fix"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "monaco-editor": "^0.52.2",
     "next": "16.0.7",
     "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.0",
-    "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "depcheck": "^1.4.7",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
     "eslint-config-prettier": "^10.1.8",

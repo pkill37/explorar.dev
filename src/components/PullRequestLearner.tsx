@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   fetchPullRequest,
@@ -10,8 +10,10 @@ import {
   setGitHubRepo,
 } from '@/lib/github-api';
 import type { PullRequest, PullRequestFile, PullRequestDiff } from '@/types';
-import PRLearningChat from './PRLearningChat';
+import GuidePanel from './GuidePanel';
 import CodeEditorContainer from './CodeEditorContainer';
+import { createPRGuide } from '@/lib/guides/pr-guide';
+import '@/app/linux-kernel-explorer/vscode.css';
 
 interface PullRequestLearnerProps {
   owner: string;
@@ -30,6 +32,35 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
   const router = useRouter();
   // Cache for preloaded file contents
   const fileContentsCache = useRef<Map<string, string>>(new Map());
+
+  // Mobile view state: 'guide' | 'diff' | 'code'
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [mobileView, setMobileView] = useState<'guide' | 'diff' | 'code'>('diff');
+
+  // Generate PR guide sections
+  const guideSections = useMemo(() => {
+    if (!pr || files.length === 0) return [];
+    return createPRGuide(pr, files, diffs, (filename) => {
+      setSelectedFile(filename);
+      if (isMobile) {
+        setMobileView('code');
+      }
+    });
+  }, [pr, files, diffs, isMobile]);
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkViewport = () => {
+      if (typeof window !== 'undefined') {
+        setIsMobile(window.innerWidth < 1024);
+      }
+    };
+    checkViewport();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', checkViewport);
+      return () => window.removeEventListener('resize', checkViewport);
+    }
+  }, []);
 
   // Set the repo context
   useEffect(() => {
@@ -161,6 +192,27 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
     );
   }
 
+  // Common panel styles
+  const panelBaseStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    height: '100%',
+    maxHeight: '100%',
+    background: 'var(--vscode-editor-background)',
+  };
+
+  const mobilePanelStyle: React.CSSProperties = isMobile
+    ? {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: '56px',
+        zIndex: 100,
+        width: '100%',
+      }
+    : {};
+
   return (
     <div
       style={{
@@ -172,61 +224,88 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
         left: 0,
         right: 0,
         bottom: 0,
+        paddingBottom: isMobile ? '56px' : '0',
       }}
     >
-      {/* Left Panel - Learning Chat */}
+      {/* Left Panel - PR Guide */}
       <div
         style={{
-          width: '400px',
-          minWidth: '300px',
-          borderRight: '1px solid var(--vscode-border)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          height: '100%',
+          ...panelBaseStyle,
+          ...mobilePanelStyle,
+          width: isMobile ? '100%' : '400px',
+          minWidth: isMobile ? '100%' : '300px',
+          borderRight: isMobile ? 'none' : '1px solid var(--vscode-border)',
+          display: isMobile && mobileView !== 'guide' ? 'none' : 'flex',
         }}
       >
-        {pr && <PRLearningChat pr={pr} files={files} selectedFile={selectedFile} diffs={diffs} />}
+        {isMobile && (
+          <div
+            style={{
+              padding: '12px',
+              borderBottom: '1px solid var(--vscode-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>PR Guide</h3>
+            <button
+              onClick={() => setMobileView('diff')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--vscode-text-primary)',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontSize: '18px',
+              }}
+              aria-label="Close guide"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {guideSections.length > 0 && (
+          <GuidePanel
+            sections={guideSections}
+            defaultOpenIds={['pr-overview', 'pr-summary']}
+          />
+        )}
       </div>
 
       {/* Middle Panel - Diff View */}
       <div
         style={{
-          flex: 1,
+          ...panelBaseStyle,
+          ...mobilePanelStyle,
+          flex: isMobile ? 'none' : '1 1 0%',
           minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          borderRight: '1px solid var(--vscode-border)',
-          height: '100%',
+          width: isMobile ? '100%' : 'auto',
+          display: isMobile && mobileView !== 'diff' ? 'none' : 'flex',
+          borderRight: isMobile ? 'none' : '1px solid var(--vscode-border)',
         }}
       >
         <div
           style={{
             padding: '12px 16px',
             borderBottom: '1px solid var(--vscode-border)',
-            background: 'var(--vscode-editor-background)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            flexShrink: 0,
           }}
         >
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-              All Changes ({files.length} file{files.length !== 1 ? 's' : ''})
-            </div>
-            {isLoadingDiffs && (
-              <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>
-                Loading diffs...
-              </div>
-            )}
+          <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+            All Changes ({files.length} file{files.length !== 1 ? 's' : ''})
           </div>
+          {isLoadingDiffs && (
+            <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>
+              Loading diffs...
+            </div>
+          )}
         </div>
         <div
           style={{
-            flex: 1,
+            flex: '1 1 0%',
             overflow: 'auto',
-            background: 'var(--vscode-editor-background)',
+            minHeight: 0,
             fontFamily: 'var(--vscode-editor-font-family)',
             fontSize: 'var(--vscode-editor-font-size)',
           }}
@@ -272,7 +351,13 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
                         justifyContent: 'space-between',
                         alignItems: 'center',
                       }}
-                      onClick={() => setSelectedFile(file.filename)}
+                      onClick={() => {
+                        setSelectedFile(file.filename);
+                        // On mobile, switch to code view when file is selected
+                        if (isMobile) {
+                          setMobileView('code');
+                        }
+                      }}
                       onMouseEnter={(e) => {
                         if (!isSelected) {
                           e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)';
@@ -472,75 +557,61 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
       {/* Right Panel - Code Editor */}
       <div
         style={{
-          width: '500px',
-          minWidth: '300px',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          height: '100%',
+          ...panelBaseStyle,
+          ...mobilePanelStyle,
+          width: isMobile ? '100%' : '500px',
+          minWidth: isMobile ? '100%' : '300px',
+          display: isMobile && mobileView !== 'code' ? 'none' : 'flex',
         }}
       >
         <div
           style={{
             padding: '12px 16px',
             borderBottom: '1px solid var(--vscode-border)',
-            background: 'var(--vscode-editor-background)',
             fontSize: '14px',
             fontWeight: 'bold',
             flexShrink: 0,
-          }}
-        >
-          File Context
-        </div>
-        <div
-          style={{
-            flex: 1,
-            overflow: 'hidden',
-            minHeight: 0,
             display: 'flex',
-            flexDirection: 'column',
-            position: 'relative',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
-          {selectedFile ? (
-            <div
+          <span>File Context</span>
+          {isMobile && (
+            <button
+              onClick={() => setMobileView('diff')}
               style={{
-                flex: 1,
-                overflow: 'hidden',
-                minHeight: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%',
-                position: 'relative',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--vscode-text-primary)',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                fontSize: '18px',
               }}
+              aria-label="Close code editor"
             >
-              <div
-                style={{
-                  flex: 1,
-                  overflow: 'hidden',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <CodeEditorContainer
-                  filePath={selectedFile}
-                  repoLabel={`${owner}/${repo}`}
-                  scrollToLine={
-                    diffs.has(selectedFile) && diffs.get(selectedFile)!.hunks.length > 0
-                      ? diffs.get(selectedFile)!.hunks[0].newStart
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
+              ✕
+            </button>
+          )}
+        </div>
+        <div style={{ flex: '1 1 0%', overflow: 'hidden', minHeight: 0 }}>
+          {selectedFile ? (
+            <CodeEditorContainer
+              filePath={selectedFile}
+              repoLabel={`${owner}/${repo}`}
+              scrollToLine={
+                diffs.has(selectedFile) && diffs.get(selectedFile)!.hunks.length > 0
+                  ? diffs.get(selectedFile)!.hunks[0].newStart
+                  : undefined
+              }
+            />
           ) : (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                height: '100%',
+                flex: 1,
                 opacity: 0.5,
               }}
             >
@@ -549,6 +620,102 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
           )}
         </div>
       </div>
+
+      {/* Mobile Navigation Bar */}
+      {isMobile && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '56px',
+            background: 'var(--vscode-bg-secondary)',
+            borderTop: '1px solid var(--vscode-border)',
+            display: 'flex',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            zIndex: 1000,
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
+        >
+          <button
+            onClick={() => setMobileView('guide')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'guide'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Guide"
+          >
+            <span style={{ fontSize: '20px' }}>📖</span>
+            <span>Guide</span>
+          </button>
+          <button
+            onClick={() => setMobileView('diff')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'diff'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Diff"
+          >
+            <span style={{ fontSize: '20px' }}>📊</span>
+            <span>Diff</span>
+          </button>
+          <button
+            onClick={() => setMobileView('code')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'code'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Code"
+          >
+            <span style={{ fontSize: '20px' }}>📝</span>
+            <span>Code</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

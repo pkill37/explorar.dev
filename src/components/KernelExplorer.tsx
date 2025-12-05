@@ -16,6 +16,7 @@ import {
   getCurrentRepoLabel,
   getCurrentBranch,
   setGitHubRepoWithDefaultBranch,
+  getTrustedVersions,
 } from '@/lib/github-api';
 import { getAllSuggestionsForFile, getFundamentalConcepts } from '@/lib/kernel-suggestions';
 import { useProjectProgress } from '@/hooks/useProjectProgress';
@@ -199,8 +200,13 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   const [repoLabel, setRepoLabel] = useState<string>('torvalds/linux');
   const [treeRefreshKey] = useState<string>('init');
 
-  // Kernel version state
-  const [selectedVersion, setSelectedVersion] = useState<string>(branch || 'linux-6.1.y');
+  // Kernel version state - use v6.1 for Linux kernel, otherwise use provided branch
+  const [selectedVersion, setSelectedVersion] = useState<string>(() => {
+    if (owner === 'torvalds' && repo === 'linux') {
+      return branch || 'v6.1';
+    }
+    return branch || 'v6.1';
+  });
 
   // Get project config
   const projectConfig = useMemo(() => {
@@ -253,17 +259,38 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
-  const [isRightPanelOpen] = useState<boolean>(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(false);
+  // Mobile view state: 'explorer' | 'editor' | 'guide'
+  const [mobileView, setMobileView] = useState<'explorer' | 'editor' | 'guide'>('editor');
 
   // Initial loading state
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
 
   // Check if mobile on mount and resize
+  // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
   useEffect(() => {
     const checkViewport = () => {
       if (typeof window !== 'undefined') {
-        setIsMobile(window.innerWidth <= 768);
+        const isMobileView = window.innerWidth < 1024;
+        setIsMobile(isMobileView);
+        // On mobile, ensure only one panel is visible at a time
+        if (isMobileView) {
+          if (mobileView === 'explorer') {
+            setIsSidebarOpen(true);
+            setIsRightPanelOpen(false);
+          } else if (mobileView === 'guide') {
+            setIsSidebarOpen(false);
+            setIsRightPanelOpen(true);
+          } else {
+            setIsSidebarOpen(false);
+            setIsRightPanelOpen(false);
+          }
+        } else {
+          // Desktop: show all panels
+          setIsSidebarOpen(true);
+          setIsRightPanelOpen(true);
+        }
       }
     };
     checkViewport();
@@ -271,7 +298,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       window.addEventListener('resize', checkViewport);
       return () => window.removeEventListener('resize', checkViewport);
     }
-  }, []);
+  }, [mobileView]);
 
   // Command palette keyboard shortcut
   useEffect(() => {
@@ -308,10 +335,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       // Priority: URL params > localStorage
       if (owner && repo) {
         // Initialize from URL params - auto-detect default branch if not specified
-        setGitHubRepoWithDefaultBranch(owner, repo, branch || 'linux-6.1.y').then(() => {
+        const defaultBranch = owner === 'torvalds' && repo === 'linux' ? 'v6.1' : (branch || 'v6.1');
+        setGitHubRepoWithDefaultBranch(owner, repo, branch || defaultBranch).then(() => {
           setRepoLabel(`${owner}/${repo}`);
           const actualBranch = getCurrentBranch();
-          setSelectedVersion(branch || actualBranch || 'linux-6.1.y');
+          setSelectedVersion(branch || actualBranch || defaultBranch);
         });
 
         // Save to localStorage for persistence
@@ -325,21 +353,22 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         const savedGitHubUrl = loadFromLocalStorage('kernel-explorer-github-url', '') as string;
         const savedVersion = loadFromLocalStorage(
           'kernel-explorer-selected-version',
-          'linux-6.1.y'
+          'v6.1'
         ) as string;
 
         if (savedGitHubUrl) {
           const urlMatch = savedGitHubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
           if (urlMatch) {
             const [, savedOwner, savedRepo] = urlMatch;
-            setGitHubRepoWithDefaultBranch(
-              savedOwner,
-              savedRepo,
-              savedVersion || 'linux-6.1.y'
-            ).then(() => {
+            // Validate saved version against trusted versions
+            const trusted = getTrustedVersions(savedOwner, savedRepo);
+            const validVersion = trusted.length > 0 && savedVersion && trusted.includes(savedVersion)
+              ? savedVersion
+              : (trusted.length > 0 ? trusted[0] : savedVersion || 'v6.1');
+            setGitHubRepoWithDefaultBranch(savedOwner, savedRepo, validVersion).then(() => {
               setRepoLabel(`${savedOwner}/${savedRepo}`);
               const actualBranch = getCurrentBranch();
-              setSelectedVersion(savedVersion || actualBranch || 'linux-6.1.y');
+              setSelectedVersion(actualBranch || validVersion);
             });
           }
         }
@@ -1455,9 +1484,9 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         commands={commandPaletteCommands}
       />
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
         <div
-          className={`vscode-sidebar ${isSidebarOpen ? 'mobile-open' : ''}`}
+          className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
           suppressHydrationWarning
           style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '40vw' }}
         >
@@ -1470,10 +1499,43 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               }}
             />
           )}
+          {isMobile && (
+            <div
+              style={{
+                padding: '12px',
+                borderBottom: '1px solid var(--vscode-border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Explorer</h3>
+              <button
+                onClick={() => setMobileView('editor')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--vscode-text-primary)',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  fontSize: '18px',
+                }}
+                aria-label="Close explorer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <div className="vscode-sidebar-content">
             {activeSidebarTab === 'explorer' && (
               <FileTree
-                onFileSelect={openFileInTab}
+                onFileSelect={(filePath: string) => {
+                  openFileInTab(filePath);
+                  // On mobile, switch to editor view when file is selected
+                  if (isMobile) {
+                    setMobileView('editor');
+                  }
+                }}
                 selectedFile={selectedFile}
                 listDirectory={buildFileTree}
                 titleLabel={repoLabel}
@@ -1494,6 +1556,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   // If we have a line number, use it for precise scrolling
                   // Otherwise, use struct name as search pattern
                   openFileInTab(filePath, lineNumber ? undefined : structName, lineNumber);
+                  // On mobile, switch to editor view when file is opened
+                  if (isMobile) {
+                    setMobileView('editor');
+                  }
                 }}
               />
             )}
@@ -1513,7 +1579,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         />
 
         <div
-          className="vscode-editor-container"
+          className={`vscode-editor-container ${isMobile && mobileView !== 'editor' ? 'mobile-hidden' : ''}`}
           style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column' }}
         >
           <TabBar
@@ -1559,24 +1625,160 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         />
 
         <div
-          className={`vscode-panel ${isRightPanelOpen ? 'mobile-open' : ''}`}
+          className={`vscode-panel ${isRightPanelOpen && (isMobile ? mobileView === 'guide' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'guide' ? 'mobile-hidden' : ''}`}
           suppressHydrationWarning
-          style={{ width: `${rightPanelWidth}px`, minWidth: '200px', maxWidth: '40vw' }}
+          style={{ 
+            width: `${rightPanelWidth}px`, 
+            minWidth: '200px', 
+            maxWidth: '40vw',
+            height: '100%',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            flexShrink: 0
+          }}
         >
-          <GuidePanel
-            sections={guideSections}
-            defaultOpenIds={
-              projectConfig?.guides?.[0]?.defaultOpenIds ||
-              (guideSections.length > 0 ? [guideSections[0].id] : chapterIds)
-            }
-            overallProgress={progress.overallProgress}
-            chapterProgress={Object.fromEntries(
-              Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])
-            )}
-            onResetProgress={resetProgress}
-          />
+          {isMobile && (
+            <div
+              style={{
+                padding: '12px',
+                borderBottom: '1px solid var(--vscode-border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Guide</h3>
+              <button
+                onClick={() => setMobileView('editor')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--vscode-text-primary)',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  fontSize: '18px',
+                }}
+                aria-label="Close guide"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <div style={{ flex: '1 1 0%', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <GuidePanel
+              sections={guideSections}
+              defaultOpenIds={
+                projectConfig?.guides?.[0]?.defaultOpenIds ||
+                (guideSections.length > 0 ? [guideSections[0].id] : chapterIds)
+              }
+              overallProgress={progress.overallProgress}
+              chapterProgress={Object.fromEntries(
+                Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])
+              )}
+              onResetProgress={resetProgress}
+            />
+          </div>
         </div>
       </div>
+
+      {/* Mobile Navigation Bar */}
+      {isMobile && (
+        <div
+          className="mobile-nav-bar"
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '56px',
+            background: 'var(--vscode-bg-secondary)',
+            borderTop: '1px solid var(--vscode-border)',
+            display: 'flex',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            zIndex: 1000,
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
+        >
+          <button
+            onClick={() => setMobileView('explorer')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'explorer'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Explorer"
+          >
+            <span style={{ fontSize: '20px' }}>📁</span>
+            <span>Explorer</span>
+          </button>
+          <button
+            onClick={() => setMobileView('editor')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'editor'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Editor"
+          >
+            <span style={{ fontSize: '20px' }}>📝</span>
+            <span>Editor</span>
+          </button>
+          <button
+            onClick={() => setMobileView('guide')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: 'transparent',
+              border: 'none',
+              color:
+                mobileView === 'guide'
+                  ? 'var(--vscode-text-accent)'
+                  : 'var(--vscode-text-secondary)',
+              cursor: 'pointer',
+              padding: '8px',
+              fontSize: '12px',
+              transition: 'color 0.2s',
+            }}
+            aria-label="Guide"
+          >
+            <span style={{ fontSize: '20px' }}>📚</span>
+            <span>Guide</span>
+          </button>
+        </div>
+      )}
 
       <StatusBar
         filePath={activeTab?.path}
