@@ -153,13 +153,16 @@ const FileTree: React.FC<FileTreeProps> = ({
   expandDirectoryRequest,
 }) => {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const handledRequestRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { setRateLimit } = useGitHubRateLimit();
 
+  // Lazy load: Only load root directory when explorer tab is first opened
+  // This ensures we don't load anything until the user explicitly opens the explorer
   useEffect(() => {
     const loadRootDirectory = async () => {
       try {
@@ -167,6 +170,7 @@ const FileTree: React.FC<FileTreeProps> = ({
         setError(null);
         const nodes = listDirectory ? await listDirectory('') : await buildFileTree('');
         setRootNodes(nodes);
+        setHasLoaded(true);
       } catch (err) {
         // Check if it's a rate limit error
         if (err instanceof GitHubApiError && err.status === 403) {
@@ -179,8 +183,11 @@ const FileTree: React.FC<FileTreeProps> = ({
       }
     };
 
-    loadRootDirectory();
-  }, [listDirectory, refreshKey, setRateLimit]);
+    // Load on mount (when explorer tab is opened) or when refreshKey changes
+    if (!hasLoaded || refreshKey) {
+      loadRootDirectory();
+    }
+  }, [listDirectory, refreshKey, setRateLimit, hasLoaded]);
 
   useEffect(() => {
     const expandPath = async (path: string) => {

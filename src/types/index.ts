@@ -57,6 +57,67 @@ export interface GitHubTag {
   node_id: string;
 }
 
+export interface PullRequestFile {
+  sha: string;
+  filename: string;
+  status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged';
+  additions: number;
+  deletions: number;
+  changes: number;
+  blob_url: string;
+  raw_url: string;
+  contents_url: string;
+  patch?: string;
+  previous_filename?: string;
+}
+
+export interface PullRequest {
+  id: number;
+  number: number;
+  title: string;
+  body: string | null;
+  state: 'open' | 'closed' | 'merged';
+  user: {
+    login: string;
+    avatar_url: string;
+  };
+  created_at: string;
+  updated_at: string;
+  merged_at: string | null;
+  base: {
+    ref: string;
+    sha: string;
+  };
+  head: {
+    ref: string;
+    sha: string;
+  };
+  html_url: string;
+  diff_url: string;
+  patch_url: string;
+}
+
+export interface PullRequestDiff {
+  file: PullRequestFile;
+  hunks: DiffHunk[];
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  heading: string;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+  type: 'context' | 'added' | 'removed';
+  content: string;
+}
+
 // GitHub API constants
 export const GITHUB_CONFIG = {
   owner: 'torvalds',

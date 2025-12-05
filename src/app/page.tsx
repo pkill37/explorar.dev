@@ -13,8 +13,11 @@ export default function Home() {
   const [branches, setBranches] = useState<GitHubTag[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('linux-6.1.y');
   const [repoInfo, setRepoInfo] = useState<{ owner: string; repo: string } | null>(null);
+  const [prInput, setPrInput] = useState('');
+  const [mode, setMode] = useState<'explore' | 'pr'>('explore');
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const prInputRef = useRef<HTMLInputElement>(null);
 
   // Parse GitHub URL from input (for display purposes)
   const parsedRepo = useMemo(() => {
@@ -149,15 +152,43 @@ export default function Home() {
     }, 0);
   };
 
-  const hasValidRepo = !!parsedRepo || !!repoInfo;
+  const handlePRSubmit = (e?: FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    if (!prInput.trim()) return;
+
+    // Parse PR URL or format: owner/repo#123 or github.com/owner/repo/pull/123
+    const prPatterns = [
+      /github\.com\/([^\/]+)\/([^\/\s]+)\/pull\/(\d+)/i,
+      /^([^\/\s]+)\/([^\/\s]+)#(\d+)$/,
+      /^([^\/\s]+)\/([^\/\s]+)\s+(\d+)$/,
+    ];
+
+    for (const pattern of prPatterns) {
+      const match = prInput.trim().match(pattern);
+      if (match) {
+        const owner = match[1];
+        const repo = match[2].replace(/\.git$/, '');
+        const prNumber = match[3];
+        router.push(`/${owner}/${repo}/pull/${prNumber}`);
+        return;
+      }
+    }
+
+    alert(
+      'Please enter a valid PR URL or format:\n' +
+        '- github.com/owner/repo/pull/123\n' +
+        '- owner/repo#123\n' +
+        '- owner/repo 123'
+    );
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
         <div className="w-full max-w-6xl mx-auto">
           {/* Welcome Message */}
-          <div className="text-center mb-12">
+          <header className="text-center mb-12">
             <h1 className="text-4xl font-semibold mb-4">
               Which repository would you like to learn?
             </h1>
@@ -168,126 +199,201 @@ export default function Home() {
               Currently, only curated repositories are fully supported. Others will show a
               contribution screen.
             </p>
-          </div>
+          </header>
 
           {/* Two Column Layout: Wizard and QuickStarts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Repository Selector Wizard */}
-            <div className="p-6 rounded-2xl bg-foreground/5 border border-foreground/10 shadow-lg transition-all duration-300">
-              <h2 className="text-xl font-semibold mb-4">Repository Wizard</h2>
-              {/* URL Input and Branch Selection - Side by side */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* URL Input */}
-                <div>
-                  <label htmlFor="repo-url" className="text-sm text-foreground/70 mb-2 block">
-                    GitHub Repository URL
-                  </label>
-                  <input
-                    id="repo-url"
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleUrlSubmit();
-                      }
-                    }}
-                    placeholder="github.com/owner/repo or owner/repo"
-                    className="w-full px-4 py-3 rounded-xl border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    disabled={isLoading}
-                  />
-                </div>
-
-                {/* Branch Selection */}
-                <div>
-                  <label htmlFor="branch-select" className="text-sm text-foreground/70 mb-2 block">
-                    Branch / Tag
-                  </label>
-                  <select
-                    id="branch-select"
-                    value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                    disabled={isLoadingBranches || isLoading || !repoInfo}
-                    className="w-full px-3 py-2 rounded-lg border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {isLoadingBranches && <option disabled>Loading stable branches...</option>}
-                    {branches.length === 0 && !isLoadingBranches && (
-                      <option disabled>No stable branches found</option>
-                    )}
-                    {branches.length > 0 && (
-                      <>
-                        {branches.filter((b) => /^linux-6\./.test(b.name)).length > 0 && (
-                          <optgroup label="6.x Series (Stable)">
-                            {branches
-                              .filter((b) => /^linux-6\./.test(b.name))
-                              .map((branch) => (
-                                <option key={branch.name} value={branch.name}>
-                                  {branch.name}{' '}
-                                  {branch.name === 'linux-6.1.y' ? '(LTS - Recommended)' : ''}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-                        {branches.filter((b) => /^linux-5\./.test(b.name)).length > 0 && (
-                          <optgroup label="5.x Series (Stable)">
-                            {branches
-                              .filter((b) => /^linux-5\./.test(b.name))
-                              .map((branch) => (
-                                <option key={branch.name} value={branch.name}>
-                                  {branch.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-                        {branches.filter((b) => /^linux-4\./.test(b.name)).length > 0 && (
-                          <optgroup label="4.x Series (Stable)">
-                            {branches
-                              .filter((b) => /^linux-4\./.test(b.name))
-                              .map((branch) => (
-                                <option key={branch.name} value={branch.name}>
-                                  {branch.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-foreground/10">
+            <section className="p-6 rounded-2xl bg-foreground/5 border border-foreground/10 shadow-lg transition-all duration-300">
+              <div className="flex gap-2 mb-4">
                 <button
                   type="button"
-                  onClick={handleStartExplorer}
-                  disabled={isLoading || !repoInfo || isLoadingBranches}
-                  className="flex-1 px-6 py-3 rounded-xl bg-foreground text-background font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  onClick={() => setMode('explore')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    mode === 'explore'
+                      ? 'bg-foreground text-background'
+                      : 'bg-transparent text-foreground/70 hover:text-foreground'
+                  }`}
                 >
-                  {isLoading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin"></span>
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      <span>🚀</span>
-                      Start Exploring
-                    </>
-                  )}
+                  Explore Repository
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('pr')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    mode === 'pr'
+                      ? 'bg-foreground text-background'
+                      : 'bg-transparent text-foreground/70 hover:text-foreground'
+                  }`}
+                >
+                  Learn from PR
                 </button>
               </div>
-            </div>
+              <h2 className="text-xl font-semibold mb-4">
+                {mode === 'explore' ? 'Repository Wizard' : 'Pull Request Learner'}
+              </h2>
+
+              {mode === 'explore' ? (
+                <>
+                  {/* URL Input and Branch Selection - Side by side */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* URL Input */}
+                    <div>
+                      <label htmlFor="repo-url" className="text-sm text-foreground/70 mb-2 block">
+                        GitHub Repository URL
+                      </label>
+                      <input
+                        id="repo-url"
+                        ref={inputRef}
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleUrlSubmit();
+                          }
+                        }}
+                        placeholder="github.com/owner/repo or owner/repo"
+                        className="w-full px-4 py-3 rounded-xl border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        disabled={isLoading}
+                      />
+                    </div>
+
+                    {/* Branch Selection */}
+                    <div>
+                      <label
+                        htmlFor="branch-select"
+                        className="text-sm text-foreground/70 mb-2 block"
+                      >
+                        Branch / Tag
+                      </label>
+                      <select
+                        id="branch-select"
+                        value={selectedBranch}
+                        onChange={(e) => setSelectedBranch(e.target.value)}
+                        disabled={isLoadingBranches || isLoading || !repoInfo}
+                        className="w-full px-3 py-2 rounded-lg border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        {isLoadingBranches && <option disabled>Loading stable branches...</option>}
+                        {branches.length === 0 && !isLoadingBranches && (
+                          <option disabled>No stable branches found</option>
+                        )}
+                        {branches.length > 0 && (
+                          <>
+                            {branches.filter((b) => /^linux-6\./.test(b.name)).length > 0 && (
+                              <optgroup label="6.x Series (Stable)">
+                                {branches
+                                  .filter((b) => /^linux-6\./.test(b.name))
+                                  .map((branch) => (
+                                    <option key={branch.name} value={branch.name}>
+                                      {branch.name}{' '}
+                                      {branch.name === 'linux-6.1.y' ? '(LTS - Recommended)' : ''}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                            {branches.filter((b) => /^linux-5\./.test(b.name)).length > 0 && (
+                              <optgroup label="5.x Series (Stable)">
+                                {branches
+                                  .filter((b) => /^linux-5\./.test(b.name))
+                                  .map((branch) => (
+                                    <option key={branch.name} value={branch.name}>
+                                      {branch.name}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                            {branches.filter((b) => /^linux-4\./.test(b.name)).length > 0 && (
+                              <optgroup label="4.x Series (Stable)">
+                                {branches
+                                  .filter((b) => /^linux-4\./.test(b.name))
+                                  .map((branch) => (
+                                    <option key={branch.name} value={branch.name}>
+                                      {branch.name}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-4 border-t border-foreground/10">
+                    <button
+                      type="button"
+                      onClick={handleStartExplorer}
+                      disabled={isLoading || !repoInfo || isLoadingBranches}
+                      className="flex-1 px-6 py-3 rounded-xl bg-foreground text-background font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin"></span>
+                          Starting...
+                        </>
+                      ) : (
+                        <>
+                          <span>🚀</span>
+                          Start Exploring
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* PR Input */}
+                  <div className="mb-4">
+                    <label htmlFor="pr-url" className="text-sm text-foreground/70 mb-2 block">
+                      Pull Request URL or Format
+                    </label>
+                    <input
+                      id="pr-url"
+                      ref={prInputRef}
+                      type="text"
+                      value={prInput}
+                      onChange={(e) => setPrInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handlePRSubmit();
+                        }
+                      }}
+                      placeholder="github.com/owner/repo/pull/123 or owner/repo#123"
+                      className="w-full px-4 py-3 rounded-xl border border-foreground/20 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/20 focus:border-foreground/30 text-base font-mono disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    />
+                    <p className="text-xs text-foreground/50 mt-2">
+                      Perfect for reviewing upstream PRs and learning from code changes
+                    </p>
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="flex gap-3 pt-4 border-t border-foreground/10">
+                    <button
+                      type="button"
+                      onClick={handlePRSubmit}
+                      disabled={!prInput.trim()}
+                      className="flex-1 px-6 py-3 rounded-xl bg-foreground text-background font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                    >
+                      <span>📝</span>
+                      Learn from PR
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
 
             {/* Quick Starts Section */}
-            <div className="p-6 rounded-2xl bg-foreground/5 border border-foreground/10 shadow-lg transition-all duration-300">
+            <section className="p-6 rounded-2xl bg-foreground/5 border border-foreground/10 shadow-lg transition-all duration-300">
+              <h2 className="text-xl font-semibold mb-4 sr-only">Quick Start Repositories</h2>
               <QuickStarts onSelect={handleSuggestionClick} />
-            </div>
+            </section>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

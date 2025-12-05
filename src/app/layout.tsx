@@ -39,10 +39,26 @@ export const metadata: Metadata = {
     'LLVM',
     'code exploration',
     'interactive learning',
+    'source code explorer',
+    'code browser',
+    'GitHub repository explorer',
+    'interactive code browser',
+    'VS Code interface',
+    'code study',
+    'software development',
+    'programming education',
+    'open source learning',
+    'codebase navigation',
+    'software engineering',
+    'developer tools',
+    'code analysis',
+    'source code analysis',
   ],
   authors: [{ name: 'explorar.dev' }],
   creator: 'explorar.dev',
   publisher: 'explorar.dev',
+  category: 'Education',
+  classification: 'Developer Tools, Educational Software',
   formatDetection: {
     email: false,
     address: false,
@@ -61,6 +77,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         alt: defaultTitle,
+        type: 'image/png',
       },
     ],
   },
@@ -148,6 +165,25 @@ export default function RootLayout({
       },
       'query-input': 'required name=search_term_string',
     },
+    publisher: {
+      '@type': 'Organization',
+      name: siteName,
+      url: siteUrl,
+    },
+  };
+
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: siteName,
+    url: siteUrl,
+    description: defaultDescription,
+    logo: `${siteUrl}/og.png`,
+    sameAs: [
+      // Add social media profiles when available
+      // 'https://twitter.com/explorardev',
+      // 'https://github.com/explorardev',
+    ],
   };
 
   return (
@@ -166,6 +202,13 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(webSiteSchema),
+          }}
+        />
+        <Script
+          id="organization-schema"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationSchema),
           }}
         />
         <GitHubRateLimitWrapper>{children}</GitHubRateLimitWrapper>

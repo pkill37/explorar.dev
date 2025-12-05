@@ -1,6 +1,15 @@
 // GitHub API utilities for fetching source code from GitHub repositories
 
-import { GitHubApiResponse, FileNode, GitHubTag, GITHUB_CONFIG } from '@/types';
+import {
+  GitHubApiResponse,
+  FileNode,
+  GitHubTag,
+  GITHUB_CONFIG,
+  PullRequest,
+  PullRequestFile,
+  PullRequestDiff,
+  DiffHunk,
+} from '@/types';
 import { getCacheKey, getCachedData, setCachedData } from './github-cache';
 import { retryWithBackoff, githubCircuitBreaker } from './github-retry';
 import { logger } from './github-debug';
@@ -1037,4 +1046,291 @@ export function getFileIcon(node: FileNode): string {
     default:
       return '📄';
   }
+}
+
+/**
+ * Fetch a pull request by number
+ */
+export async function fetchPullRequest(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<PullRequest> {
+  return logger.measure('fetchPullRequest', async () => {
+    const cacheKey = getCacheKey(owner, repo, 'main', '', `pr-${prNumber}`);
+
+    // Try cache first
+    const cached = await getCachedData<PullRequest>(cacheKey);
+    if (cached) {
+      logger.debug('Pull request cache hit', { owner, repo, prNumber });
+      return cached;
+    }
+
+    const url = `${currentConfig.apiBase}/${owner}/${repo}/pulls/${prNumber}`;
+    logger.debug('Fetching pull request', { owner, repo, prNumber, url });
+
+    try {
+      const result = await githubCircuitBreaker.execute(async () => {
+        return retryWithBackoff(
+          async () => {
+            const response = await fetch(url, {
+              headers: {
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'Explorar.dev',
+              },
+            });
+
+            if (!response.ok) {
+              if (response.status === 403) {
+                const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+                const rateLimitReset = response.headers.get('x-ratelimit-reset');
+                const error = new GitHubApiError(
+                  `GitHub API rate limit exceeded. ${
+                    rateLimitRemaining === '0' && rateLimitReset
+                      ? `Resets at ${new Date(parseInt(rateLimitReset) * 1000).toLocaleString()}`
+                      : 'Please try again later or authenticate with GitHub for higher limits.'
+                  }`,
+                  response.status
+                );
+                logger.error('Rate limit exceeded', error, { rateLimitRemaining, rateLimitReset });
+                throw error;
+              }
+
+              const error = new GitHubApiError(
+                `Failed to fetch pull request: ${response.statusText}`,
+                response.status
+              );
+              logger.error('Failed to fetch pull request', error, { status: response.status });
+              throw error;
+            }
+
+            const data = await response.json();
+            await setCachedData(cacheKey, data);
+            logger.info('Pull request fetched and cached', { owner, repo, prNumber });
+
+            return data;
+          },
+          {
+            maxRetries: 3,
+            initialDelay: 1000,
+            onRetry: (attempt, error) => {
+              logger.warn(`Retrying pull request fetch (attempt ${attempt})`, {
+                error: error.message,
+              });
+            },
+          }
+        );
+      });
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+
+      throw new GitHubApiError('Failed to fetch pull request', 500);
+    } catch (error) {
+      logger.error(
+        'Error fetching pull request',
+        error instanceof Error ? error : new Error(String(error)),
+        { owner, repo, prNumber }
+      );
+      throw error;
+    }
+  });
+}
+
+/**
+ * Fetch files changed in a pull request
+ */
+export async function fetchPullRequestFiles(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<PullRequestFile[]> {
+  return logger.measure('fetchPullRequestFiles', async () => {
+    const cacheKey = getCacheKey(owner, repo, 'main', '', `pr-${prNumber}-files`);
+
+    // Try cache first
+    const cached = await getCachedData<PullRequestFile[]>(cacheKey);
+    if (cached) {
+      logger.debug('Pull request files cache hit', { owner, repo, prNumber });
+      return cached;
+    }
+
+    const url = `${currentConfig.apiBase}/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
+    logger.debug('Fetching pull request files', { owner, repo, prNumber, url });
+
+    try {
+      const result = await githubCircuitBreaker.execute(async () => {
+        return retryWithBackoff(
+          async () => {
+            const response = await fetch(url, {
+              headers: {
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'Explorar.dev',
+              },
+            });
+
+            if (!response.ok) {
+              if (response.status === 403) {
+                const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+                const rateLimitReset = response.headers.get('x-ratelimit-reset');
+                const error = new GitHubApiError(
+                  `GitHub API rate limit exceeded. ${
+                    rateLimitRemaining === '0' && rateLimitReset
+                      ? `Resets at ${new Date(parseInt(rateLimitReset) * 1000).toLocaleString()}`
+                      : 'Please try again later or authenticate with GitHub for higher limits.'
+                  }`,
+                  response.status
+                );
+                logger.error('Rate limit exceeded', error, { rateLimitRemaining, rateLimitReset });
+                throw error;
+              }
+
+              const error = new GitHubApiError(
+                `Failed to fetch pull request files: ${response.statusText}`,
+                response.status
+              );
+              logger.error('Failed to fetch pull request files', error, {
+                status: response.status,
+              });
+              throw error;
+            }
+
+            const data = await response.json();
+            await setCachedData(cacheKey, data);
+            logger.info('Pull request files fetched and cached', {
+              owner,
+              repo,
+              prNumber,
+              fileCount: data.length,
+            });
+
+            return data;
+          },
+          {
+            maxRetries: 3,
+            initialDelay: 1000,
+            onRetry: (attempt, error) => {
+              logger.warn(`Retrying pull request files fetch (attempt ${attempt})`, {
+                error: error.message,
+              });
+            },
+          }
+        );
+      });
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+
+      throw new GitHubApiError('Failed to fetch pull request files', 500);
+    } catch (error) {
+      logger.error(
+        'Error fetching pull request files',
+        error instanceof Error ? error : new Error(String(error)),
+        { owner, repo, prNumber }
+      );
+      throw error;
+    }
+  });
+}
+
+/**
+ * Parse a unified diff patch into structured hunks
+ */
+export function parseDiffPatch(patch: string): DiffHunk[] {
+  const hunks: DiffHunk[] = [];
+  const lines = patch.split('\n');
+  let currentHunk: DiffHunk | null = null;
+  let oldLineNum = 0;
+  let newLineNum = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Hunk header: @@ -oldStart,oldLines +newStart,newLines @@
+    const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/);
+    if (hunkMatch) {
+      if (currentHunk) {
+        hunks.push(currentHunk);
+      }
+      const oldStart = parseInt(hunkMatch[1], 10);
+      const oldLines = parseInt(hunkMatch[2] || '1', 10);
+      const newStart = parseInt(hunkMatch[3], 10);
+      const newLines = parseInt(hunkMatch[4] || '1', 10);
+      const heading = hunkMatch[5]?.trim() || '';
+
+      currentHunk = {
+        oldStart,
+        oldLines,
+        newStart,
+        newLines,
+        heading,
+        lines: [],
+      };
+      oldLineNum = oldStart;
+      newLineNum = newStart;
+      continue;
+    }
+
+    if (!currentHunk) continue;
+
+    // Context line
+    if (line.startsWith(' ')) {
+      currentHunk.lines.push({
+        oldLineNumber: oldLineNum++,
+        newLineNumber: newLineNum++,
+        type: 'context',
+        content: line.substring(1),
+      });
+    }
+    // Removed line
+    else if (line.startsWith('-')) {
+      currentHunk.lines.push({
+        oldLineNumber: oldLineNum++,
+        newLineNumber: null,
+        type: 'removed',
+        content: line.substring(1),
+      });
+    }
+    // Added line
+    else if (line.startsWith('+')) {
+      currentHunk.lines.push({
+        oldLineNumber: null,
+        newLineNumber: newLineNum++,
+        type: 'added',
+        content: line.substring(1),
+      });
+    }
+  }
+
+  if (currentHunk) {
+    hunks.push(currentHunk);
+  }
+
+  return hunks;
+}
+
+/**
+ * Fetch and parse pull request diff for a specific file
+ */
+export async function fetchPullRequestDiff(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  filename: string
+): Promise<PullRequestDiff | null> {
+  const files = await fetchPullRequestFiles(owner, repo, prNumber);
+  const file = files.find((f) => f.filename === filename);
+
+  if (!file || !file.patch) {
+    return null;
+  }
+
+  const hunks = parseDiffPatch(file.patch);
+
+  return {
+    file,
+    hunks,
+  };
 }

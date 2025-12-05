@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MonacoCodeEditor from './MonacoCodeEditor';
 import KernelStudyEditor from './KernelStudyEditor';
 import { fetchFileContent as fetchFromGitHub, GitHubApiError } from '@/lib/github-api';
@@ -29,6 +29,8 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFilePath, setCurrentFilePath] = useState<string>('');
+  // Use ref to cache loaded files without causing re-renders
+  const loadedFilesCache = useRef<Map<string, string>>(new Map());
   const { setRateLimit } = useGitHubRateLimit();
 
   useEffect(() => {
@@ -41,8 +43,24 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       }
 
       // Don't reload if it's the same file
-      if (filePath === currentFilePath) return;
+      if (filePath === currentFilePath) {
+        return;
+      }
 
+      // Check if file is already loaded in cache (lazy load optimization)
+      if (loadedFilesCache.current.has(filePath)) {
+        const cachedContent = loadedFilesCache.current.get(filePath) || '';
+        setContent(cachedContent);
+        setCurrentFilePath(filePath);
+        setError(null);
+        // Notify parent of cached content
+        if (onContentLoad) {
+          onContentLoad(cachedContent);
+        }
+        return;
+      }
+
+      // Lazy load: Only load file content when filePath is set (file is explicitly opened)
       setError(null);
       setIsLoading(true);
       setCurrentFilePath(filePath);
@@ -50,6 +68,9 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       try {
         const fileContent = await (fetchFile ? fetchFile(filePath) : fetchFromGitHub(filePath));
         setContent(fileContent);
+
+        // Cache the loaded content for future use
+        loadedFilesCache.current.set(filePath, fileContent);
 
         // Notify parent component of content load
         if (onContentLoad) {

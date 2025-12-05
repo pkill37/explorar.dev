@@ -484,7 +484,7 @@ export function getCacheKey(
   repo: string,
   branch: string,
   path: string,
-  type: 'file' | 'directory' | 'tags' | 'default-branch' | 'branches'
+  type: 'file' | 'directory' | 'tags' | 'default-branch' | 'branches' | string
 ): string {
   return `${owner}/${repo}/${branch}/${type}/${path}`;
 }
