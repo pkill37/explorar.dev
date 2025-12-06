@@ -210,31 +210,3 @@ class GitHubApiLogger {
 
 // Singleton logger instance
 export const logger = new GitHubApiLogger();
-
-/**
- * Performance decorator for functions
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function measurePerformance(_operationName: string) {
-  return function <T extends (...args: unknown[]) => Promise<unknown>>(
-    target: { constructor?: { name?: string } },
-    propertyKey: string,
-    descriptor: TypedPropertyDescriptor<T>
-  ) {
-    const originalMethod = descriptor.value!;
-
-    descriptor.value = async function (this: unknown, ...args: unknown[]) {
-      const className = target.constructor?.name ?? 'Unknown';
-      return logger.measure(`${className}.${propertyKey}`, () => originalMethod.apply(this, args));
-    } as T;
-
-    return descriptor;
-  };
-}
-
-/**
- * Get logger instance for external use
- */
-export function getLogger(): GitHubApiLogger {
-  return logger;
-}

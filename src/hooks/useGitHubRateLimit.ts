@@ -24,19 +24,3 @@ export function useGitHubRateLimitDetection() {
     };
   }, [checkRateLimit]);
 }
-
-/**
- * Hook to wrap async functions and automatically detect rate limit errors
- */
-export function useGitHubRateLimitWrapper<T extends (...args: unknown[]) => Promise<unknown>>(
-  fn: T
-): T {
-  const { checkRateLimit } = useGitHubRateLimit();
-
-  return ((...args: Parameters<T>) => {
-    return fn(...args).catch((error: unknown) => {
-      checkRateLimit(error);
-      throw error; // Re-throw to maintain original behavior
-    });
-  }) as T;
-}

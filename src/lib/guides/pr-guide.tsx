@@ -29,13 +29,25 @@ export function createPRGuide(
       body: (
         <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
           <div style={{ marginBottom: '12px' }}>
-            <strong>#{pr.number}: {pr.title}</strong>
+            <strong>
+              #{pr.number}: {pr.title}
+            </strong>
           </div>
           {pr.body && (
-            <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
-              {pr.body.split('\n').slice(0, 10).map((line, i) => (
-                <div key={i}>{line || '\u00A0'}</div>
-              ))}
+            <div
+              style={{
+                marginBottom: '12px',
+                padding: '8px',
+                background: 'var(--vscode-textCodeBlock-background)',
+                borderRadius: '4px',
+              }}
+            >
+              {pr.body
+                .split('\n')
+                .slice(0, 10)
+                .map((line, i) => (
+                  <div key={i}>{line || '\u00A0'}</div>
+                ))}
               {pr.body.split('\n').length > 10 && (
                 <div style={{ opacity: 0.7, marginTop: '4px' }}>...</div>
               )}
@@ -57,7 +69,14 @@ export function createPRGuide(
               <strong>{pr.user.login}</strong>
             </div>
           </div>
-          <div style={{ marginTop: '12px', padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+          <div
+            style={{
+              marginTop: '12px',
+              padding: '8px',
+              background: 'var(--vscode-textCodeBlock-background)',
+              borderRadius: '4px',
+            }}
+          >
             <a
               href={pr.html_url}
               target="_blank"
@@ -75,12 +94,31 @@ export function createPRGuide(
       title: 'Summary',
       body: (
         <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '12px' }}>
-            <div style={{ padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px',
+              marginBottom: '12px',
+            }}
+          >
+            <div
+              style={{
+                padding: '8px',
+                background: 'var(--vscode-textCodeBlock-background)',
+                borderRadius: '4px',
+              }}
+            >
               <div style={{ opacity: 0.7, fontSize: '11px' }}>Files Changed</div>
               <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{files.length}</div>
             </div>
-            <div style={{ padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+            <div
+              style={{
+                padding: '8px',
+                background: 'var(--vscode-textCodeBlock-background)',
+                borderRadius: '4px',
+              }}
+            >
               <div style={{ opacity: 0.7, fontSize: '11px' }}>Total Changes</div>
               <div style={{ fontSize: '18px', fontWeight: 'bold' }}>
                 +{totalAdditions} / -{totalDeletions}
@@ -91,22 +129,26 @@ export function createPRGuide(
             <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Change Types:</div>
             {modifiedFiles.length > 0 && (
               <div style={{ marginBottom: '4px' }}>
-                ✏️ Modified: <strong>{modifiedFiles.length}</strong> file{modifiedFiles.length !== 1 ? 's' : ''}
+                ✏️ Modified: <strong>{modifiedFiles.length}</strong> file
+                {modifiedFiles.length !== 1 ? 's' : ''}
               </div>
             )}
             {addedFiles.length > 0 && (
               <div style={{ marginBottom: '4px' }}>
-                ➕ Added: <strong>{addedFiles.length}</strong> file{addedFiles.length !== 1 ? 's' : ''}
+                ➕ Added: <strong>{addedFiles.length}</strong> file
+                {addedFiles.length !== 1 ? 's' : ''}
               </div>
             )}
             {removedFiles.length > 0 && (
               <div style={{ marginBottom: '4px' }}>
-                ➖ Removed: <strong>{removedFiles.length}</strong> file{removedFiles.length !== 1 ? 's' : ''}
+                ➖ Removed: <strong>{removedFiles.length}</strong> file
+                {removedFiles.length !== 1 ? 's' : ''}
               </div>
             )}
             {renamedFiles.length > 0 && (
               <div style={{ marginBottom: '4px' }}>
-                ↪️ Renamed: <strong>{renamedFiles.length}</strong> file{renamedFiles.length !== 1 ? 's' : ''}
+                ↪️ Renamed: <strong>{renamedFiles.length}</strong> file
+                {renamedFiles.length !== 1 ? 's' : ''}
               </div>
             )}
           </div>
@@ -143,16 +185,30 @@ export function createPRGuide(
                   e.currentTarget.style.borderColor = 'transparent';
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontFamily: 'monospace', fontSize: '12px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     {file.filename}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', fontSize: '11px', marginLeft: '8px' }}>
                     {file.additions > 0 && (
-                      <span style={{ color: 'var(--vscode-testing-iconPassed)' }}>+{file.additions}</span>
+                      <span style={{ color: 'var(--vscode-testing-iconPassed)' }}>
+                        +{file.additions}
+                      </span>
                     )}
                     {file.deletions > 0 && (
-                      <span style={{ color: 'var(--vscode-errorForeground)' }}>-{file.deletions}</span>
+                      <span style={{ color: 'var(--vscode-errorForeground)' }}>
+                        -{file.deletions}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -160,7 +216,8 @@ export function createPRGuide(
                   {file.status === 'added' && '➕ Added'}
                   {file.status === 'removed' && '➖ Removed'}
                   {file.status === 'modified' && '✏️ Modified'}
-                  {file.status === 'renamed' && `↪️ Renamed${file.previous_filename ? ` from ${file.previous_filename}` : ''}`}
+                  {file.status === 'renamed' &&
+                    `↪️ Renamed${file.previous_filename ? ` from ${file.previous_filename}` : ''}`}
                 </div>
               </div>
             ))}
@@ -206,13 +263,18 @@ export function createPRGuide(
                     e.currentTarget.style.borderColor = 'transparent';
                   }}
                 >
-                  <div style={{ fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold', marginBottom: '6px' }}>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      marginBottom: '6px',
+                    }}
+                  >
                     {file.filename}
                   </div>
                   <div style={{ display: 'flex', gap: '12px', fontSize: '11px', opacity: 0.8 }}>
-                    <span>
-                      {file.additions + file.deletions} total changes
-                    </span>
+                    <span>{file.additions + file.deletions} total changes</span>
                     {hunkCount > 0 && (
                       <span>
                         {hunkCount} hunk{hunkCount !== 1 ? 's' : ''}
@@ -241,22 +303,46 @@ export function createPRGuide(
             <strong>Things to review carefully:</strong>
           </div>
           {files.filter((f) => f.additions + f.deletions > 100).length > 0 && (
-            <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+            <div
+              style={{
+                marginBottom: '12px',
+                padding: '8px',
+                background: 'var(--vscode-textCodeBlock-background)',
+                borderRadius: '4px',
+              }}
+            >
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>⚠️ Large Changes</div>
               <div style={{ fontSize: '11px', opacity: 0.8 }}>
-                {files.filter((f) => f.additions + f.deletions > 100).length} file{files.filter((f) => f.additions + f.deletions > 100).length !== 1 ? 's' : ''} with more than 100 changes
+                {files.filter((f) => f.additions + f.deletions > 100).length} file
+                {files.filter((f) => f.additions + f.deletions > 100).length !== 1 ? 's' : ''} with
+                more than 100 changes
               </div>
             </div>
           )}
           {removedFiles.length > 0 && (
-            <div style={{ marginBottom: '12px', padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+            <div
+              style={{
+                marginBottom: '12px',
+                padding: '8px',
+                background: 'var(--vscode-textCodeBlock-background)',
+                borderRadius: '4px',
+              }}
+            >
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>⚠️ Removed Files</div>
               <div style={{ fontSize: '11px', opacity: 0.8 }}>
-                {removedFiles.length} file{removedFiles.length !== 1 ? 's' : ''} removed - verify they aren't needed elsewhere
+                {removedFiles.length} file{removedFiles.length !== 1 ? 's' : ''} removed - verify
+                they aren't needed elsewhere
               </div>
             </div>
           )}
-          <div style={{ marginTop: '12px', padding: '8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: '4px' }}>
+          <div
+            style={{
+              marginTop: '12px',
+              padding: '8px',
+              background: 'var(--vscode-textCodeBlock-background)',
+              borderRadius: '4px',
+            }}
+          >
             <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>💡 Review Checklist:</div>
             <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '11px', lineHeight: '1.8' }}>
               <li>Check if large changes maintain code quality</li>
@@ -271,4 +357,3 @@ export function createPRGuide(
     },
   ];
 }
-

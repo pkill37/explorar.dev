@@ -6,11 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && depcheck --ignores '@tailwindcss/postcss,@types/node,@types/react-dom,tailwindcss'",
+    "lint": "tsc --noEmit && eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && depcheck",
     "fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix && prettier --write \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\" && npm audit fix"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "jszip": "^3.10.1",
     "monaco-editor": "^0.52.2",
     "next": "16.0.7",
     "react": "19.2.0",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jszip": "^3.4.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

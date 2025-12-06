@@ -192,7 +192,7 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
       name: 'LLVM',
       owner: 'llvm',
       repo: 'llvm-project',
-      defaultBranch: 'main',
+      defaultBranch: 'llvmorg-18.1.0',
       guides: [
         {
           id: 'llvm-guide',
@@ -211,7 +211,7 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
       name: 'GNU C Library (glibc)',
       owner: 'bminor',
       repo: 'glibc',
-      defaultBranch: 'master',
+      defaultBranch: 'glibc-2.39',
       guides: [
         {
           id: 'glibc-guide',
@@ -230,7 +230,7 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
       name: 'CPython',
       owner: 'python',
       repo: 'cpython',
-      defaultBranch: 'main',
+      defaultBranch: 'v3.12.0',
       guides: [
         {
           id: 'cpython-guide',

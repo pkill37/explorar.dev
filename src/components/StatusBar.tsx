@@ -10,6 +10,7 @@ interface StatusBarProps {
   lineCount?: number;
   fileSize?: string;
   repoLabel?: string;
+  branch?: string;
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({
@@ -20,10 +21,20 @@ const StatusBar: React.FC<StatusBarProps> = ({
   lineCount,
   fileSize,
   repoLabel,
+  branch,
 }) => {
   return (
     <div className="cursor-statusbar">
       <div className="cursor-statusbar-left">
+        {branch && (
+          <>
+            <div className="cursor-statusbar-item" title={`Branch: ${branch}`}>
+              <span className="cursor-statusbar-icon">🌿</span>
+              <span className="cursor-statusbar-text">{branch}</span>
+            </div>
+            <div className="cursor-statusbar-divider" />
+          </>
+        )}
         {filePath && (
           <>
             <div className="cursor-statusbar-item" title={filePath}>

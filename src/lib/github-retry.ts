@@ -158,23 +158,6 @@ export async function retryWithBackoff<T>(
 }
 
 /**
- * Create a retry wrapper for a function
- */
-export function withRetry<T extends (...args: unknown[]) => Promise<unknown>>(
-  fn: T,
-  options: RetryOptions = {}
-): T {
-  return ((...args: Parameters<T>) => {
-    return retryWithBackoff(() => fn(...args), options).then((result) => {
-      if (result.success && result.data !== undefined) {
-        return result.data;
-      }
-      throw result.error || new Error('Retry failed');
-    });
-  }) as T;
-}
-
-/**
  * Circuit breaker pattern for fault tolerance
  */
 export class CircuitBreaker {

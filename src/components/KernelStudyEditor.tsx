@@ -119,7 +119,7 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
 
     // Initial height calculation with a small delay to ensure DOM is ready
     const timeoutId = setTimeout(updateHeight, 100);
-    
+
     // Use ResizeObserver to track container size changes
     const resizeObserver = new ResizeObserver(updateHeight);
     if (containerRef.current) {
@@ -471,17 +471,6 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
     [markers, annotations, language, updateEditorDecorations, onCursorChange]
   );
 
-  const getFileSize = (content: string): string => {
-    const bytes = new TextEncoder().encode(content).length;
-    if (bytes < 1024) return `${bytes} bytes`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getLineCount = (content: string): number => {
-    return content ? content.split('\n').length : 0;
-  };
-
   if (isLoading && !content) {
     return (
       <div className="vscode-editor">
@@ -509,30 +498,16 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
 
   return (
     <div className="vscode-editor kernel-study-editor">
-      {/* File header with kernel study controls */}
-      <div className="vscode-editor-header">
-        <span>{language.toUpperCase()}</span>
-        <span>•</span>
-        <span>{filePath}</span>
-        {isLoading && (
-          <div
-            className="vscode-spinner"
-            style={{ width: '12px', height: '12px', marginLeft: '8px' }}
-          />
-        )}
-
-        {/* File info */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', opacity: 0.8 }}>
-            {getLineCount(content)} lines • {getFileSize(content)}
-          </span>
-        </div>
-      </div>
-
       {/* Monaco Editor with kernel study features */}
-      <div 
+      <div
         ref={containerRef}
-        style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
         <Editor
           height={editorHeight}

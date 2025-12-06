@@ -266,10 +266,7 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
           </div>
         )}
         {guideSections.length > 0 && (
-          <GuidePanel
-            sections={guideSections}
-            defaultOpenIds={['pr-overview', 'pr-summary']}
-          />
+          <GuidePanel sections={guideSections} defaultOpenIds={['pr-overview', 'pr-summary']} />
         )}
       </div>
 
@@ -296,9 +293,7 @@ export default function PullRequestLearner({ owner, repo, prNumber }: PullReques
             All Changes ({files.length} file{files.length !== 1 ? 's' : ''})
           </div>
           {isLoadingDiffs && (
-            <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>
-              Loading diffs...
-            </div>
+            <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Loading diffs...</div>
           )}
         </div>
         <div

@@ -496,30 +496,3 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
 export async function setCachedData<T>(key: string, data: T): Promise<void> {
   return setCache<T>(key, data);
 }
-
-/**
- * Get cache statistics for debugging
- */
-export function getCacheStats(): CacheStats {
-  return { ...cacheStats };
-}
-
-/**
- * Enable or disable debug mode
- */
-export function setDebugMode(enabled: boolean): void {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    if (enabled) {
-      localStorage.setItem('github_cache_debug', 'true');
-    } else {
-      localStorage.removeItem('github_cache_debug');
-    }
-  }
-}
-
-/**
- * Check if debug mode is enabled
- */
-export function isDebugMode(): boolean {
-  return DEBUG_MODE;
-}

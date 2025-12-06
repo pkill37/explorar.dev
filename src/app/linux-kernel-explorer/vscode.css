@@ -413,11 +413,11 @@
   font-weight: 600;
 }
 
-/* Progress Bar - Fixed at top like TabBar */
+/* Guide Header - Fixed at top like TabBar */
 .guide-progress-container {
   background: var(--vscode-bg-tertiary);
   border-bottom: 1px solid var(--vscode-border);
-  padding: 12px;
+  padding: 8px 12px;
   flex-shrink: 0;
   flex-grow: 0;
   z-index: 10;

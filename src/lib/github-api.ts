@@ -13,6 +13,26 @@ import {
 import { getCacheKey, getCachedData, setCachedData } from './github-cache';
 import { retryWithBackoff, githubCircuitBreaker } from './github-retry';
 import { logger } from './github-debug';
+import {
+  readFileFromStorage,
+  listDirectoryFromStorage,
+  getGitHubRepoIdentifier,
+  FileEntry,
+  isFileAvailable,
+  getDirectoryMetadata,
+  getTreeStructure,
+} from './repo-storage';
+import { downloadFileFromGitHub, downloadDirectoryContents } from './github-archive';
+
+/**
+ * Build headers for GitHub API requests
+ */
+function buildGitHubHeaders(): HeadersInit {
+  return {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'Explorar.dev',
+  };
+}
 
 type GitHubConfig = {
   owner: string;
@@ -25,74 +45,101 @@ type GitHubConfig = {
 let currentConfig: GitHubConfig = { ...GITHUB_CONFIG };
 
 /**
- * Trusted versions for each repository
- * Only these specific versions are allowed - exactly 3 per repository
+ * Trusted version for each repository
+ * Only one trusted branch per repository for now
+ * Main/master branches are excluded as they are unstable
  */
-const TRUSTED_VERSIONS: Record<string, readonly [string, string, string]> = {
-  'torvalds/linux': ['v6.1', 'v5.14', 'v4.19'] as const,
-  'llvm/llvm-project': ['main', 'release/18.x', 'release/17.x'] as const,
-  'bminor/glibc': ['master', 'release/2.39/master', 'release/2.38/master'] as const,
-  'python/cpython': ['main', '3.12', '3.11'] as const,
+const TRUSTED_VERSIONS: Record<string, string> = {
+  'torvalds/linux': 'v6.1',
+  'llvm/llvm-project': 'llvmorg-18.1.0',
+  'bminor/glibc': 'glibc-2.39',
+  'python/cpython': 'v3.12.0',
 } as const;
 
 /**
- * Get trusted versions for a repository
- * Returns the 3 trusted versions for the repo, or empty array if not configured
+ * Check if a branch/version is unstable (main or master)
+ */
+export function isUnstableBranch(branch: string): boolean {
+  return branch === 'main' || branch === 'master';
+}
+
+/**
+ * Filter out unstable branches (main/master) from a list
+ */
+export function filterUnstableBranches(branches: string[]): string[] {
+  return branches.filter((branch) => !isUnstableBranch(branch));
+}
+
+/**
+ * Get trusted version for a repository
+ * Returns the single trusted version for the repo, or empty string if not configured
+ * Main/master branches are never included
+ */
+export function getTrustedVersion(owner: string, repo: string): string {
+  const key = `${owner}/${repo}`;
+  return TRUSTED_VERSIONS[key] || '';
+}
+
+/**
+ * @deprecated Use getTrustedVersion instead. Kept for backward compatibility.
  */
 export function getTrustedVersions(owner: string, repo: string): string[] {
-  const key = `${owner}/${repo}`;
-  const versions = TRUSTED_VERSIONS[key];
-  return versions ? [...versions] : [];
+  const version = getTrustedVersion(owner, repo);
+  return version ? [version] : [];
 }
 
 /**
  * Check if a branch/version is trusted for a repository
  */
 export function isTrustedVersion(owner: string, repo: string, branch: string): boolean {
-  const trusted = getTrustedVersions(owner, repo);
-  return trusted.length > 0 ? trusted.includes(branch) : false;
+  const trusted = getTrustedVersion(owner, repo);
+  return trusted ? trusted === branch : false;
 }
 
 /**
  * Legacy constant for backward compatibility (deprecated, use getTrustedVersions instead)
- * @deprecated Use getTrustedVersions('torvalds', 'linux') instead
  */
-const TRUSTED_LEARNING_VERSIONS = getTrustedVersions('torvalds', 'linux');
-
 export function setGitHubRepo(owner: string, repo: string, branch: string = 'v6.1') {
-  // Validate branch is one of the trusted versions
-  const trusted = getTrustedVersions(owner, repo);
-  if (trusted.length > 0 && !trusted.includes(branch)) {
-    // Default to first trusted version if invalid branch is provided
-    branch = trusted[0];
+  // Validate branch is the trusted version
+  const trusted = getTrustedVersion(owner, repo);
+  if (trusted && trusted !== branch) {
+    // Default to trusted version if invalid branch is provided
+    branch = trusted;
   }
   currentConfig = { ...currentConfig, owner, repo, branch };
 }
 
 /**
  * Set GitHub repository and automatically detect default branch if 'master' or unstable branch is specified
+ * Main/master branches are never allowed - will be replaced with first trusted version
  */
 export async function setGitHubRepoWithDefaultBranch(
   owner: string,
   repo: string,
   branch: string = 'v6.1'
 ): Promise<void> {
-  const trusted = getTrustedVersions(owner, repo);
-  
-  if (trusted.length > 0) {
-    // If branch is not in trusted list, use first trusted version
-    if (!trusted.includes(branch)) {
-      currentConfig = { ...currentConfig, owner, repo, branch: trusted[0] };
+  // Never allow main/master branches - they are unstable
+  if (isUnstableBranch(branch)) {
+    const trusted = getTrustedVersion(owner, repo);
+    if (trusted) {
+      currentConfig = { ...currentConfig, owner, repo, branch: trusted };
       return;
     }
-  } else {
-    // No trusted versions configured, use provided branch or default
-    if (branch === 'master' || branch === 'main') {
-      currentConfig = { ...currentConfig, owner, repo, branch: 'v6.1' };
+    // Fallback to a safe default if no trusted version
+    currentConfig = { ...currentConfig, owner, repo, branch: 'v6.1' };
+    return;
+  }
+
+  const trusted = getTrustedVersion(owner, repo);
+
+  if (trusted) {
+    // If branch is not the trusted version, use trusted version
+    if (trusted !== branch) {
+      currentConfig = { ...currentConfig, owner, repo, branch: trusted };
       return;
     }
   }
-  
+
   currentConfig = { ...currentConfig, owner, repo, branch };
 }
 
@@ -102,6 +149,15 @@ export function getCurrentRepoLabel(): string {
 
 export function getCurrentBranch(): string {
   return currentConfig.branch;
+}
+
+/**
+ * Get repository identifier for current config
+ */
+export function getRepoIdentifier(owner?: string, repo?: string): string {
+  const ownerName = owner || currentConfig.owner;
+  const repoName = repo || currentConfig.repo;
+  return getGitHubRepoIdentifier(ownerName, repoName);
 }
 
 /**
@@ -126,24 +182,34 @@ export async function fetchDefaultBranch(owner: string, repo: string): Promise<s
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
-              // Fallback to common defaults if API fails
-              logger.warn('Failed to fetch default branch, using fallback', {
+              // Fallback to first trusted version if API fails (never use main/master)
+              logger.warn('Failed to fetch default branch, using trusted version fallback', {
                 status: response.status,
                 owner,
                 repo,
               });
-              return 'main';
+              const trusted = getTrustedVersions(owner, repo);
+              return trusted.length > 0 ? trusted[0] : 'v6.1';
             }
 
             const data = await response.json();
-            const defaultBranch = data.default_branch || 'main';
+            let defaultBranch = data.default_branch || 'v6.1';
+
+            // Never use main/master - replace with trusted version if detected
+            if (isUnstableBranch(defaultBranch)) {
+              const trusted = getTrustedVersion(owner, repo);
+              defaultBranch = trusted || 'v6.1';
+              logger.info('Replaced unstable default branch with trusted version', {
+                owner,
+                repo,
+                original: data.default_branch,
+                replacement: defaultBranch,
+              });
+            }
 
             // Cache the result
             await setCachedData(cacheKey, defaultBranch);
@@ -168,8 +234,9 @@ export async function fetchDefaultBranch(owner: string, repo: string): Promise<s
       }
 
       // Fallback on failure
-      logger.warn('Default branch fetch failed, using fallback', { owner, repo });
-      return 'main';
+      logger.warn('Default branch fetch failed, using trusted version fallback', { owner, repo });
+      const trusted = getTrustedVersion(owner, repo);
+      return trusted || 'v6.1';
     } catch (error) {
       logger.error(
         'Error fetching default branch',
@@ -227,10 +294,7 @@ export async function fetchBranches(): Promise<GitHubTag[]> {
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
@@ -327,6 +391,7 @@ export function getTrustedBranches(owner: string, repo: string): GitHubTag[] {
 
 /**
  * Filter branches to only include trusted versions
+ * Main/master branches are always excluded as they are unstable
  * @deprecated Use getTrustedBranches instead - this function is kept for backward compatibility
  */
 export function filterStableBranches(
@@ -334,18 +399,21 @@ export function filterStableBranches(
   owner?: string,
   repo?: string
 ): GitHubTag[] {
+  // Always filter out main/master branches first
+  const filtered = branches.filter((branch) => !isUnstableBranch(branch.name));
+
   if (!owner || !repo) {
-    return branches;
+    return filtered;
   }
 
   const trusted = getTrustedVersions(owner, repo);
   if (trusted.length === 0) {
-    // No trusted versions configured, return empty array
-    return [];
+    // No trusted versions configured, return filtered branches (without main/master)
+    return filtered;
   }
 
-  // Filter to only include trusted versions
-  return branches
+  // Filter to only include trusted versions (which never include main/master) and sort by trusted order
+  return filtered
     .filter((branch) => trusted.includes(branch.name))
     .sort((a, b) => {
       // Sort by trusted order (first in array is preferred)
@@ -393,10 +461,7 @@ export async function fetchKernelVersions(): Promise<GitHubTag[]> {
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
@@ -490,10 +555,7 @@ async function tryTrustedVersions(
     try {
       const testUrl = `${currentConfig.apiBase}/${owner}/${repo}/contents?ref=${encodeURIComponent(version)}`;
       const testResponse = await fetch(testUrl, {
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'Linux-Kernel-Explorer',
-        },
+        headers: buildGitHubHeaders(),
       });
 
       if (testResponse.ok) {
@@ -522,7 +584,93 @@ async function tryTrustedVersions(
 }
 
 /**
- * Fetch directory contents from GitHub API
+ * Convert FileEntry to GitHubApiResponse format
+ */
+function convertFileEntryToGitHubResponse(
+  entry: FileEntry,
+  basePath: string = ''
+): GitHubApiResponse {
+  const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+  return {
+    name: entry.name,
+    path: fullPath,
+    sha: '', // Not available in local storage
+    size: entry.size || 0,
+    url: '', // Not applicable for local storage
+    html_url: '', // Not applicable for local storage
+    git_url: '', // Not applicable for local storage
+    download_url: null, // Not applicable for local storage
+    type: entry.type === 'directory' ? 'dir' : 'file',
+    content: undefined, // Will be loaded separately if needed
+    encoding: undefined,
+  };
+}
+
+/**
+ * Try to fetch directory contents from local storage first, fallback to GitHub API
+ */
+async function tryFetchFromStorage(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<GitHubApiResponse[] | null> {
+  try {
+    const identifier = getGitHubRepoIdentifier(owner, repo);
+
+    // Check if directory metadata exists in local storage
+    const metadata = await getDirectoryMetadata('github', identifier, branch, path);
+    if (metadata) {
+      // Convert to GitHub API format
+      return metadata.map((entry) => convertFileEntryToGitHubResponse(entry, path));
+    }
+
+    // Fallback: try listing from actual files (for backward compatibility)
+    const entries = await listDirectoryFromStorage('github', identifier, branch, path);
+    if (entries.length > 0) {
+      return entries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
+    }
+
+    return null; // Not available locally
+  } catch (error) {
+    logger.debug('Failed to fetch from local storage, will try GitHub API', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null; // Fall back to GitHub API
+  }
+}
+
+/**
+ * Try to fetch file content from local storage first, fallback to GitHub API
+ */
+async function tryFetchFileFromStorage(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<string | null> {
+  try {
+    const identifier = getGitHubRepoIdentifier(owner, repo);
+
+    // Check if file exists in storage
+    const exists = await isFileAvailable('github', identifier, branch, path);
+    if (!exists) {
+      return null; // Not available locally
+    }
+
+    // Fetch from local storage
+    return await readFileFromStorage('github', identifier, branch, path);
+  } catch (error) {
+    logger.debug('Failed to fetch file from local storage, will try GitHub API', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null; // Fall back to GitHub API
+  }
+}
+
+/**
+ * Fetch directory contents from local storage first, then GitHub API as fallback
  */
 export async function fetchDirectoryContents(path: string = ''): Promise<GitHubApiResponse[]> {
   return logger.measure('fetchDirectoryContents', async () => {
@@ -536,17 +684,68 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
       throw error;
     }
 
-    // Validate branch is one of the trusted versions
-    const trusted = getTrustedVersions(currentConfig.owner, currentConfig.repo);
-    if (trusted.length > 0 && !trusted.includes(currentConfig.branch)) {
+    // Validate branch is the trusted version
+    const trusted = getTrustedVersion(currentConfig.owner, currentConfig.repo);
+    if (trusted && trusted !== currentConfig.branch) {
       const error = new GitHubApiError(
-        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted versions are allowed: ${trusted.join(', ')}`,
+        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted version is allowed: ${trusted}`,
         400
       );
       logger.error('Invalid branch for repository', error);
       throw error;
     }
 
+    // Try local storage first
+    const storageResult = await tryFetchFromStorage(
+      currentConfig.owner,
+      currentConfig.repo,
+      currentConfig.branch,
+      path
+    );
+    if (storageResult) {
+      logger.debug('Directory contents fetched from local storage', {
+        path,
+        owner: currentConfig.owner,
+        repo: currentConfig.repo,
+        count: storageResult.length,
+      });
+      return storageResult;
+    }
+
+    // If not in local storage, try on-demand download
+    const identifier = getGitHubRepoIdentifier(currentConfig.owner, currentConfig.repo);
+    const metadata = await getDirectoryMetadata('github', identifier, currentConfig.branch, path);
+    if (!metadata) {
+      // Directory metadata doesn't exist - download it on-demand
+      logger.info('Directory metadata not available, downloading on-demand', {
+        path,
+        owner: currentConfig.owner,
+        repo: currentConfig.repo,
+      });
+      try {
+        const entries = await downloadDirectoryContents(
+          currentConfig.owner,
+          currentConfig.repo,
+          currentConfig.branch,
+          path
+        );
+        // Convert to GitHub API format
+        const result = entries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
+        logger.info('Directory downloaded on-demand successfully', {
+          path,
+          count: result.length,
+        });
+        return result;
+      } catch (error) {
+        logger.warn('Failed to download directory on-demand, falling back to API', {
+          path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Fall through to API fetch below
+      }
+    }
+
+    // If not in local storage, try cache
     const cacheKey = getCacheKey(
       currentConfig.owner,
       currentConfig.repo,
@@ -555,7 +754,6 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
       'directory'
     );
 
-    // Try cache first
     const cached = await getCachedData<GitHubApiResponse[]>(cacheKey);
     if (cached) {
       logger.debug('Directory contents cache hit', {
@@ -590,10 +788,7 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
@@ -763,7 +958,7 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
 }
 
 /**
- * Fetch file content from GitHub API
+ * Fetch file content from local storage first, then GitHub API as fallback
  */
 export async function fetchFileContent(path: string): Promise<string> {
   return logger.measure('fetchFileContent', async () => {
@@ -783,17 +978,67 @@ export async function fetchFileContent(path: string): Promise<string> {
       throw error;
     }
 
-    // Validate branch is one of the trusted versions
-    const trusted = getTrustedVersions(currentConfig.owner, currentConfig.repo);
-    if (trusted.length > 0 && !trusted.includes(currentConfig.branch)) {
+    // Validate branch is the trusted version
+    const trusted = getTrustedVersion(currentConfig.owner, currentConfig.repo);
+    if (trusted && trusted !== currentConfig.branch) {
       const error = new GitHubApiError(
-        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted versions are allowed: ${trusted.join(', ')}`,
+        `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted version is allowed: ${trusted}`,
         400
       );
       logger.error('Invalid branch for repository', error);
       throw error;
     }
 
+    // Try local storage first
+    const storageResult = await tryFetchFileFromStorage(
+      currentConfig.owner,
+      currentConfig.repo,
+      currentConfig.branch,
+      path
+    );
+    if (storageResult) {
+      logger.debug('File content fetched from local storage', {
+        path,
+        owner: currentConfig.owner,
+        repo: currentConfig.repo,
+        size: storageResult.length,
+      });
+      return storageResult;
+    }
+
+    // Check if file is available in storage - if not, download on-demand
+    const identifier = getGitHubRepoIdentifier(currentConfig.owner, currentConfig.repo);
+    const fileAvailable = await isFileAvailable('github', identifier, currentConfig.branch, path);
+
+    if (!fileAvailable) {
+      // File is not downloaded - download it on-demand (lazy loading)
+      logger.info('File not available locally, downloading on-demand', {
+        path,
+        owner: currentConfig.owner,
+        repo: currentConfig.repo,
+      });
+      try {
+        const content = await downloadFileFromGitHub(
+          currentConfig.owner,
+          currentConfig.repo,
+          currentConfig.branch,
+          path
+        );
+        logger.info('File downloaded on-demand successfully', {
+          path,
+          size: content.length,
+        });
+        return content;
+      } catch (error) {
+        logger.warn('Failed to download file on-demand, falling back to API', {
+          path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Fall through to API fetch below
+      }
+    }
+
+    // If not in local storage, try cache
     const cacheKey = getCacheKey(
       currentConfig.owner,
       currentConfig.repo,
@@ -802,7 +1047,6 @@ export async function fetchFileContent(path: string): Promise<string> {
       'file'
     );
 
-    // Try cache first
     const cached = await getCachedData<string>(cacheKey);
     if (cached) {
       logger.debug('File content cache hit', {
@@ -837,10 +1081,7 @@ export async function fetchFileContent(path: string): Promise<string> {
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
@@ -1062,18 +1303,95 @@ export function convertToFileNode(item: GitHubApiResponse): FileNode {
 }
 
 /**
- * Build file tree from GitHub directory contents
+ * Sort FileNode array: directories first (with folder icons), then files (with file icons), both alphabetically
  */
-export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
-  try {
-    const contents = await fetchDirectoryContents(path);
-    return contents.map(convertToFileNode).sort((a, b) => {
-      // Directories first, then files, both alphabetically
+export function sortFileNodes(nodes: FileNode[]): FileNode[] {
+  return nodes
+    .sort((a, b) => {
+      // Directories (trees) first, then files (blobs), both alphabetically
       if (a.type === b.type) {
         return a.name.localeCompare(b.name);
       }
       return a.type === 'directory' ? -1 : 1;
+    })
+    .map((node) => {
+      // Recursively sort children if they exist
+      if (node.children) {
+        return { ...node, children: sortFileNodes(node.children) };
+      }
+      return node;
     });
+}
+
+/**
+ * Extract subtree from complete tree structure for a given path
+ */
+function extractSubtree(tree: FileNode[], path: string): FileNode[] {
+  if (!path) {
+    return tree;
+  }
+
+  const pathParts = path.split('/').filter(Boolean);
+  let currentNodes = tree;
+
+  for (const part of pathParts) {
+    const node = currentNodes.find((n) => n.name === part && n.type === 'directory');
+    if (!node || !node.children) {
+      return [];
+    }
+    currentNodes = node.children;
+  }
+
+  return currentNodes;
+}
+
+/**
+ * Update isLoaded status for files in tree based on availability
+ */
+async function updateFileLoadedStatus(
+  nodes: FileNode[],
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<void> {
+  const identifier = getGitHubRepoIdentifier(owner, repo);
+
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      node.isLoaded = await isFileAvailable('github', identifier, branch, node.path);
+    } else if (node.children) {
+      await updateFileLoadedStatus(node.children, owner, repo, branch);
+    }
+  }
+}
+
+/**
+ * Build file tree from stored tree structure or fallback to API
+ */
+export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
+  try {
+    const { owner, repo, branch } = currentConfig;
+    const identifier = getGitHubRepoIdentifier(owner, repo);
+
+    // First, try to get complete tree structure from storage
+    const completeTree = await getTreeStructure('github', identifier, branch);
+
+    if (completeTree && completeTree.length > 0) {
+      // Extract subtree for requested path
+      let subtree = extractSubtree(completeTree, path);
+
+      // Update isLoaded status for files based on availability
+      // We need to update the entire tree, not just the subtree
+      // So we'll update the complete tree and then extract
+      await updateFileLoadedStatus(completeTree, owner, repo, branch);
+      subtree = extractSubtree(completeTree, path);
+
+      return subtree;
+    }
+
+    // Fallback to API-based approach (backward compatibility)
+    const contents = await fetchDirectoryContents(path);
+    return contents.map(convertToFileNode);
   } catch (error) {
     console.error(`Failed to build file tree for path: ${path}`, error);
     return [];
@@ -1139,10 +1457,7 @@ export async function fetchPullRequest(
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {
@@ -1229,10 +1544,7 @@ export async function fetchPullRequestFiles(
         return retryWithBackoff(
           async () => {
             const response = await fetch(url, {
-              headers: {
-                Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'Explorar.dev',
-              },
+              headers: buildGitHubHeaders(),
             });
 
             if (!response.ok) {

@@ -118,6 +118,43 @@ export interface DiffLine {
   content: string;
 }
 
+// File System Access API types (for browser compatibility)
+declare global {
+  interface Window {
+    showDirectoryPicker?: (options?: {
+      mode?: 'read' | 'readwrite';
+      startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
+    }) => Promise<FileSystemDirectoryHandle>;
+  }
+
+  interface FileSystemHandle {
+    readonly kind: 'file' | 'directory';
+    readonly name: string;
+  }
+
+  interface FileSystemFileHandle extends FileSystemHandle {
+    readonly kind: 'file';
+    getFile(): Promise<File>;
+    createWritable(): Promise<FileSystemWritableFileStream>;
+  }
+
+  interface FileSystemDirectoryHandle extends FileSystemHandle {
+    readonly kind: 'directory';
+    entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    getDirectoryHandle(
+      name: string,
+      options?: { create?: boolean }
+    ): Promise<FileSystemDirectoryHandle>;
+    getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
+    removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
+  }
+
+  interface FileSystemWritableFileStream extends WritableStream {
+    write(data: string | BufferSource | Blob): Promise<void>;
+    close(): Promise<void>;
+  }
+}
+
 // GitHub API constants
 export const GITHUB_CONFIG = {
   owner: 'torvalds',

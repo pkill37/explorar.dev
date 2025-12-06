@@ -8,8 +8,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-mono), 'Courier New', Courier, monospace;
+  --font-mono: var(--font-geist-mono), 'Courier New', Courier, monospace;
+  --font-family-sans: var(--font-geist-mono), 'Courier New', Courier, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,8 +20,203 @@
   }
 }
 
+* {
+  font-family: var(--font-geist-mono), 'Courier New', Courier, monospace;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-mono), 'Courier New', Courier, monospace;
+}
+
+/* Smooth animations */
+@keyframes slide-in-from-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: slide-in-from-top 0.3s ease-out;
+}
+
+.slide-in-from-top-2 {
+  animation: slide-in-from-top 0.3s ease-out;
+}
+
+/* Animated code/circuit board background */
+@keyframes grid-move {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(20px, 20px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes flow {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(100vw);
+    opacity: 0;
+  }
+}
+
+.code-background {
+  position: relative;
+  overflow: hidden;
+}
+
+.code-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(rgba(156, 163, 175, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(156, 163, 175, 0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 1;
+  animation: grid-move 20s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.code-background::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(156, 163, 175, 0.05) 2px,
+      rgba(156, 163, 175, 0.05) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(156, 163, 175, 0.05) 2px,
+      rgba(156, 163, 175, 0.05) 4px
+    );
+  background-size:
+    80px 80px,
+    80px 80px;
+  opacity: 1;
+  animation: pulse-glow 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Circuit board traces effect */
+.circuit-traces {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.circuit-trace {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(59, 130, 246, 0.3),
+    rgba(147, 197, 253, 0.5),
+    rgba(59, 130, 246, 0.3),
+    transparent
+  );
+  box-shadow:
+    0 0 8px rgba(59, 130, 246, 0.4),
+    0 0 16px rgba(59, 130, 246, 0.2);
+  opacity: 1;
+  animation: flow 8s linear infinite;
+  z-index: 1;
+}
+
+.circuit-trace:nth-child(1) {
+  top: 20%;
+  width: 200px;
+  animation-delay: 0s;
+}
+
+.circuit-trace:nth-child(2) {
+  top: 40%;
+  width: 150px;
+  animation-delay: 2s;
+}
+
+.circuit-trace:nth-child(3) {
+  top: 60%;
+  width: 180px;
+  animation-delay: 4s;
+}
+
+.circuit-trace:nth-child(4) {
+  top: 80%;
+  width: 120px;
+  animation-delay: 6s;
+}
+
+.circuit-trace:nth-child(5) {
+  top: 30%;
+  width: 160px;
+  animation-delay: 1s;
+}
+
+.circuit-trace:nth-child(6) {
+  top: 70%;
+  width: 140px;
+  animation-delay: 3s;
+}
+
+.circuit-trace:nth-child(7) {
+  top: 15%;
+  width: 220px;
+  animation-delay: 1.5s;
+}
+
+.circuit-trace:nth-child(8) {
+  top: 85%;
+  width: 190px;
+  animation-delay: 4.5s;
 }

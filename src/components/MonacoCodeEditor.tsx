@@ -110,7 +110,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
     // Initial height calculation with a small delay to ensure DOM is ready
     const timeoutId = setTimeout(updateHeight, 100);
-    
+
     // Use ResizeObserver to track container size changes
     const resizeObserver = new ResizeObserver(updateHeight);
     if (containerRef.current) {
@@ -469,9 +469,15 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   return (
     <div className="vscode-editor">
       {/* Monaco Editor */}
-      <div 
+      <div
         ref={containerRef}
-        style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
         <Editor
           height={editorHeight}

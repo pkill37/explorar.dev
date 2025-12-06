@@ -1,10 +1,10 @@
 'use client';
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
 import CodeEditorContainer from '@/components/CodeEditorContainer';
 import GuidePanel from '@/components/GuidePanel';
-import ChapterQuiz, { QuizQuestion } from '@/components/ChapterQuiz';
 import DataStructuresView from '@/components/DataStructuresView';
 import ActivityBar from '@/components/ActivityBar';
 import StatusBar from '@/components/StatusBar';
@@ -14,9 +14,8 @@ import {
   buildFileTree,
   fetchFileContent,
   getCurrentRepoLabel,
-  getCurrentBranch,
   setGitHubRepoWithDefaultBranch,
-  getTrustedVersions,
+  getRepoIdentifier,
 } from '@/lib/github-api';
 import { getAllSuggestionsForFile, getFundamentalConcepts } from '@/lib/kernel-suggestions';
 import { useProjectProgress } from '@/hooks/useProjectProgress';
@@ -26,6 +25,14 @@ import { createLLVMGuide } from '@/lib/guides/llvm';
 import { createGlibcGuide } from '@/lib/guides/glibc';
 import { createCPythonGuide } from '@/lib/guides/cpython';
 import LoadingScreen from '@/components/LoadingScreen';
+import { useRepository } from '@/contexts/RepositoryContext';
+import {
+  repositoryExists,
+  getGitHubRepoIdentifier,
+  getDirectoryMetadata,
+  hasTreeStructure,
+} from '@/lib/repo-storage';
+import { downloadDirectoryContents } from '@/lib/github-archive';
 import '@/app/linux-kernel-explorer/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -53,131 +60,13 @@ const loadFromLocalStorage = (key: string, defaultValue: unknown): unknown => {
   return defaultValue;
 };
 
-// Helper component to render file recommendations with distinction between docs and source
-const FileRecommendations = ({
-  docs,
-  source,
-  onFileClick,
-}: {
-  docs: Array<{ path: string; description?: string }>;
-  source: Array<{ path: string; description?: string }>;
-  onFileClick: (path: string) => void;
-}) => (
-  <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-    {docs.length > 0 && (
-      <div style={{ marginBottom: '12px' }}>
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--vscode-textLink-foreground)',
-            marginBottom: '8px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-          }}
-        >
-          📚 Documentation
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {docs.map((file) => (
-            <button
-              key={file.path}
-              onClick={() => onFileClick(file.path)}
-              style={{
-                textAlign: 'left',
-                padding: '6px 10px',
-                fontSize: '12px',
-                background: 'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.1))',
-                border: '1px solid var(--vscode-textBlockQuote-border, rgba(100, 150, 200, 0.2))',
-                borderRadius: '4px',
-                color: 'var(--vscode-textLink-foreground, #4a9eff)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background =
-                  'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.2))';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background =
-                  'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.1))';
-              }}
-            >
-              <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{file.path}</div>
-              {file.description && (
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: 'var(--vscode-descriptionForeground, #999)',
-                    marginTop: '2px',
-                  }}
-                >
-                  {file.description}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-    {source.length > 0 && (
-      <div>
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
-            marginBottom: '8px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-          }}
-        >
-          💻 Source Code
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {source.map((file) => (
-            <button
-              key={file.path}
-              onClick={() => onFileClick(file.path)}
-              style={{
-                textAlign: 'left',
-                padding: '6px 10px',
-                fontSize: '12px',
-                background: 'var(--vscode-editor-background, #1e1e1e)',
-                border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                borderRadius: '4px',
-                color: 'var(--vscode-foreground, #d4d4d4)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--vscode-list-hoverBackground, #2a2d2e)';
-                e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--vscode-editor-background, #1e1e1e)';
-                e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
-              }}
-            >
-              <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{file.path}</div>
-              {file.description && (
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: 'var(--vscode-descriptionForeground, #999)',
-                    marginTop: '2px',
-                  }}
-                >
-                  {file.description}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-  </div>
-);
+// Helper function to get repository-scoped localStorage key
+const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): string => {
+  if (!repoIdentifier) {
+    return baseKey; // Fallback to non-scoped key if no repository
+  }
+  return `${baseKey}-${repoIdentifier}`;
+};
 
 interface KernelExplorerProps {
   owner?: string;
@@ -186,7 +75,17 @@ interface KernelExplorerProps {
 }
 
 export default function KernelExplorer({ owner, repo, branch }: KernelExplorerProps) {
+  const router = useRouter();
   const githubUrlRef = useRef<HTMLInputElement>(null);
+  const {
+    setRepository,
+    switchBranch,
+    currentBranch,
+    isLoading: repoLoading,
+    error: repoError,
+    downloadProgress,
+    identifier: repoIdentifier,
+  } = useRepository();
 
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -198,7 +97,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   // Initialize with consistent values for SSR (will be updated after hydration)
   const [suggestions, setSuggestions] = useState<KernelSuggestion[]>([]);
   const [repoLabel, setRepoLabel] = useState<string>('torvalds/linux');
-  const [treeRefreshKey] = useState<string>('init');
 
   // Kernel version state - use v6.1 for Linux kernel, otherwise use provided branch
   const [selectedVersion, setSelectedVersion] = useState<string>(() => {
@@ -231,7 +129,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'];
   }, [projectConfig]);
 
-  const { progress, markQuizComplete, getChapterProgress, resetProgress } = useProjectProgress(
+  const { progress, markQuizComplete, getChapterProgress } = useProjectProgress(
     projectId,
     chapterIds
   );
@@ -266,6 +164,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
   // Initial loading state
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  // Tree structure readiness state
+  const [isTreeStructureReady, setIsTreeStructureReady] = useState<boolean>(false);
+  // Refs for cleanup
+  const treeCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const treeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if mobile on mount and resize
   // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
@@ -326,55 +229,118 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return () => clearTimeout(timer);
   }, []);
 
-  // Initialize repository from URL params or localStorage
+  // Check repository setup and tree structure readiness
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Use setTimeout to avoid synchronous setState in effect
-    setTimeout(() => {
-      // Priority: URL params > localStorage
-      if (owner && repo) {
-        // Initialize from URL params - auto-detect default branch if not specified
-        const defaultBranch = owner === 'torvalds' && repo === 'linux' ? 'v6.1' : (branch || 'v6.1');
-        setGitHubRepoWithDefaultBranch(owner, repo, branch || defaultBranch).then(() => {
-          setRepoLabel(`${owner}/${repo}`);
-          const actualBranch = getCurrentBranch();
-          setSelectedVersion(branch || actualBranch || defaultBranch);
-        });
-
-        // Save to localStorage for persistence
-        const githubUrl = `github.com/${owner}/${repo}`;
-        localStorage.setItem('kernel-explorer-github-url', githubUrl);
-        if (branch) {
-          localStorage.setItem('kernel-explorer-selected-version', branch);
-        }
-      } else {
-        // Fallback to localStorage (for backward compatibility)
-        const savedGitHubUrl = loadFromLocalStorage('kernel-explorer-github-url', '') as string;
-        const savedVersion = loadFromLocalStorage(
-          'kernel-explorer-selected-version',
-          'v6.1'
-        ) as string;
-
-        if (savedGitHubUrl) {
-          const urlMatch = savedGitHubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-          if (urlMatch) {
-            const [, savedOwner, savedRepo] = urlMatch;
-            // Validate saved version against trusted versions
-            const trusted = getTrustedVersions(savedOwner, savedRepo);
-            const validVersion = trusted.length > 0 && savedVersion && trusted.includes(savedVersion)
-              ? savedVersion
-              : (trusted.length > 0 ? trusted[0] : savedVersion || 'v6.1');
-            setGitHubRepoWithDefaultBranch(savedOwner, savedRepo, validVersion).then(() => {
-              setRepoLabel(`${savedOwner}/${savedRepo}`);
-              const actualBranch = getCurrentBranch();
-              setSelectedVersion(actualBranch || validVersion);
-            });
-          }
-        }
+    const checkRepositorySetup = async () => {
+      if (!owner || !repo) {
+        // No repository specified in URL, redirect to main page
+        router.push('/');
+        return;
       }
-    }, 0);
-  }, [owner, repo, branch]);
+
+      try {
+        // Check if repository exists locally
+        const identifier = getRepoIdentifier(owner, repo);
+        const exists = await repositoryExists('github', identifier);
+
+        if (!exists) {
+          // Repository not found locally, redirect to main page
+          router.push('/');
+          return;
+        }
+
+        // Repository exists, set it in context
+        await setRepository('github', identifier, `${owner}/${repo}`);
+
+        // Set GitHub API config for backward compatibility
+        const defaultBranch = owner === 'torvalds' && repo === 'linux' ? 'v6.1' : branch || 'v6.1';
+        await setGitHubRepoWithDefaultBranch(owner, repo, branch || defaultBranch);
+        setRepoLabel(`${owner}/${repo}`);
+
+        // Switch to requested branch if specified and different from current
+        let branchToUse = defaultBranch;
+        if (branch && branch !== currentBranch) {
+          try {
+            await switchBranch(branch);
+            setSelectedVersion(branch);
+            branchToUse = branch;
+          } catch (error) {
+            console.warn('Failed to switch to requested branch:', error);
+            // Use current branch instead
+            branchToUse = currentBranch || defaultBranch;
+            setSelectedVersion(branchToUse);
+          }
+        } else {
+          branchToUse = currentBranch || defaultBranch;
+          setSelectedVersion(branchToUse);
+        }
+
+        // Check if tree structure exists for the current branch
+        const treeExists = await hasTreeStructure('github', identifier, branchToUse);
+        setIsTreeStructureReady(treeExists);
+
+        // If tree structure doesn't exist, wait for download to complete
+        if (!treeExists) {
+          // Clear any existing intervals
+          if (treeCheckIntervalRef.current) {
+            clearInterval(treeCheckIntervalRef.current);
+            treeCheckIntervalRef.current = null;
+          }
+          if (treeCheckTimeoutRef.current) {
+            clearTimeout(treeCheckTimeoutRef.current);
+            treeCheckTimeoutRef.current = null;
+          }
+
+          // Poll for tree structure to become available (download is in progress)
+          treeCheckIntervalRef.current = setInterval(async () => {
+            const treeReady = await hasTreeStructure('github', identifier, branchToUse);
+            if (treeReady) {
+              setIsTreeStructureReady(true);
+              if (treeCheckIntervalRef.current) {
+                clearInterval(treeCheckIntervalRef.current);
+                treeCheckIntervalRef.current = null;
+              }
+              if (treeCheckTimeoutRef.current) {
+                clearTimeout(treeCheckTimeoutRef.current);
+                treeCheckTimeoutRef.current = null;
+              }
+            }
+          }, 500); // Check every 500ms
+
+          // Cleanup interval after 5 minutes (timeout)
+          treeCheckTimeoutRef.current = setTimeout(
+            () => {
+              if (treeCheckIntervalRef.current) {
+                clearInterval(treeCheckIntervalRef.current);
+                treeCheckIntervalRef.current = null;
+              }
+            },
+            5 * 60 * 1000
+          );
+        }
+      } catch (error) {
+        console.error('Failed to setup repository:', error);
+        // Redirect to setup on error
+        router.push('/setup');
+      }
+    };
+
+    checkRepositorySetup();
+
+    // Cleanup function - runs when component unmounts or dependencies change
+    return () => {
+      if (treeCheckIntervalRef.current) {
+        clearInterval(treeCheckIntervalRef.current);
+        treeCheckIntervalRef.current = null;
+      }
+      if (treeCheckTimeoutRef.current) {
+        clearTimeout(treeCheckTimeoutRef.current);
+        treeCheckTimeoutRef.current = null;
+      }
+    };
+  }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch]);
 
   // Load saved state after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -386,16 +352,9 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     }, 0);
 
     if (typeof window !== 'undefined') {
-      // Restore panel widths
+      // Restore panel widths (these are global, not repository-specific)
       const savedSidebarWidth = localStorage.getItem('kernel-explorer-sidebar-width');
       const savedRightPanelWidth = localStorage.getItem('kernel-explorer-right-panel-width');
-
-      // Restore tabs and active tab
-      const savedTabs = loadFromLocalStorage('kernel-explorer-tabs', []) as EditorTab[];
-      const savedActiveTabId = loadFromLocalStorage('kernel-explorer-active-tab', null) as
-        | string
-        | null;
-      const savedSelectedFile = loadFromLocalStorage('kernel-explorer-selected-file', '') as string;
 
       // Use setTimeout to avoid synchronous setState in effect
       setTimeout(() => {
@@ -404,15 +363,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         }
         if (savedRightPanelWidth) {
           setRightPanelWidth(parseInt(savedRightPanelWidth, 10));
-        }
-        if (savedTabs.length > 0) {
-          setTabs(savedTabs);
-        }
-        if (savedActiveTabId) {
-          setActiveTabId(savedActiveTabId);
-        }
-        if (savedSelectedFile) {
-          setSelectedFile(savedSelectedFile);
         }
         if (githubUrlRef.current) {
           const savedGitHubUrl = loadFromLocalStorage('kernel-explorer-github-url', '') as string;
@@ -423,6 +373,50 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       }, 0);
     }
   }, []);
+
+  // Load repository-specific tabs when repository changes
+  useEffect(() => {
+    if (!isHydrated || !repoIdentifier) {
+      // Clear tabs if no repository is set
+      if (!repoIdentifier) {
+        // Use setTimeout to avoid synchronous setState in effect
+        setTimeout(() => {
+          setTabs([]);
+          setActiveTabId(null);
+          setSelectedFile('');
+        }, 0);
+      }
+      return;
+    }
+
+    // Load tabs for this specific repository
+    const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
+    const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
+    const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+
+    const savedTabs = loadFromLocalStorage(tabsKey, []) as EditorTab[];
+    const savedActiveTabId = loadFromLocalStorage(activeTabKey, null) as string | null;
+    const savedSelectedFile = loadFromLocalStorage(selectedFileKey, '') as string;
+
+    // Use setTimeout to avoid synchronous setState in effect
+    setTimeout(() => {
+      if (savedTabs.length > 0) {
+        setTabs(savedTabs);
+      } else {
+        setTabs([]);
+      }
+      if (savedActiveTabId) {
+        setActiveTabId(savedActiveTabId);
+      } else {
+        setActiveTabId(null);
+      }
+      if (savedSelectedFile) {
+        setSelectedFile(savedSelectedFile);
+      } else {
+        setSelectedFile('');
+      }
+    }, 0);
+  }, [repoIdentifier, isHydrated]);
 
   // Save state to localStorage (only after hydration)
   useEffect(() => {
@@ -438,28 +432,35 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   }, [rightPanelWidth, isHydrated]);
 
   useEffect(() => {
-    if (isHydrated) {
-      saveToLocalStorage('kernel-explorer-tabs', tabs);
+    if (isHydrated && repoIdentifier) {
+      const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
+      saveToLocalStorage(tabsKey, tabs);
     }
-  }, [tabs, isHydrated]);
+  }, [tabs, isHydrated, repoIdentifier]);
 
   useEffect(() => {
-    if (isHydrated) {
-      saveToLocalStorage('kernel-explorer-active-tab', activeTabId);
+    if (isHydrated && repoIdentifier) {
+      const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
+      saveToLocalStorage(activeTabKey, activeTabId);
     }
-  }, [activeTabId, isHydrated]);
+  }, [activeTabId, isHydrated, repoIdentifier]);
 
   useEffect(() => {
-    if (isHydrated) {
-      saveToLocalStorage('kernel-explorer-selected-file', selectedFile);
+    if (isHydrated && repoIdentifier) {
+      const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+      saveToLocalStorage(selectedFileKey, selectedFile);
     }
-  }, [selectedFile, isHydrated]);
+  }, [selectedFile, isHydrated, repoIdentifier]);
 
   useEffect(() => {
-    if (isHydrated) {
-      saveToLocalStorage('kernel-explorer-selected-version', selectedVersion);
+    if (isHydrated && repoIdentifier) {
+      const selectedVersionKey = getRepoScopedKey(
+        'kernel-explorer-selected-version',
+        repoIdentifier
+      );
+      saveToLocalStorage(selectedVersionKey, selectedVersion);
     }
-  }, [selectedVersion, isHydrated]);
+  }, [selectedVersion, isHydrated, repoIdentifier]);
 
   // Resize handlers
   const handleMouseDown = useCallback((panel: 'sidebar' | 'rightPanel') => {
@@ -522,13 +523,60 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         normalizedPath = `${normalizedPath}/index.rst`;
         // Continue to open the file instead of expanding directory
       } else if (filePath.endsWith('/')) {
-        // For other directories, expand in explorer
+        // For other directories, check if downloaded and download if needed, then expand
         if (activeSidebarTab !== 'explorer') {
           setActiveSidebarTab('explorer');
         }
         setSelectedFile(normalizedPath);
-        setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
+
+        // Check if directory metadata exists, download if needed
+        const handleDirectoryExpand = async () => {
+          try {
+            const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
+            const branchToUse = currentBranch || branch || 'v6.1';
+
+            // Check if directory metadata exists
+            const metadata = await getDirectoryMetadata(
+              'github',
+              identifier,
+              branchToUse,
+              normalizedPath
+            );
+
+            // If metadata doesn't exist, download the directory contents first
+            if (!metadata || metadata.length === 0) {
+              await downloadDirectoryContents(
+                owner || 'torvalds',
+                repo || 'linux',
+                branchToUse,
+                normalizedPath
+              );
+            }
+
+            // Now expand the directory
+            setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
+          } catch (error) {
+            console.error('Failed to download directory:', error);
+            // Still try to expand even if download fails (might work from cache)
+            setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
+          }
+        };
+
+        handleDirectoryExpand();
         return;
+      }
+
+      // For files: expand all parent directories recursively to make the file visible
+      if (activeSidebarTab !== 'explorer') {
+        setActiveSidebarTab('explorer');
+      }
+
+      // Extract the parent directory path from the file path
+      const pathParts = normalizedPath.split('/');
+      if (pathParts.length > 1) {
+        // File is in a subdirectory - expand the parent directory
+        const parentDirPath = pathParts.slice(0, -1).join('/');
+        setDirectoryExpandRequest({ path: parentDirPath, id: Date.now() });
       }
 
       setSelectedFile(normalizedPath);
@@ -558,7 +606,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, activeSidebarTab]
+    [tabs, activeSidebarTab, owner, repo, currentBranch, branch]
   );
 
   const onTabSelect = (tabId: string) => {
@@ -635,6 +683,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     [activeTab]
   );
 
+  // Track if we're currently refreshing to prevent loops
+
   // Guide content - dynamically loaded based on project
   const guideSections = useMemo(() => {
     if (!projectConfig) {
@@ -657,790 +707,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
   }, [projectConfig, owner, repo, openFileInTab, markQuizComplete, getChapterProgress]);
 
-  // Legacy guide content (kept for reference but not used)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _legacyGuideSections = useMemo(() => {
-    // Chapter 1 Questions
-    const ch1Questions: QuizQuestion[] = [
-      {
-        id: 'ch1-q1',
-        question: 'What is the fundamental difference between the kernel and a process?',
-        options: [
-          'The kernel is a special process with elevated privileges',
-          "The kernel is not a process—it's the system itself that serves processes",
-          'The kernel is just a library that processes link against',
-          'There is no difference; they are the same thing',
-        ],
-        correctAnswer: 1,
-        explanation:
-          "The kernel is not a process—it's the always-present system authority that bridges hardware and software, orchestrating all processes.",
-      },
-      {
-        id: 'ch1-q2',
-        question: "What is the kernel's primary responsibility?",
-        options: [
-          'To manage its own resources efficiently',
-          'To support and serve user processes',
-          'To optimize hardware performance',
-          'To provide a graphical interface',
-        ],
-        correctAnswer: 1,
-        explanation:
-          "The kernel's primary role is to support user processes, ensuring their smooth execution rather than managing resources for its own benefit.",
-      },
-    ];
-
-    // Chapter 2 Questions
-    const ch2Questions: QuizQuestion[] = [
-      {
-        id: 'ch2-q1',
-        question: "What is the Linux kernel's architectural model?",
-        options: [
-          'Microkernel with separate processes',
-          'Monolithic in structure but coordinated in behavior',
-          'Hybrid kernel with user-space drivers',
-          'Exokernel with direct hardware access',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'The Linux kernel is monolithic in structure but operates as a coordinated system where subsystems follow shared rules for timing, context, and concurrency.',
-      },
-      {
-        id: 'ch2-q2',
-        question: 'How does the kernel ensure safe concurrency?',
-        options: [
-          'By using only single-threaded code',
-          'Through stateless, context-aware code with fine-grained locking',
-          'By preventing all concurrent access',
-          'By using only user-space synchronization',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'The kernel ensures safe concurrency through stateless, context-aware code that operates on private data for each thread or process, using mechanisms like indirection, fine-grained locking, and RCU.',
-      },
-    ];
-
-    // Chapter 3 Questions
-    const ch3Questions: QuizQuestion[] = [
-      {
-        id: 'ch3-q1',
-        question: 'How does the kernel view memory?',
-        options: [
-          'As a simple flat address space',
-          'As a responsibility allocated based on subsystem needs',
-          'As a fixed-size pool',
-          'As user-space memory only',
-        ],
-        correctAnswer: 1,
-        explanation:
-          "The kernel doesn't view memory as a simple map, but as a responsibility, allocating it based on the specific needs and behaviors of each subsystem.",
-      },
-      {
-        id: 'ch3-q2',
-        question: 'What does the kernel enforce beyond code execution?',
-        options: [
-          'Only memory access',
-          'Strict control over actions based on permissions, namespaces, capabilities, and execution context',
-          'Only file system access',
-          'Only network access',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'The Linux kernel enforces strict control over actions based on permissions, namespaces, capabilities, and execution context to ensure processes operate within defined boundaries.',
-      },
-    ];
-
-    // Chapter 4 Questions
-    const ch4Questions: QuizQuestion[] = [
-      {
-        id: 'ch4-q1',
-        question: 'What marks the transition from hardware setup to a functioning kernel?',
-        options: ['The bootloader', 'The start_kernel() function', 'The init process', 'The shell'],
-        correctAnswer: 1,
-        explanation:
-          'The transition from hardware setup to a fully functioning Linux kernel is marked by the start_kernel() function, which bridges architecture-specific setup and the architecture-neutral kernel core.',
-      },
-      {
-        id: 'ch4-q2',
-        question: 'What represents a process in the Linux kernel?',
-        options: [
-          'A file descriptor',
-          'The task_struct data structure',
-          'A memory page',
-          'A system call',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'In Linux, a process is represented by the task_struct, a data structure the kernel uses to manage execution, including memory, CPU state, and open files.',
-      },
-    ];
-
-    // Chapter 5 Questions
-    const ch5Questions: QuizQuestion[] = [
-      {
-        id: 'ch5-q1',
-        question: 'How is the Linux kernel "entered"?',
-        options: [
-          'Only through system calls',
-          'Through system calls, hardware interrupts, or exceptions',
-          'Only through interrupts',
-          'Only through exceptions',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'The Linux kernel is "entered" rather than "run," with execution triggered by system calls, hardware interrupts, or exceptions.',
-      },
-      {
-        id: 'ch5-q2',
-        question: 'What happens to a syscall in a virtualized guest OS?',
-        options: [
-          'It is handled exactly like on the host',
-          'It appears normal but may trigger VMEXIT for privileged actions',
-          'It is always blocked',
-          'It bypasses the guest kernel',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'In a guest OS, the syscall appears to be handled normally by the guest kernel, but if privileged actions are needed (like accessing hardware), it triggers a VMEXIT.',
-      },
-    ];
-
-    // Chapter 6 Questions
-    const ch6Questions: QuizQuestion[] = [
-      {
-        id: 'ch6-q1',
-        question: 'How does Linux maintain structure across tasks?',
-        options: [
-          'By using a stateless CPU and stateful kernel',
-          'By keeping all state in the CPU',
-          'By using only user-space state',
-          'By avoiding context switching',
-        ],
-        correctAnswer: 0,
-        explanation:
-          'The division between stateless execution and stateful management defines how Linux maintains structure across tasks. The CPU executes blindly, while the kernel preserves all context externally.',
-      },
-      {
-        id: 'ch6-q2',
-        question: 'What is an interrupt in the kernel?',
-        options: [
-          'An unexpected disruption',
-          'A deliberate mechanism prepared in advance for system response',
-          'A bug in the code',
-          'A user-space event',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'An interrupt is a deliberate mechanism, prepared in advance, through which the system responds to events that occur independently of any running task.',
-      },
-    ];
-
-    // Chapter 7 Questions
-    const ch7Questions: QuizQuestion[] = [
-      {
-        id: 'ch7-q1',
-        question: 'How do kernel modules interact with each other?',
-        options: [
-          'Through direct function calls',
-          'Only through explicitly exported symbols',
-          'Through shared global variables',
-          'Through user-space interfaces',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'Kernel modules in Linux interact only through explicitly exported symbols, ensuring isolation and system stability.',
-      },
-      {
-        id: 'ch7-q2',
-        question: 'What interfaces exist between user space and the kernel?',
-        options: [
-          'Only system calls',
-          'Syscalls, /proc, ioctl, mmap, and eBPF',
-          'Only /proc',
-          'Only ioctl',
-        ],
-        correctAnswer: 1,
-        explanation:
-          "Understanding the various interfaces between user space and the Linux kernel—such as syscalls, /proc, ioctl, mmap, and eBPF—provides insight into the kernel's flexibility.",
-      },
-    ];
-
-    // Chapter 8 Questions
-    const ch8Questions: QuizQuestion[] = [
-      {
-        id: 'ch8-q1',
-        question: 'What is the key difference between multitasking and virtualization?',
-        options: [
-          'Multitasking uses multiple CPUs, virtualization uses one',
-          'Multitasking manages multiple processes on one OS, virtualization runs multiple OSes on one machine',
-          'There is no difference',
-          'Multitasking is for servers, virtualization is for desktops',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'Multitasking allows a single OS to manage multiple processes, whereas virtualization enables multiple OSes to run on a single machine, each believing it controls its own hardware.',
-      },
-      {
-        id: 'ch8-q2',
-        question: 'What is the advantage of io_uring over epoll?',
-        options: [
-          'It uses fewer system calls',
-          'It allows submitting operations in advance via shared memory, reducing overhead',
-          'It works only with files',
-          'It requires less memory',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'io_uring enhances Linux I/O by allowing applications to submit operations in advance via a shared memory ring, reducing overhead and eliminating extra syscalls.',
-      },
-    ];
-
-    // Chapter 9 Questions
-    const ch9Questions: QuizQuestion[] = [
-      {
-        id: 'ch9-q1',
-        question: 'Why is the kernel always present even when not running?',
-        options: [
-          'It runs continuously in a loop',
-          'It is always mapped into memory and activated when needed',
-          'It is loaded into every process',
-          'It never sleeps',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'The kernel remains a constant presence in the system, always mapped into memory but only activated when needed through system calls and interrupts.',
-      },
-      {
-        id: 'ch9-q2',
-        question: 'Why do kernels stay in C?',
-        options: [
-          'Because of tradition',
-          'For precision, determinism, full control, and alignment with hardware',
-          'Because C is the easiest language',
-          'Because other languages are not available',
-        ],
-        correctAnswer: 1,
-        explanation:
-          'C remains the language of choice not out of tradition, but because it offers unmatched alignment with hardware, build-time configurability, and structural clarity without abstraction overhead.',
-      },
-    ];
-
-    return [
-      {
-        id: 'ch1',
-        title: 'Chapter 1 — Understanding Linux Kernel Before Code',
-        body: (
-          <div>
-            <p>
-              The kernel isn&apos;t a process—it&apos;s the system. It serves user processes, reacts
-              to context, and enforces separation and control.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>
-                The kernel is not a process but the very foundation that orchestrates the entire
-                system
-              </li>
-              <li>The kernel&apos;s primary role is to support user processes</li>
-              <li>The kernel operates as a layered system that enforces structure at runtime</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                {
-                  path: 'Documentation/scheduler/sched-design-CFS.rst',
-                  description: 'Scheduler design and kernel thread management',
-                },
-                { path: 'Documentation/core-api/kernel-api.rst', description: 'Kernel thread API' },
-              ]}
-              source={[
-                { path: 'kernel/sched/', description: 'Scheduler implementation' },
-                { path: 'kernel/sched/core.c', description: 'Core scheduler logic' },
-                { path: 'kernel/sched/fair.c', description: 'CFS scheduler implementation' },
-                { path: 'kernel/sched/rt.c', description: 'Real-time scheduler' },
-                { path: 'include/linux/sched.h', description: 'Process and thread structures' },
-                { path: 'include/linux/sched/task.h', description: 'Task structure definitions' },
-                { path: 'kernel/fork.c', description: 'Process creation' },
-                { path: 'kernel/exit.c', description: 'Process termination' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch1"
-              questions={ch1Questions}
-              onComplete={(score, total) => markQuizComplete('ch1', score, total)}
-              isCompleted={getChapterProgress('ch1').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch2',
-        title: 'Chapter 2 — System Foundations',
-        body: (
-          <div>
-            <p>
-              The Linux kernel is a modular, secure core that manages hardware, memory, processes,
-              and user space to ensure stability and security.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>Monolithic form with coordinated behavior</li>
-              <li>Kernel objects reveal the design (task_struct, msg_queue, inode)</li>
-              <li>Safe concurrency through stateless, context-aware code</li>
-              <li>The power of indirection for per-thread references</li>
-              <li>Device model: how hardware becomes /dev</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                {
-                  path: 'Documentation/filesystems/vfs.rst',
-                  description: 'VFS and inode structures',
-                },
-                { path: 'Documentation/driver-api/driver-model/', description: 'Device model' },
-              ]}
-              source={[
-                {
-                  path: 'kernel/',
-                  description:
-                    'Core kernel functionality: scheduling, process management, system calls',
-                },
-                {
-                  path: 'mm/',
-                  description: 'Memory management: allocation, page tables, and virtual memory',
-                },
-                { path: 'fs/', description: 'Filesystem layer: VFS, inodes, and file operations' },
-                {
-                  path: 'net/',
-                  description: 'Networking stack: protocols, sockets, and network interfaces',
-                },
-                {
-                  path: 'drivers/',
-                  description: 'Device drivers: hardware abstraction and device model',
-                },
-                {
-                  path: 'arch/x86/',
-                  description:
-                    'x86 architecture-specific code: entry points and low-level operations',
-                },
-                { path: 'include/linux/sched.h', description: 'task_struct definition' },
-                { path: 'include/linux/fs.h', description: 'File system structures' },
-                { path: 'include/linux/inode.h', description: 'Inode structure definitions' },
-                { path: 'include/linux/spinlock.h', description: 'Spinlock primitives' },
-                { path: 'include/linux/mutex.h', description: 'Mutex definitions' },
-                { path: 'kernel/locking/', description: 'Locking mechanisms' },
-                { path: 'drivers/base/core.c', description: 'Device model core' },
-                { path: 'drivers/base/bus.c', description: 'Bus subsystem' },
-                { path: 'drivers/base/class.c', description: 'Device class management' },
-                { path: 'ipc/', description: 'IPC mechanisms' },
-                { path: 'ipc/msg.c', description: 'Message queues' },
-                { path: 'ipc/sem.c', description: 'Semaphores' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch2"
-              questions={ch2Questions}
-              onComplete={(score, total) => markQuizComplete('ch2', score, total)}
-              isCompleted={getChapterProgress('ch2').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch3',
-        title: 'Chapter 3 — Memory, Isolation, and Enforcement',
-        body: (
-          <div>
-            <p>
-              The kernel doesn&apos;t view memory as a simple map, but as a responsibility,
-              allocating it based on the specific needs and behaviors of each subsystem.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>Memory is not a place—it&apos;s a system (NUMA, zones, pages)</li>
-              <li>Memory lifecycle and the roles that shape it</li>
-              <li>Shared code, separate state in kernel memory management</li>
-              <li>The kernel is always there—understanding its memory structure</li>
-              <li>Enforcement beyond code execution: permissions, namespaces, capabilities</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                {
-                  path: 'Documentation/core-api/memory-allocation.rst',
-                  description: 'Memory allocation APIs',
-                },
-                { path: 'Documentation/admin-guide/mm/', description: 'Memory zones and NUMA' },
-              ]}
-              source={[
-                { path: 'mm/', description: 'Memory management subsystem' },
-                { path: 'mm/page_alloc.c', description: 'Page allocation' },
-                { path: 'mm/memory.c', description: 'Memory management core' },
-                { path: 'mm/vmalloc.c', description: 'Virtual memory allocation' },
-                { path: 'mm/slab.c', description: 'Slab allocator' },
-                { path: 'mm/slub.c', description: 'SLUB allocator' },
-                { path: 'mm/kmemleak.c', description: 'Kmemleak memory leak detector' },
-                { path: 'include/linux/gfp.h', description: 'GFP flags for memory allocation' },
-                { path: 'include/linux/mm_types.h', description: 'Memory type definitions' },
-                { path: 'include/linux/mm.h', description: 'Memory management headers' },
-                { path: 'include/linux/slab.h', description: 'Slab allocator definitions' },
-                { path: 'kernel/capability.c', description: 'POSIX capabilities' },
-                { path: 'include/linux/capability.h', description: 'Capability definitions' },
-                { path: 'kernel/user_namespace.c', description: 'User namespace implementation' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch3"
-              questions={ch3Questions}
-              onComplete={(score, total) => markQuizComplete('ch3', score, total)}
-              isCompleted={getChapterProgress('ch3').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch4',
-        title: "Chapter 4 — Boot, Init, and the Kernel's Entry",
-        body: (
-          <div>
-            <p>
-              The transition from hardware setup to a fully functioning Linux kernel is marked by
-              staged initialization that brings online critical subsystems.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>Where boot ends: the kernel begins with start_kernel()</li>
-              <li>From vmlinuz to eBPF: what actually runs inside the kernel</li>
-              <li>What really happens when you run ./hello</li>
-              <li>How a Linux process works from the kernel&apos;s point of view</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                {
-                  path: 'Documentation/admin-guide/kernel-parameters.rst',
-                  description: 'Kernel boot parameters',
-                },
-                { path: 'Documentation/arch/x86/boot.rst', description: 'x86 boot process' },
-              ]}
-              source={[
-                { path: 'init/main.c', description: 'Kernel initialization - start_kernel()' },
-                { path: 'init/initramfs.c', description: 'Initramfs handling' },
-                { path: 'kernel/fork.c', description: 'Process creation with fork() and clone()' },
-                { path: 'kernel/exit.c', description: 'Process termination' },
-                { path: 'kernel/module.c', description: 'Kernel module management' },
-                { path: 'include/linux/module.h', description: 'Module definitions' },
-                {
-                  path: 'arch/x86/kernel/',
-                  description: 'x86 architecture-specific initialization',
-                },
-                { path: 'arch/x86/kernel/head_64.S', description: 'x86_64 boot assembly' },
-                { path: 'fs/exec.c', description: 'execve() implementation' },
-                { path: 'fs/binfmt_elf.c', description: 'ELF binary format handler' },
-                { path: 'include/linux/sched.h', description: 'task_struct definition' },
-                { path: 'include/linux/binfmts.h', description: 'Binary format definitions' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch4"
-              questions={ch4Questions}
-              onComplete={(score, total) => markQuizComplete('ch4', score, total)}
-              isCompleted={getChapterProgress('ch4').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch5',
-        title: 'Chapter 5 — Entering the Kernel',
-        body: (
-          <div>
-            <p>
-              The Linux kernel is &quot;entered&quot; rather than &quot;run,&quot; with execution
-              triggered by system calls, hardware interrupts, or exceptions.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>How the kernel is entered: syscalls, traps, and interrupts</li>
-              <li>Syscalls from two perspectives: the host and the guest OS</li>
-              <li>Where system calls are handled in the Linux kernel</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                { path: 'Documentation/core-api/irq/', description: 'Interrupt handling' },
-                {
-                  path: 'Documentation/userspace-api/',
-                  description: 'User space API documentation',
-                },
-              ]}
-              source={[
-                { path: 'arch/x86/entry/', description: 'System call entry points' },
-                { path: 'arch/x86/entry/syscalls/', description: 'System call table' },
-                { path: 'arch/x86/entry/entry_64.S', description: 'x86_64 syscall entry assembly' },
-                { path: 'arch/x86/entry/common.c', description: 'Common syscall handling' },
-                { path: 'kernel/sys.c', description: 'System call implementations' },
-                { path: 'kernel/irq/', description: 'Interrupt handling' },
-                { path: 'kernel/irq_work.c', description: 'Interrupt work queues' },
-                { path: 'kernel/softirq.c', description: 'Software interrupts' },
-                { path: 'include/linux/uaccess.h', description: 'User space access helpers' },
-                { path: 'include/linux/syscalls.h', description: 'System call definitions' },
-                { path: 'arch/x86/lib/usercopy.c', description: 'User space copy functions' },
-                { path: 'arch/x86/lib/usercopy_64.c', description: 'x86_64 user copy routines' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch5"
-              questions={ch5Questions}
-              onComplete={(score, total) => markQuizComplete('ch5', score, total)}
-              isCompleted={getChapterProgress('ch5').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch6',
-        title: 'Chapter 6 — Execution and Contexts',
-        body: (
-          <div>
-            <p>
-              The distinct execution paths in the Linux kernel are designed to ensure system
-              stability, responsiveness, and efficiency.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>Stateless CPU, stateful kernel: how execution is orchestrated</li>
-              <li>What the kernel builds—layer by layer</li>
-              <li>Kernel execution paths: what runs where, and why it matters</li>
-              <li>An interrupt is not a disruption—it&apos;s design</li>
-              <li>Execution is logical, placement is physical</li>
-              <li>Synchronization beyond concurrency</li>
-              <li>What makes a kernel thread &quot;kernel&quot;?</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                {
-                  path: 'Documentation/scheduler/sched-design-CFS.rst',
-                  description: 'Task state structures and CFS scheduler design',
-                },
-                {
-                  path: 'Documentation/core-api/workqueue.rst',
-                  description: 'Workqueue mechanism',
-                },
-              ]}
-              source={[
-                { path: 'kernel/sched/', description: 'Scheduler implementation' },
-                { path: 'kernel/sched/core.c', description: 'Core scheduler logic' },
-                { path: 'kernel/sched/fair.c', description: 'CFS scheduler' },
-                { path: 'kernel/sched/rt.c', description: 'Real-time scheduler' },
-                { path: 'kernel/sched/deadline.c', description: 'Deadline scheduler' },
-                { path: 'kernel/sched/idle.c', description: 'Idle task scheduling' },
-                { path: 'kernel/softirq.c', description: 'Software interrupts' },
-                { path: 'kernel/workqueue.c', description: 'Workqueue implementation' },
-                { path: 'kernel/irq/', description: 'Interrupt subsystem' },
-                { path: 'kernel/irq/manage.c', description: 'Interrupt management' },
-                { path: 'kernel/locking/', description: 'Locking primitives' },
-                { path: 'kernel/locking/spinlock.c', description: 'Spinlock implementation' },
-                { path: 'kernel/locking/mutex.c', description: 'Mutex implementation' },
-                { path: 'include/linux/spinlock.h', description: 'Spinlock definitions' },
-                { path: 'include/linux/mutex.h', description: 'Mutex definitions' },
-                { path: 'include/linux/sched.h', description: 'task_struct and scheduling' },
-                { path: 'include/linux/workqueue.h', description: 'Workqueue definitions' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch6"
-              questions={ch6Questions}
-              onComplete={(score, total) => markQuizComplete('ch6', score, total)}
-              isCompleted={getChapterProgress('ch6').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch7',
-        title: 'Chapter 7 — Communication and Cooperation',
-        body: (
-          <div>
-            <p>
-              Inside the Linux kernel, communication across different contexts is managed through
-              specialized tools to ensure safe, efficient coordination.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>How the kernel talks to itself—tools for internal communication</li>
-              <li>Kernel modules know each other only through exported symbols</li>
-              <li>Bridging the gaps between components</li>
-              <li>Beyond libc: how user space really talks to the kernel</li>
-              <li>Understanding interface layers from user space to the kernel</li>
-              <li>What really happens when you call open() in Linux?</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                { path: 'Documentation/filesystems/vfs.rst', description: 'VFS layer' },
-                {
-                  path: 'Documentation/kernel-hacking/modules.rst',
-                  description: 'Module management',
-                },
-              ]}
-              source={[
-                { path: 'ipc/', description: 'IPC mechanisms' },
-                { path: 'ipc/msg.c', description: 'Message queues' },
-                { path: 'ipc/sem.c', description: 'Semaphores' },
-                { path: 'ipc/shm.c', description: 'Shared memory' },
-                { path: 'ipc/namespace.c', description: 'IPC namespace' },
-                { path: 'include/linux/msg.h', description: 'Message queue structures' },
-                { path: 'include/linux/shm.h', description: 'Shared memory structures' },
-                { path: 'fs/open.c', description: 'open() implementation' },
-                { path: 'fs/namei.c', description: 'Path resolution (namei)' },
-                { path: 'fs/read_write.c', description: 'File read/write operations' },
-                { path: 'fs/inode.c', description: 'Inode operations' },
-                { path: 'fs/dcache.c', description: 'Directory cache' },
-                { path: 'fs/file.c', description: 'File descriptor management' },
-                { path: 'include/linux/fs.h', description: 'File system structures' },
-                { path: 'include/linux/fcntl.h', description: 'File control definitions' },
-                { path: 'kernel/module.c', description: 'Module symbol exports' },
-                { path: 'include/linux/export.h', description: 'EXPORT_SYMBOL macros' },
-                { path: 'kernel/kallsyms.c', description: 'Kernel symbol management' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch7"
-              questions={ch7Questions}
-              onComplete={(score, total) => markQuizComplete('ch7', score, total)}
-              isCompleted={getChapterProgress('ch7').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch8',
-        title: 'Chapter 8 — Scheduling, I/O, and Virtualization',
-        body: (
-          <div>
-            <p>
-              When an application reads from or writes to a file, the request travels through a
-              series of kernel subsystems that transform user-level operations into low-level disk
-              access.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>From intent to I/O: how the kernel sees files, disks, and devices</li>
-              <li>The CPU doesn&apos;t move the data—but nothing moves without it</li>
-              <li>Time and precision: the kernel&apos;s view of CPU execution</li>
-              <li>How select() and poll() paved the way for epoll()</li>
-              <li>Beyond epoll(): how io_uring redefines Linux I/O</li>
-              <li>Multitasking vs virtualization—what&apos;s the real difference?</li>
-              <li>The kernel&apos;s role in virtualization: understanding KVM</li>
-              <li>VirtIO: network drivers without emulation</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                { path: 'Documentation/core-api/io_uring.rst', description: 'io_uring interface' },
-                { path: 'Documentation/virt/kvm/', description: 'KVM implementation' },
-              ]}
-              source={[
-                { path: 'fs/', description: 'Filesystem layer' },
-                { path: 'fs/namei.c', description: 'Path resolution' },
-                { path: 'fs/open.c', description: 'File opening' },
-                { path: 'fs/read_write.c', description: 'File read/write' },
-                { path: 'fs/inode.c', description: 'Inode operations' },
-                { path: 'fs/aio.c', description: 'Asynchronous I/O' },
-                { path: 'block/', description: 'Block layer' },
-                { path: 'block/blk-core.c', description: 'Block core functionality' },
-                { path: 'block/blk-mq.c', description: 'Multi-queue block layer' },
-                { path: 'drivers/', description: 'Device drivers' },
-                { path: 'include/linux/fs.h', description: 'File system structures' },
-                { path: 'include/linux/blkdev.h', description: 'Block device definitions' },
-                { path: 'include/linux/aio.h', description: 'AIO structures' },
-                { path: 'io_uring/', description: 'io_uring implementation' },
-                { path: 'io_uring/io_uring.c', description: 'io_uring core' },
-                { path: 'io_uring/opdef.c', description: 'io_uring operations' },
-                { path: 'kernel/time/', description: 'Time management' },
-                { path: 'kernel/time/tick-common.c', description: 'Tick handling' },
-                { path: 'arch/x86/kvm/', description: 'KVM x86 implementation' },
-                { path: 'arch/x86/kvm/x86.c', description: 'KVM x86 core' },
-                { path: 'drivers/virtio/', description: 'VirtIO drivers' },
-                { path: 'drivers/virtio/virtio_ring.c', description: 'VirtIO ring implementation' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch8"
-              questions={ch8Questions}
-              onComplete={(score, total) => markQuizComplete('ch8', score, total)}
-              isCompleted={getChapterProgress('ch8').quizCompleted}
-            />
-          </div>
-        ),
-      },
-      {
-        id: 'ch9',
-        title: 'Chapter 9 — Concluding Insights',
-        body: (
-          <div>
-            <p>
-              The kernel remains a constant presence in the system, always mapped into memory but
-              only activated when needed.
-            </p>
-            <p>
-              <strong>Key Concepts:</strong>
-            </p>
-            <ul>
-              <li>Why the kernel is always there—even when it&apos;s not running</li>
-              <li>All that still runs through it</li>
-              <li>Alignment is understanding</li>
-              <li>Efficiency, not legacy: why kernels stay in C</li>
-            </ul>
-            <FileRecommendations
-              docs={[
-                { path: 'Documentation/kernel-hacking/', description: 'Kernel development guide' },
-              ]}
-              source={[
-                { path: 'arch/x86/entry/', description: 'System call entry points' },
-                { path: 'kernel/', description: 'Core kernel subsystems' },
-                { path: 'kernel/sched/', description: 'Scheduler subsystem' },
-                { path: 'kernel/irq/', description: 'Interrupt subsystem' },
-                { path: 'kernel/locking/', description: 'Locking subsystem' },
-                { path: 'mm/', description: 'Memory management subsystem' },
-                { path: 'fs/', description: 'Filesystem subsystem' },
-                { path: 'include/linux/', description: 'Kernel headers' },
-                { path: 'include/linux/kernel.h', description: 'Core kernel definitions' },
-                { path: 'include/linux/types.h', description: 'Kernel type definitions' },
-                { path: 'include/uapi/linux/', description: 'User space API headers' },
-              ]}
-              onFileClick={openFileInTab}
-            />
-            <ChapterQuiz
-              chapterId="ch9"
-              questions={ch9Questions}
-              onComplete={(score, total) => markQuizComplete('ch9', score, total)}
-              isCompleted={getChapterProgress('ch9').quizCompleted}
-            />
-          </div>
-        ),
-      },
-    ];
-  }, [markQuizComplete, getChapterProgress, openFileInTab]);
-
+  // Command palette commands
   // Command palette commands
   const commandPaletteCommands = useMemo(
     () => [
@@ -1474,6 +741,63 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   // Loading screen
   if (isInitialLoading) {
     return <LoadingScreen />;
+  }
+
+  // Repository loading, download progress, or tree structure not ready
+  if (repoLoading || downloadProgress || !isTreeStructureReady) {
+    return (
+      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
+        <div className="text-center max-w-md">
+          {downloadProgress ? (
+            <>
+              <div className="text-lg mb-4">Downloading Repository Structure</div>
+              <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
+                <div
+                  className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${downloadProgress.progress}%` }}
+                />
+              </div>
+              <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
+              {downloadProgress.phase === 'downloading' &&
+                downloadProgress.filesProcessed &&
+                downloadProgress.totalFiles && (
+                  <div className="text-xs opacity-50">
+                    Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles}{' '}
+                    items
+                  </div>
+                )}
+            </>
+          ) : (
+            <>
+              <div className="text-lg mb-2">
+                {isTreeStructureReady
+                  ? 'Setting up repository...'
+                  : 'Loading repository structure...'}
+              </div>
+              <div className="text-sm opacity-70">Please wait</div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Repository error
+  if (repoError) {
+    return (
+      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-lg mb-4 text-[var(--vscode-errorForeground)]">Repository Error</div>
+          <div className="text-sm mb-4 opacity-70">{repoError}</div>
+          <button
+            onClick={() => router.push('/setup')}
+            className="px-4 py-2 bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] rounded text-sm"
+          >
+            Go to Setup
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1539,7 +863,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                 selectedFile={selectedFile}
                 listDirectory={buildFileTree}
                 titleLabel={repoLabel}
-                refreshKey={treeRefreshKey}
                 expandDirectoryRequest={directoryExpandRequest}
                 onDirectoryExpand={(path: string) => {
                   if (activeSidebarTab !== 'explorer') {
@@ -1627,16 +950,16 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         <div
           className={`vscode-panel ${isRightPanelOpen && (isMobile ? mobileView === 'guide' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'guide' ? 'mobile-hidden' : ''}`}
           suppressHydrationWarning
-          style={{ 
-            width: `${rightPanelWidth}px`, 
-            minWidth: '200px', 
+          style={{
+            width: `${rightPanelWidth}px`,
+            minWidth: '200px',
             maxWidth: '40vw',
             height: '100%',
             minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            flexShrink: 0
+            flexShrink: 0,
           }}
         >
           {isMobile && (
@@ -1666,7 +989,16 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               </button>
             </div>
           )}
-          <div style={{ flex: '1 1 0%', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div
+            style={{
+              flex: '1 1 0%',
+              minHeight: 0,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
             <GuidePanel
               sections={guideSections}
               defaultOpenIds={
@@ -1677,7 +1009,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               chapterProgress={Object.fromEntries(
                 Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])
               )}
-              onResetProgress={resetProgress}
             />
           </div>
         </div>
@@ -1788,6 +1119,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         lineCount={editorLineCount}
         fileSize={editorFileSize}
         repoLabel={repoLabel}
+        branch={currentBranch || selectedVersion}
       />
     </div>
   );

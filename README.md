@@ -5,32 +5,53 @@ A standalone [Next.js 16](https://nextjs.org/) application for exploring and lea
 🌐 **Live Site**: [explorar.dev](https://explorar.dev)  
 🔓 **GitHub**: [pkill37/explorar.dev](https://github.com/pkill37/explorar.dev)
 
+## 🎯 Live Examples
+
+Explore these popular repositories instantly:
+
+| Repository          | Description                       | Live Demo                                                                |
+| ------------------- | --------------------------------- | ------------------------------------------------------------------------ |
+| **🐧 Linux Kernel** | Core operating system kernel      | [explorar.dev/torvalds/linux](https://explorar.dev/torvalds/linux)       |
+| **🐍 CPython**      | Python interpreter implementation | [explorar.dev/python/cpython](https://explorar.dev/python/cpython)       |
+| **🔧 LLVM**         | Compiler infrastructure project   | [explorar.dev/llvm/llvm-project](https://explorar.dev/llvm/llvm-project) |
+| **📚 glibc**        | GNU C Library implementation      | [explorar.dev/bminor/glibc](https://explorar.dev/bminor/glibc)           |
+
+> 💡 **Tip**: Each repository uses smart downloading to fetch only essential files, making exploration fast and efficient!
+
 ## ✨ Features
 
-- 📁 **Interactive File Browser**: Navigate any software source tree
-- 💻 **Code Editor**: [Monaco Editor](https://microsoft.github.io/monaco-editor/) with syntax highlighting for C, assembly, and more
-- 📚 **Guided Learning**: Chapter-based learning paths with quizzes
-- 🗂️ **Data Structures View**: Browse and explore kernel data structures
-- 🔗 **GitHub Integration**: Browse any GitHub repository's source code
-- 📖 **Kernel Study Mode**: Annotated code with kernel concepts and markers
+- 📁 **Interactive File Browser**: Navigate any software source tree with VS Code-like interface
+- 💻 **Monaco Code Editor**: Full-featured editor with syntax highlighting for 100+ languages
+- 📚 **Guided Learning**: Chapter-based learning paths with interactive quizzes
+- 🗂️ **Data Structures View**: Browse and explore kernel data structures and APIs
+- 🔗 **GitHub Integration**: Browse any GitHub repository's source code instantly
+- 📖 **Kernel Study Mode**: Annotated code with kernel concepts and educational markers
+- ⚡ **Smart Downloads**: Selective downloading of essential files for large repositories
+- 💾 **Local Storage**: IndexedDB-based persistent storage with offline access
 - 🔄 **Smart Caching**: IndexedDB caching with exponential backoff retry logic
 - 🛡️ **Fault Tolerance**: Circuit breaker pattern for resilient API calls
+- 🎯 **Zero Setup**: No installation required - works entirely in your browser
 
 ## 🚀 Getting Started
 
-### 📦 Installation
+### 🌐 Using the Live Site
+
+Simply visit [explorar.dev](https://explorar.dev) and:
+
+1. **Quick Start**: Click any of the pre-configured repositories (Linux, Python, LLVM, glibc)
+2. **Custom Repository**: Enter any GitHub repository URL (e.g., `github.com/owner/repo`)
+
+### 🛠️ Local Development
 
 ```bash
+# Install dependencies
 npm install
-```
 
-### 🛠️ Development
-
-```bash
+# Start development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser. The app will automatically redirect to `/linux-kernel-explorer` (or navigate to any repository path like `/torvalds/linux`).
+Open [http://localhost:3000](http://localhost:3000) in your browser. The wizard will guide you through selecting or downloading a repository to explore.
 
 ### 🏗️ Build
 
@@ -38,53 +59,61 @@ Open [http://localhost:3000](http://localhost:3000) in your browser. The app wil
 npm run build
 ```
 
-### 🚢 Start Production Server
-
-```bash
-npm start
-```
-
 ## 📁 Project Structure
 
 ```
 src/
 ├── app/
-│   ├── linux-kernel-explorer/
-│   │   ├── page.tsx          # Main explorer page
-│   │   ├── layout.tsx         # Page metadata
-│   │   └── vscode.css         # VS Code theme styles
-│   ├── layout.tsx             # Root layout
-│   └── page.tsx               # Home page (redirects)
+│   ├── [owner]/[repo]/        # Dynamic repository routes
+│   ├── linux-kernel-explorer/ # Legacy kernel explorer
+│   ├── layout.tsx             # Root layout with metadata
+│   └── page.tsx               # Main wizard page
 ├── components/
-│   ├── ChapterQuiz.tsx        # Quiz component
-│   ├── CodeEditorContainer.tsx # Editor wrapper
-│   ├── DataStructuresView.tsx # Data structures browser
-│   ├── FileTree.tsx           # File tree component
-│   ├── GuidePanel.tsx         # Learning guide panel
-│   ├── KernelStudyEditor.tsx  # Annotated kernel editor
-│   ├── MonacoCodeEditor.tsx   # Standard code editor
-│   └── TabBar.tsx             # Tab bar component
+│   ├── KernelExplorer.tsx     # Main repository explorer
+│   ├── FileTree.tsx           # File tree navigation
+│   ├── CodeEditorContainer.tsx # Editor with tabs
+│   ├── MonacoCodeEditor.tsx   # Monaco editor wrapper
+│   ├── GuidePanel.tsx         # Learning guides
+│   ├── QuickStarts.tsx        # Repository quick starts
+│   └── ...                    # Other UI components
+├── contexts/
+│   └── RepositoryContext.tsx  # Repository state management
 ├── hooks/
-│   └── useKernelProgress.ts   # Progress tracking hook
+│   ├── useKernelProgress.ts   # Progress tracking
+│   └── useProjectProgress.ts  # Project-specific progress
 ├── lib/
-│   ├── cross-reference.ts     # Code cross-referencing
-│   ├── github-api.ts          # GitHub API client
-│   ├── github-cache.ts        # IndexedDB caching
-│   ├── github-retry.ts        # Retry logic with exponential backoff
-│   ├── github-debug.ts        # Debugging and logging utilities
-│   ├── kernel-markers.ts      # Kernel code markers
-│   └── kernel-suggestions.ts # Learning suggestions
+│   ├── repo-storage.ts        # IndexedDB storage management
+│   ├── github-archive.ts      # Repository downloading
+│   ├── selective-download.ts  # Smart downloading for large repos
+│   ├── github-api.ts          # GitHub API integration
+│   ├── github-cache.ts        # Caching layer
+│   └── ...                    # Other utilities
 └── types/
     └── index.ts               # TypeScript definitions
 ```
 
 ## 🛠️ Technologies
 
-- **[Next.js 16](https://nextjs.org/)**: React framework
-- **[React 19](https://react.dev/)**: UI library
+- **[Next.js 16](https://nextjs.org/)**: React framework with App Router
+- **[React 19](https://react.dev/)**: Latest React with concurrent features
 - **[Monaco Editor](https://microsoft.github.io/monaco-editor/)**: VS Code editor component
-- **[TypeScript](https://www.typescriptlang.org/)**: Type safety
-- **[IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)**: Client-side caching
+- **[TypeScript](https://www.typescriptlang.org/)**: Full type safety
+- **[IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)**: Browser database for persistent storage (works in all modern browsers)
+- **[JSZip](https://stuk.github.io/jszip/)**: Client-side zip file handling
+
+## 💾 Storage & Download System
+
+### Smart Repository Downloads
+
+- **Selective Downloads**: Large repositories (Linux kernel, LLVM) download only essential directories
+- **Progress Tracking**: Real-time progress with file counts and transfer rates
+- **Lazy Loading**: Branches are downloaded only when requested
+- **Offline Access**: Downloaded repositories work completely offline
+
+### Local Storage Options
+
+- **IndexedDB Storage**: Persistent browser storage that survives page refreshes (works in all modern browsers including Firefox)
+- **Storage Management**: View usage, manage repositories, clear storage
 
 ## ⚙️ Environment Variables
 
@@ -132,6 +161,7 @@ Private project.
 
 - 🌐 **Website**: [explorar.dev](https://explorar.dev)
 - 🔓 **GitHub**: [github.com/pkill37/explorar.dev](https://github.com/pkill37/explorar.dev)
-- 💬 **Discord**: [Join our community](https://discord.gg/fuXYz44tSs)
+- 💬 **Discord**: [discord.gg/fuXYz44tSs](https://discord.gg/fuXYz44tSs)
+- 📱 **Telegram**: [t.me/explorardev](https://t.me/explorardev)
 - 🧠 **BrainSpeed.ai**: [AI-powered development tools](https://brainspeed.ai)
 - 🔄 **Reverser.dev**: [Reverse engineering platform](https://reverser.dev)
