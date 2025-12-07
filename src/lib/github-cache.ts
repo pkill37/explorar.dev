@@ -27,30 +27,13 @@ const STATS_STORE_NAME = 'cache-stats';
 const FALLBACK_PREFIX = 'github_cache_';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
-let cacheStats: CacheStats = {
+const cacheStats: CacheStats = {
   hits: 0,
   misses: 0,
   errors: 0,
   totalSize: 0,
   entryCount: 0,
 };
-
-// Debug mode - can be enabled via localStorage or environment
-const DEBUG_MODE =
-  typeof window !== 'undefined' &&
-  (localStorage.getItem('github_cache_debug') === 'true' || process.env.NODE_ENV === 'development');
-
-function debugLog(...args: unknown[]): void {
-  if (DEBUG_MODE) {
-    console.log('[GitHub Cache]', ...args);
-  }
-}
-
-function debugError(...args: unknown[]): void {
-  if (DEBUG_MODE) {
-    console.error('[GitHub Cache Error]', ...args);
-  }
-}
 
 /**
  * Get or create IndexedDB database with improved error handling
@@ -62,7 +45,6 @@ function getDB(): Promise<IDBDatabase> {
 
   dbPromise = new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
-      debugError('IndexedDB not available');
       reject(new Error('IndexedDB not available'));
       return;
     }
@@ -71,13 +53,11 @@ function getDB(): Promise<IDBDatabase> {
 
     request.onerror = () => {
       const error = request.error;
-      debugError('IndexedDB open error:', error);
       cacheStats.errors++;
       reject(error);
     };
 
     request.onsuccess = () => {
-      debugLog('IndexedDB opened successfully');
       resolve(request.result);
     };
 
@@ -89,24 +69,21 @@ function getDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore(STORE_NAME);
         store.createIndex('expiresAt', 'expiresAt', { unique: false });
         store.createIndex('timestamp', 'timestamp', { unique: false });
-        debugLog('Created cache store');
       }
 
       // Create stats store if it doesn't exist
       if (!db.objectStoreNames.contains(STATS_STORE_NAME)) {
         db.createObjectStore(STATS_STORE_NAME);
-        debugLog('Created stats store');
       }
 
       // Handle version upgrades
       if (event.oldVersion < 2) {
         // Migrate from version 1 to 2
-        debugLog('Migrating cache from version 1 to 2');
       }
     };
 
     request.onblocked = () => {
-      debugError('IndexedDB upgrade blocked - close other tabs');
+      // IndexedDB upgrade blocked
     };
   });
 
@@ -135,11 +112,10 @@ function getLocalStorageCache<T>(key: string): T | null {
       return null;
     }
 
-    debugLog('Cache hit (localStorage):', key);
     cacheStats.hits++;
     return entry.data;
   } catch (error) {
-    debugError('localStorage read error:', error);
+    console.error('Error getting localStorage cache:', error);
     cacheStats.errors++;
     return null;
   }
@@ -165,19 +141,14 @@ function setLocalStorageCache<T>(key: string, data: T): void {
 
     // localStorage has ~5-10MB limit, be conservative
     if (size > 1024 * 1024) {
-      debugLog('Entry too large for localStorage, skipping:', key, size);
       return;
     }
 
     localStorage.setItem(FALLBACK_PREFIX + key, serialized);
-    debugLog('Cache set (localStorage):', key);
   } catch (error) {
     // Handle quota exceeded
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      debugError('localStorage quota exceeded, clearing old entries');
       clearOldLocalStorageEntries();
-    } else {
-      debugError('localStorage write error:', error);
     }
     cacheStats.errors++;
   }
@@ -210,10 +181,9 @@ function clearOldLocalStorageEntries(): void {
     toRemove.forEach(({ key }) => {
       localStorage.removeItem(key);
     });
-
-    debugLog('Cleared', toRemove.length, 'old localStorage entries');
   } catch (error) {
-    debugError('Error clearing localStorage:', error);
+    console.error('Error clearing old localStorage entries:', error);
+    // Ignore errors when clearing localStorage
   }
 }
 
@@ -230,7 +200,6 @@ async function getCache<T>(key: string): Promise<T | null> {
       const request = store.get(key);
 
       request.onerror = () => {
-        debugError('IndexedDB get error:', request.error);
         cacheStats.errors++;
         // Fallback to localStorage
         resolve(getLocalStorageCache<T>(key));
@@ -247,7 +216,6 @@ async function getCache<T>(key: string): Promise<T | null> {
 
         // Check if cache entry is expired
         if (Date.now() > entry.expiresAt) {
-          debugLog('Cache expired:', key);
           // Delete expired entry
           deleteCache(key).catch(console.error);
           cacheStats.misses++;
@@ -255,13 +223,12 @@ async function getCache<T>(key: string): Promise<T | null> {
           return;
         }
 
-        debugLog('Cache hit (IndexedDB):', key);
         cacheStats.hits++;
         resolve(entry.data);
       };
     });
   } catch (error) {
-    debugError('IndexedDB get failed, using localStorage fallback:', error);
+    console.error('Error getting cache from IndexedDB:', error);
     cacheStats.errors++;
     return getLocalStorageCache<T>(key);
   }
@@ -297,7 +264,6 @@ async function setCache<T>(key: string, data: T): Promise<void> {
       const request = store.put(entry, key);
 
       request.onerror = () => {
-        debugError('IndexedDB put error:', request.error);
         cacheStats.errors++;
         // Fallback to localStorage
         setLocalStorageCache(key, data);
@@ -305,7 +271,6 @@ async function setCache<T>(key: string, data: T): Promise<void> {
       };
 
       request.onsuccess = () => {
-        debugLog('Cache set (IndexedDB):', key);
         cacheStats.entryCount++;
         if (entry.size) {
           cacheStats.totalSize += entry.size;
@@ -320,7 +285,7 @@ async function setCache<T>(key: string, data: T): Promise<void> {
       };
     });
   } catch (error) {
-    debugError('IndexedDB set failed, using localStorage fallback:', error);
+    console.error('Error setting cache in IndexedDB:', error);
     cacheStats.errors++;
     setLocalStorageCache(key, data);
   }
@@ -369,18 +334,17 @@ async function cleanupOldEntries(): Promise<void> {
           }
 
           cacheStats.totalSize -= removedSize;
-          debugLog('Cleaned up', removedSize, 'bytes from cache');
           resolve();
         }
       };
 
       request.onerror = () => {
-        debugError('Cleanup error:', request.error);
         reject(request.error);
       };
     });
   } catch (error) {
-    debugError('Cleanup failed:', error);
+    console.error('Error cleaning up old cache entries:', error);
+    // Ignore cleanup errors
   }
 }
 
@@ -393,7 +357,6 @@ async function deleteCache(key: string): Promise<void> {
       const request = store.delete(key);
 
       request.onerror = () => {
-        debugError('IndexedDB delete error:', request.error);
         // Also try localStorage
         try {
           localStorage.removeItem(FALLBACK_PREFIX + key);
@@ -410,69 +373,14 @@ async function deleteCache(key: string): Promise<void> {
         } catch {
           // Ignore
         }
-        debugLog('Cache deleted:', key);
         resolve();
       };
     });
   } catch (error) {
-    debugError('IndexedDB delete failed:', error);
+    console.error('Error deleting cache from IndexedDB:', error);
     // Try localStorage
     try {
       localStorage.removeItem(FALLBACK_PREFIX + key);
-    } catch {
-      // Ignore
-    }
-  }
-}
-
-export async function clearCache(): Promise<void> {
-  try {
-    const db = await getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.clear();
-
-      request.onerror = () => {
-        debugError('IndexedDB clear error:', request.error);
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        // Also clear localStorage
-        try {
-          const keys = Object.keys(localStorage);
-          keys
-            .filter((k) => k.startsWith(FALLBACK_PREFIX))
-            .forEach((key) => {
-              localStorage.removeItem(key);
-            });
-        } catch {
-          // Ignore
-        }
-
-        cacheStats = {
-          hits: 0,
-          misses: 0,
-          errors: 0,
-          totalSize: 0,
-          entryCount: 0,
-        };
-
-        debugLog('Cache cleared');
-        resolve();
-      };
-    });
-  } catch (error) {
-    debugError('Clear cache failed:', error);
-    // Try localStorage
-    try {
-      const keys = Object.keys(localStorage);
-      keys
-        .filter((k) => k.startsWith(FALLBACK_PREFIX))
-        .forEach((key) => {
-          localStorage.removeItem(key);
-        });
     } catch {
       // Ignore
     }

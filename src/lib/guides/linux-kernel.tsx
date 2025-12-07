@@ -4,9 +4,7 @@ import ChapterQuiz, { QuizQuestion } from '@/components/ChapterQuiz';
 import { createFileRecommendationsComponent, GuideSection } from '@/lib/project-guides';
 
 export function createLinuxKernelGuide(
-  openFileInTab: (path: string, searchPattern?: string) => void,
-  markQuizComplete: (chapterId: string, score: number, total: number) => void,
-  getChapterProgress: (chapterId: string) => { quizCompleted: boolean }
+  openFileInTab: (path: string, searchPattern?: string) => void
 ): GuideSection[] {
   // Chapter 1 Questions
   const ch1Questions: QuizQuestion[] = [
@@ -314,12 +312,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch1"
-            questions={ch1Questions}
-            onComplete={(score, total) => markQuizComplete('ch1', score, total)}
-            isCompleted={getChapterProgress('ch1').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch1" questions={ch1Questions} />
         </div>
       ),
     },
@@ -389,12 +382,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch2"
-            questions={ch2Questions}
-            onComplete={(score, total) => markQuizComplete('ch2', score, total)}
-            isCompleted={getChapterProgress('ch2').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch2" questions={ch2Questions} />
         </div>
       ),
     },
@@ -443,12 +431,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch3"
-            questions={ch3Questions}
-            onComplete={(score, total) => markQuizComplete('ch3', score, total)}
-            isCompleted={getChapterProgress('ch3').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch3" questions={ch3Questions} />
         </div>
       ),
     },
@@ -483,7 +466,7 @@ export function createLinuxKernelGuide(
               { path: 'init/initramfs.c', description: 'Initramfs handling' },
               { path: 'kernel/fork.c', description: 'Process creation with fork() and clone()' },
               { path: 'kernel/exit.c', description: 'Process termination' },
-              { path: 'kernel/module.c', description: 'Kernel module management' },
+              { path: 'kernel/module/main.c', description: 'Kernel module management' },
               { path: 'include/linux/module.h', description: 'Module definitions' },
               {
                 path: 'arch/x86/kernel/',
@@ -497,12 +480,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch4"
-            questions={ch4Questions}
-            onComplete={(score, total) => markQuizComplete('ch4', score, total)}
-            isCompleted={getChapterProgress('ch4').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch4" questions={ch4Questions} />
         </div>
       ),
     },
@@ -547,12 +525,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch5"
-            questions={ch5Questions}
-            onComplete={(score, total) => markQuizComplete('ch5', score, total)}
-            isCompleted={getChapterProgress('ch5').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch5" questions={ch5Questions} />
         </div>
       ),
     },
@@ -609,12 +582,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch6"
-            questions={ch6Questions}
-            onComplete={(score, total) => markQuizComplete('ch6', score, total)}
-            isCompleted={getChapterProgress('ch6').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch6" questions={ch6Questions} />
         </div>
       ),
     },
@@ -662,18 +630,13 @@ export function createLinuxKernelGuide(
               { path: 'fs/file.c', description: 'File descriptor management' },
               { path: 'include/linux/fs.h', description: 'File system structures' },
               { path: 'include/linux/fcntl.h', description: 'File control definitions' },
-              { path: 'kernel/module.c', description: 'Module symbol exports' },
+              { path: 'kernel/module/main.c', description: 'Module symbol exports' },
               { path: 'include/linux/export.h', description: 'EXPORT_SYMBOL macros' },
               { path: 'kernel/kallsyms.c', description: 'Kernel symbol management' },
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch7"
-            questions={ch7Questions}
-            onComplete={(score, total) => markQuizComplete('ch7', score, total)}
-            isCompleted={getChapterProgress('ch7').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch7" questions={ch7Questions} />
         </div>
       ),
     },
@@ -730,12 +693,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch8"
-            questions={ch8Questions}
-            onComplete={(score, total) => markQuizComplete('ch8', score, total)}
-            isCompleted={getChapterProgress('ch8').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch8" questions={ch8Questions} />
         </div>
       ),
     },
@@ -774,12 +732,7 @@ export function createLinuxKernelGuide(
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch9"
-            questions={ch9Questions}
-            onComplete={(score, total) => markQuizComplete('ch9', score, total)}
-            isCompleted={getChapterProgress('ch9').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch9" questions={ch9Questions} />
         </div>
       ),
     },

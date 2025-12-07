@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import MonacoCodeEditor from './MonacoCodeEditor';
-import KernelStudyEditor from './KernelStudyEditor';
 import { fetchFileContent as fetchFromGitHub, GitHubApiError } from '@/lib/github-api';
 import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
 
@@ -105,35 +104,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
     );
   }
 
-  // Determine if this is a kernel file that would benefit from study annotations
-  const isKernelFile = (path: string): boolean => {
-    return (
-      path.includes('kernel/') ||
-      path.includes('arch/') ||
-      path.includes('include/linux/') ||
-      path.includes('mm/') ||
-      path.includes('fs/') ||
-      path.includes('drivers/') ||
-      path.includes('init/') ||
-      path.endsWith('.c') ||
-      path.endsWith('.h') ||
-      path.endsWith('.S')
-    );
-  };
-
-  const useKernelStudyEditor = isKernelFile(filePath);
-
-  return useKernelStudyEditor ? (
-    <KernelStudyEditor
-      filePath={filePath}
-      content={content}
-      isLoading={isLoading}
-      repoLabel={repoLabel}
-      scrollToLine={scrollToLine}
-      searchPattern={searchPattern}
-      onCursorChange={onCursorChange}
-    />
-  ) : (
+  return (
     <MonacoCodeEditor
       filePath={filePath}
       content={content}

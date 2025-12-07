@@ -4,9 +4,7 @@ import ChapterQuiz, { QuizQuestion } from '@/components/ChapterQuiz';
 import { createFileRecommendationsComponent, GuideSection } from '@/lib/project-guides';
 
 export function createGlibcGuide(
-  openFileInTab: (path: string, searchPattern?: string) => void,
-  markQuizComplete: (chapterId: string, score: number, total: number) => void,
-  getChapterProgress: (chapterId: string) => { quizCompleted: boolean }
+  openFileInTab: (path: string, searchPattern?: string) => void
 ): GuideSection[] {
   // Chapter 1 Questions
   const ch1Questions: QuizQuestion[] = [
@@ -233,12 +231,7 @@ Hardware: Terminal output`}
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch1"
-            questions={ch1Questions}
-            onComplete={(score, total) => markQuizComplete('ch1', score, total)}
-            isCompleted={getChapterProgress('ch1').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch1" questions={ch1Questions} />
         </div>
       ),
     },
@@ -308,12 +301,7 @@ weak_alias(__libc_read, read)`}
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch2"
-            questions={ch2Questions}
-            onComplete={(score, total) => markQuizComplete('ch2', score, total)}
-            isCompleted={getChapterProgress('ch2').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch2" questions={ch2Questions} />
         </div>
       ),
     },
@@ -412,12 +400,7 @@ weak_alias(__libc_read, read)`}
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch3"
-            questions={ch3Questions}
-            onComplete={(score, total) => markQuizComplete('ch3', score, total)}
-            isCompleted={getChapterProgress('ch3').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch3" questions={ch3Questions} />
         </div>
       ),
     },
@@ -496,12 +479,7 @@ weak_alias(__libc_read, read)`}
             ],
             openFileInTab
           )}
-          <ChapterQuiz
-            chapterId="ch4"
-            questions={ch4Questions}
-            onComplete={(score, total) => markQuizComplete('ch4', score, total)}
-            isCompleted={getChapterProgress('ch4').quizCompleted}
-          />
+          <ChapterQuiz chapterId="ch4" questions={ch4Questions} />
         </div>
       ),
     },

@@ -8,8 +8,7 @@ import GuidePanel from '@/components/GuidePanel';
 import DataStructuresView from '@/components/DataStructuresView';
 import ActivityBar from '@/components/ActivityBar';
 import StatusBar from '@/components/StatusBar';
-import CommandPalette from '@/components/CommandPalette';
-import { EditorTab, KernelSuggestion } from '@/types';
+import { EditorTab } from '@/types';
 import {
   buildFileTree,
   fetchFileContent,
@@ -17,8 +16,6 @@ import {
   setGitHubRepoWithDefaultBranch,
   getRepoIdentifier,
 } from '@/lib/github-api';
-import { getAllSuggestionsForFile, getFundamentalConcepts } from '@/lib/kernel-suggestions';
-import { useProjectProgress } from '@/hooks/useProjectProgress';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { createLinuxKernelGuide } from '@/lib/guides/linux-kernel';
 import { createLLVMGuide } from '@/lib/guides/llvm';
@@ -33,7 +30,7 @@ import {
   hasTreeStructure,
 } from '@/lib/repo-storage';
 import { downloadDirectoryContents } from '@/lib/github-archive';
-import '@/app/linux-kernel-explorer/vscode.css';
+import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
 const saveToLocalStorage = (key: string, value: unknown) => {
@@ -95,7 +92,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     id: number;
   } | null>(null);
   // Initialize with consistent values for SSR (will be updated after hydration)
-  const [suggestions, setSuggestions] = useState<KernelSuggestion[]>([]);
   const [repoLabel, setRepoLabel] = useState<string>('torvalds/linux');
 
   // Kernel version state - use v6.1 for Linux kernel, otherwise use provided branch
@@ -114,26 +110,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return getProjectConfig('torvalds', 'linux'); // Default fallback
   }, [owner, repo]);
 
-  const projectId = projectConfig?.id || 'linux-kernel';
-
-  // Progress tracking for chapters - dynamically determine chapter IDs
-  const chapterIds = useMemo(() => {
-    if (projectConfig?.guides?.[0]?.sections) {
-      return projectConfig.guides[0].sections.map((s) => s.id);
-    }
-    // For generic guide, use the contribute section ID
-    if (!projectConfig) {
-      return ['contribute'];
-    }
-    // Fallback for Linux kernel
-    return ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'];
-  }, [projectConfig]);
-
-  const { progress, markQuizComplete, getChapterProgress } = useProjectProgress(
-    projectId,
-    chapterIds
-  );
-
   // Panel width state - start with defaults to avoid hydration mismatch
   const [sidebarWidth, setSidebarWidth] = useState<number>(220);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(400);
@@ -144,9 +120,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   const [activeSidebarTab, setActiveSidebarTab] = useState<'explorer' | 'data-structures'>(
     'explorer'
   );
-
-  // Command palette state
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
 
   // Editor state for status bar
   const [editorLine, setEditorLine] = useState<number>(1);
@@ -202,24 +175,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       return () => window.removeEventListener('resize', checkViewport);
     }
   }, [mobileView]);
-
-  // Command palette keyboard shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + P for command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === 'p' && !e.shiftKey) {
-        e.preventDefault();
-        setIsCommandPaletteOpen(true);
-      }
-      // Escape to close command palette
-      if (e.key === 'Escape' && isCommandPaletteOpen) {
-        setIsCommandPaletteOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isCommandPaletteOpen]);
 
   // Initial loading animation - 2 seconds
   useEffect(() => {
@@ -322,8 +277,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         }
       } catch (error) {
         console.error('Failed to setup repository:', error);
-        // Redirect to setup on error
-        router.push('/setup');
+        // Redirect to home on error
+        router.push('/');
       }
     };
 
@@ -347,7 +302,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     // Use setTimeout to avoid synchronous setState in effect
     setTimeout(() => {
       setIsHydrated(true);
-      setSuggestions(getFundamentalConcepts());
       setRepoLabel(getCurrentRepoLabel());
     }, 0);
 
@@ -626,12 +580,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
           const nextActive = nextTabs[newIdx] || null;
           setActiveTabId(nextActive ? nextActive.id : null);
           setSelectedFile(nextActive ? nextActive.path : '');
-          setSuggestions(nextActive ? suggestions : getFundamentalConcepts());
         }
         return nextTabs;
       });
     },
-    [activeTabId, suggestions]
+    [activeTabId]
   );
 
   const onEditorContentLoad = useCallback(
@@ -640,8 +593,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       setTabs((prev) =>
         prev.map((t) => (t.id === activeTab.id ? { ...t, isLoading: false, content } : t))
       );
-      const sug = getAllSuggestionsForFile(activeTab.path, content);
-      setSuggestions(sug.length ? sug : getFundamentalConcepts());
 
       // Update status bar info
       const lines = content.split('\n');
@@ -694,50 +645,20 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
     // Load guide based on project type
     if (projectConfig.id === 'linux-kernel') {
-      return createLinuxKernelGuide(openFileInTab, markQuizComplete, getChapterProgress);
+      return createLinuxKernelGuide(openFileInTab);
     } else if (projectConfig.id === 'llvm') {
-      return createLLVMGuide(openFileInTab, markQuizComplete, getChapterProgress);
+      return createLLVMGuide(openFileInTab);
     } else if (projectConfig.id === 'glibc') {
-      return createGlibcGuide(openFileInTab, markQuizComplete, getChapterProgress);
+      return createGlibcGuide(openFileInTab);
     } else if (projectConfig.id === 'cpython') {
-      return createCPythonGuide(openFileInTab, markQuizComplete, getChapterProgress);
+      return createCPythonGuide(openFileInTab);
     }
 
     // Project config exists but no specific guide - use generic guide
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
-  }, [projectConfig, owner, repo, openFileInTab, markQuizComplete, getChapterProgress]);
+  }, [projectConfig, owner, repo, openFileInTab]);
 
   // Command palette commands
-  // Command palette commands
-  const commandPaletteCommands = useMemo(
-    () => [
-      {
-        id: 'open-file',
-        label: 'Open File',
-        icon: '📄',
-        category: 'File',
-        action: () => {
-          if (activeSidebarTab !== 'explorer') {
-            setActiveSidebarTab('explorer');
-          }
-          setIsSidebarOpen(true);
-          setIsCommandPaletteOpen(false);
-        },
-      },
-      {
-        id: 'toggle-sidebar',
-        label: 'Toggle Sidebar',
-        icon: '📁',
-        category: 'View',
-        action: () => {
-          setIsSidebarOpen(!isSidebarOpen);
-          setIsCommandPaletteOpen(false);
-        },
-      },
-    ],
-    [activeSidebarTab, isSidebarOpen]
-  );
-
   // Loading screen
   if (isInitialLoading) {
     return <LoadingScreen />;
@@ -790,10 +711,10 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
           <div className="text-lg mb-4 text-[var(--vscode-errorForeground)]">Repository Error</div>
           <div className="text-sm mb-4 opacity-70">{repoError}</div>
           <button
-            onClick={() => router.push('/setup')}
+            onClick={() => router.push('/')}
             className="px-4 py-2 bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] rounded text-sm"
           >
-            Go to Setup
+            Go Home
           </button>
         </div>
       </div>
@@ -802,12 +723,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
 
   return (
     <div className="vscode-container">
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        commands={commandPaletteCommands}
-      />
-
       <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
         <div
           className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
@@ -1003,12 +918,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               sections={guideSections}
               defaultOpenIds={
                 projectConfig?.guides?.[0]?.defaultOpenIds ||
-                (guideSections.length > 0 ? [guideSections[0].id] : chapterIds)
+                (guideSections.length > 0 ? [guideSections[0].id] : [])
               }
-              overallProgress={progress.overallProgress}
-              chapterProgress={Object.fromEntries(
-                Object.entries(progress.chapters).map(([id, ch]) => [id, ch.quizCompleted])
-              )}
             />
           </div>
         </div>

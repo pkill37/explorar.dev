@@ -65,7 +65,6 @@ npm run build
 src/
 ├── app/
 │   ├── [owner]/[repo]/        # Dynamic repository routes
-│   ├── linux-kernel-explorer/ # Legacy kernel explorer
 │   ├── layout.tsx             # Root layout with metadata
 │   └── page.tsx               # Main wizard page
 ├── components/
@@ -79,8 +78,6 @@ src/
 ├── contexts/
 │   └── RepositoryContext.tsx  # Repository state management
 ├── hooks/
-│   ├── useKernelProgress.ts   # Progress tracking
-│   └── useProjectProgress.ts  # Project-specific progress
 ├── lib/
 │   ├── repo-storage.ts        # IndexedDB storage management
 │   ├── github-archive.ts      # Repository downloading
@@ -106,7 +103,6 @@ src/
 ### Smart Repository Downloads
 
 - **Selective Downloads**: Large repositories (Linux kernel, LLVM) download only essential directories
-- **Progress Tracking**: Real-time progress with file counts and transfer rates
 - **Lazy Loading**: Branches are downloaded only when requested
 - **Offline Access**: Downloaded repositories work completely offline
 
@@ -130,7 +126,6 @@ The application uses a sophisticated caching system with:
 - **IndexedDB** as primary storage with **localStorage** fallback
 - Automatic cache size management (50MB limit)
 - Cache versioning and migration support
-- Debug mode for cache inspection
 
 ### 🔄 Retry Logic
 
@@ -140,14 +135,6 @@ Built-in fault tolerance with:
 - Configurable retry strategies
 - Circuit breaker pattern to prevent cascading failures
 - Automatic recovery after service restoration
-
-### 🐛 Debugging
-
-Enable debug mode for detailed logging:
-
-- Set `localStorage.setItem('github_api_debug', 'true')` for API debugging
-- Set `localStorage.setItem('github_cache_debug', 'true')` for cache debugging
-- Performance metrics and error tracking
 
 ## 🤝 Contributing
 

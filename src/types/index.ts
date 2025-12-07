@@ -22,16 +22,6 @@ export interface EditorTab {
   searchPattern?: string; // Pattern to search for and highlight
 }
 
-export interface KernelSuggestion {
-  id: string;
-  type: 'concept' | 'function' | 'structure' | 'memory' | 'process' | 'security';
-  title: string;
-  description: string;
-  relatedFiles: string[];
-  kernelMindReference?: string;
-  priority: 'high' | 'medium' | 'low';
-}
-
 export interface GitHubApiResponse {
   name: string;
   path: string;
@@ -55,67 +45,6 @@ export interface GitHubTag {
   zipball_url: string;
   tarball_url: string;
   node_id: string;
-}
-
-export interface PullRequestFile {
-  sha: string;
-  filename: string;
-  status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged';
-  additions: number;
-  deletions: number;
-  changes: number;
-  blob_url: string;
-  raw_url: string;
-  contents_url: string;
-  patch?: string;
-  previous_filename?: string;
-}
-
-export interface PullRequest {
-  id: number;
-  number: number;
-  title: string;
-  body: string | null;
-  state: 'open' | 'closed' | 'merged';
-  user: {
-    login: string;
-    avatar_url: string;
-  };
-  created_at: string;
-  updated_at: string;
-  merged_at: string | null;
-  base: {
-    ref: string;
-    sha: string;
-  };
-  head: {
-    ref: string;
-    sha: string;
-  };
-  html_url: string;
-  diff_url: string;
-  patch_url: string;
-}
-
-export interface PullRequestDiff {
-  file: PullRequestFile;
-  hunks: DiffHunk[];
-}
-
-export interface DiffHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  heading: string;
-  lines: DiffLine[];
-}
-
-export interface DiffLine {
-  oldLineNumber: number | null;
-  newLineNumber: number | null;
-  type: 'context' | 'added' | 'removed';
-  content: string;
 }
 
 // File System Access API types (for browser compatibility)

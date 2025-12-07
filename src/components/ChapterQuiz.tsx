@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 export interface QuizQuestion {
   id: string;
@@ -12,22 +12,12 @@ export interface QuizQuestion {
 interface ChapterQuizProps {
   chapterId: string;
   questions: QuizQuestion[];
-  onComplete?: (score: number, total: number) => void;
-  isCompleted?: boolean;
 }
 
-export default function ChapterQuiz({
-  questions,
-  onComplete,
-  isCompleted = false,
-}: ChapterQuizProps) {
+export default function ChapterQuiz({ questions }: ChapterQuizProps) {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [showResults, setShowResults] = useState(isCompleted);
-
-  useEffect(() => {
-    setShowResults(isCompleted);
-  }, [isCompleted]);
+  const [showResults, setShowResults] = useState(false);
 
   const handleAnswerSelect = (questionId: string, optionIndex: number) => {
     if (submitted) return;
@@ -44,15 +34,6 @@ export default function ChapterQuiz({
 
     setSubmitted(true);
     setShowResults(true);
-
-    // Calculate score
-    const score = questions.reduce((acc, q) => {
-      return acc + (selectedAnswers[q.id] === q.correctAnswer ? 1 : 0);
-    }, 0);
-
-    if (onComplete) {
-      onComplete(score, questions.length);
-    }
   };
 
   const handleRetry = () => {

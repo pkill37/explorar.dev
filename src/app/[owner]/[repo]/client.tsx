@@ -1,7 +1,7 @@
 'use client';
 
+import { notFound } from 'next/navigation';
 import KernelExplorer from '@/components/KernelExplorer';
-import ContributeScreen from '@/components/ContributeScreen';
 import { getProjectConfig } from '@/lib/project-guides';
 
 interface RepositoryExplorerClientProps {
@@ -13,9 +13,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   // Check if this repository is curated/prepared
   const projectConfig = getProjectConfig(owner, repo);
 
-  // If not curated, show the contribute screen
+  // If not curated, show not found
   if (!projectConfig) {
-    return <ContributeScreen owner={owner} repo={repo} />;
+    notFound();
   }
 
   // Otherwise, show the explorer

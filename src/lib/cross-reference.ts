@@ -126,56 +126,9 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
   return symbols;
 }
 
-export function findReferencesToSymbol(
-  content: string,
-  symbolName: string,
-  filePath: string
-): SymbolReference[] {
-  const references: SymbolReference[] = [];
-  const lines = content.split('\n');
-
-  // Create a regex that matches the symbol name as a whole word
-  const symbolRegex = new RegExp(`\\b${symbolName}\\b`, 'g');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    let match;
-
-    // Skip if this line defines the symbol
-    if (
-      line.includes(`struct ${symbolName}`) ||
-      (line.includes(`typedef`) && line.includes(symbolName)) ||
-      line.match(new RegExp(`^\\s*${symbolName}\\s*\\(`))
-    ) {
-      continue;
-    }
-
-    while ((match = symbolRegex.exec(line)) !== null) {
-      references.push({
-        name: symbolName,
-        type: 'function', // Default, could be improved
-        line: i + 1,
-        column: match.index + 1,
-        file: filePath,
-        isDefinition: false,
-        isDeclaration: false,
-      });
-    }
-  }
-
-  return references;
-}
-
 export function findDefinition(
   symbolName: string,
   symbols: SymbolReference[]
 ): SymbolReference | null {
   return symbols.find((s) => s.name === symbolName && s.isDefinition) || null;
-}
-
-export function findAllReferences(
-  symbolName: string,
-  symbols: SymbolReference[]
-): SymbolReference[] {
-  return symbols.filter((s) => s.name === symbolName && !s.isDefinition);
 }

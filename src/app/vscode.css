@@ -441,29 +441,6 @@
   font-size: 12px;
 }
 
-.guide-progress-label {
-  color: var(--vscode-text-secondary);
-  font-weight: 500;
-}
-
-.guide-progress-percentage {
-  color: var(--vscode-text-accent);
-  font-weight: 600;
-}
-
-.guide-progress-bar {
-  height: 6px;
-  background: var(--vscode-bg-secondary);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.guide-progress-fill {
-  height: 100%;
-  background: var(--vscode-text-accent);
-  transition: width 0.3s ease;
-}
-
 /* Chapter Completion Badge */
 .guide-expand-icon {
   flex-shrink: 0;

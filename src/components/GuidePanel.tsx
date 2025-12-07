@@ -19,17 +19,9 @@ interface GuidePanelProps {
   guides?: Guide[]; // New: support multiple guides
   defaultOpenIds?: string[];
   onNavigateFile?: (path: string) => void;
-  overallProgress?: number;
-  chapterProgress?: Record<string, boolean>; // chapterId -> isCompleted
 }
 
-export default function GuidePanel({
-  sections,
-  guides,
-  defaultOpenIds = [],
-  // overallProgress and chapterProgress are accepted for API compatibility but not currently used
-  ..._rest
-}: GuidePanelProps) {
+export default function GuidePanel({ sections, guides, defaultOpenIds = [] }: GuidePanelProps) {
   // Support both old (sections) and new (guides) API
   const guideList: Guide[] =
     guides || (sections ? [{ id: 'default', name: 'Kernel In The Mind', sections }] : []);

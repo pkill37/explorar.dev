@@ -21,12 +21,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily',
       priority: 1.0,
     },
-    {
-      url: `${siteUrl}/linux-kernel-explorer`,
-      lastModified: baseDate,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
     ...commonRepos.map(({ owner, repo, priority }) => ({
       url: `${siteUrl}/${owner}/${repo}`,
       lastModified: baseDate,
