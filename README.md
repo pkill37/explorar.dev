@@ -113,9 +113,17 @@ src/
 
 ## ⚙️ Environment Variables
 
-Optional environment variables:
+### Production Configuration
+
+The production build is configured with the following defaults in `next.config.ts`:
+
+- `NEXT_PUBLIC_WORKER_API_URL`: Cloudflare Worker API URL
+  - Production: `https://shared-data-store-api.fabiu-maia.workers.dev`
+
+### Optional Environment Variables
 
 - `NEXT_PUBLIC_SITE_URL`: Site URL for metadata (default: `https://explorar.dev`)
+- `NEXT_PUBLIC_GITHUB_CLIENT_ID`: GitHub OAuth App Client ID (required for authentication)
 
 ## 🔧 Advanced Features
 

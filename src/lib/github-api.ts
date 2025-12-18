@@ -1,18 +1,18 @@
 // GitHub API utilities for fetching source code from GitHub repositories
 
 import { GitHubApiResponse, FileNode, GITHUB_CONFIG } from '@/types';
-import { getCacheKey, getCachedData, setCachedData } from './github-cache';
-import { retryWithBackoff, githubCircuitBreaker } from './github-retry';
 import {
-  readFileFromStorage,
-  listDirectoryFromStorage,
   getGitHubRepoIdentifier,
   FileEntry,
   isFileAvailable,
-  getDirectoryMetadata,
   getTreeStructure,
 } from './repo-storage';
-import { downloadFileFromGitHub, downloadDirectoryContents } from './github-archive';
+import {
+  isCuratedRepo,
+  readFileFromStatic,
+  listDirectoryFromStatic,
+  getTreeStructureFromStatic,
+} from './repo-static';
 
 /**
  * Build headers for GitHub API requests
@@ -68,14 +68,6 @@ export function filterUnstableBranches(branches: string[]): string[] {
 export function getTrustedVersion(owner: string, repo: string): string {
   const key = `${owner}/${repo}`;
   return TRUSTED_VERSIONS[key] || '';
-}
-
-/**
- * @deprecated Use getTrustedVersion instead. Kept for backward compatibility.
- */
-export function getTrustedVersions(owner: string, repo: string): string[] {
-  const version = getTrustedVersion(owner, repo);
-  return version ? [version] : [];
 }
 
 /**
@@ -143,33 +135,26 @@ export class GitHubApiError extends Error {
  * Try to find a valid branch from our trusted learning versions
  * Returns the first version that exists in the repository, or null if none work
  */
-async function tryTrustedVersions(
+async function _tryTrustedVersions(
   owner: string,
   repo: string,
   currentBranch: string
 ): Promise<string | null> {
-  // Try each trusted version in order
-  const trusted = getTrustedVersions(owner, repo);
-  for (const version of trusted) {
-    // Skip if it's the same as the current branch (already tried)
-    if (version === currentBranch) {
-      continue;
-    }
-
+  // Try trusted version
+  const trusted = getTrustedVersion(owner, repo);
+  if (trusted && trusted !== currentBranch) {
     // Quick check: try to fetch the root directory to see if branch exists
     try {
-      const testUrl = `${currentConfig.apiBase}/${owner}/${repo}/contents?ref=${encodeURIComponent(version)}`;
+      const testUrl = `${currentConfig.apiBase}/${owner}/${repo}/contents?ref=${encodeURIComponent(trusted)}`;
       const testResponse = await fetch(testUrl, {
         headers: buildGitHubHeaders(),
       });
 
       if (testResponse.ok) {
-        return version;
+        return trusted;
       }
     } catch (error) {
-      console.error(`Error checking trusted version ${version}:`, error);
-      // Continue to next version
-      continue;
+      console.error(`Error checking trusted version ${trusted}:`, error);
     }
   }
 
@@ -201,7 +186,8 @@ function convertFileEntryToGitHubResponse(
 }
 
 /**
- * Try to fetch directory contents from local storage first, fallback to GitHub API
+ * Try to fetch directory contents from static files (local filesystem served over HTTP)
+ * Always uses static files - no fallback to GitHub API
  */
 async function tryFetchFromStorage(
   owner: string,
@@ -210,30 +196,22 @@ async function tryFetchFromStorage(
   path: string
 ): Promise<GitHubApiResponse[] | null> {
   try {
-    const identifier = getGitHubRepoIdentifier(owner, repo);
-
-    // Check if directory metadata exists in local storage
-    const metadata = await getDirectoryMetadata('github', identifier, branch, path);
-    if (metadata) {
-      // Convert to GitHub API format
-      return metadata.map((entry) => convertFileEntryToGitHubResponse(entry, path));
+    // Always try static files first (served from out/repos/ via HTTP)
+    const staticEntries = await listDirectoryFromStatic(owner, repo, branch, path);
+    if (staticEntries.length > 0) {
+      return staticEntries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
     }
-
-    // Fallback: try listing from actual files (for backward compatibility)
-    const entries = await listDirectoryFromStorage('github', identifier, branch, path);
-    if (entries.length > 0) {
-      return entries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
-    }
-
-    return null; // Not available locally
+    // If static files don't have it, return null
+    return null;
   } catch (error) {
     console.error('Error fetching from storage:', error);
-    return null; // Fall back to GitHub API
+    return null;
   }
 }
 
 /**
- * Try to fetch file content from local storage first, fallback to GitHub API
+ * Try to fetch file content from static files (local filesystem served over HTTP)
+ * Always uses static files - no fallback to GitHub API
  */
 async function tryFetchFileFromStorage(
   owner: string,
@@ -242,19 +220,17 @@ async function tryFetchFileFromStorage(
   path: string
 ): Promise<string | null> {
   try {
-    const identifier = getGitHubRepoIdentifier(owner, repo);
-
-    // Check if file exists in storage
-    const exists = await isFileAvailable('github', identifier, branch, path);
-    if (!exists) {
-      return null; // Not available locally
+    // Always try static files first (served from out/repos/ via HTTP)
+    try {
+      return await readFileFromStatic(owner, repo, branch, path);
+    } catch (error) {
+      // File not found in static storage
+      console.warn(`File not found in static storage: ${owner}/${repo}/${branch}/${path}`, error);
+      return null;
     }
-
-    // Fetch from local storage
-    return await readFileFromStorage('github', identifier, branch, path);
   } catch (error) {
     console.error('Error fetching file from storage:', error);
-    return null; // Fall back to GitHub API
+    return null;
   }
 }
 
@@ -281,7 +257,7 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
     throw error;
   }
 
-  // Try local storage first
+  // Always try static files first (served from out/repos/ via HTTP)
   const storageResult = await tryFetchFromStorage(
     currentConfig.owner,
     currentConfig.repo,
@@ -292,181 +268,8 @@ export async function fetchDirectoryContents(path: string = ''): Promise<GitHubA
     return storageResult;
   }
 
-  // If not in local storage, try on-demand download
-  const identifier = getGitHubRepoIdentifier(currentConfig.owner, currentConfig.repo);
-  const metadata = await getDirectoryMetadata('github', identifier, currentConfig.branch, path);
-  if (!metadata) {
-    // Directory metadata doesn't exist - download it on-demand
-    try {
-      const entries = await downloadDirectoryContents(
-        currentConfig.owner,
-        currentConfig.repo,
-        currentConfig.branch,
-        path
-      );
-      // Convert to GitHub API format
-      const result = entries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
-      return result;
-    } catch (error) {
-      console.error('Error downloading directory contents:', error);
-      // Fall through to API fetch below
-    }
-  }
-
-  // If not in local storage, try cache
-  const cacheKey = getCacheKey(
-    currentConfig.owner,
-    currentConfig.repo,
-    currentConfig.branch,
-    path,
-    'directory'
-  );
-
-  const cached = await getCachedData<GitHubApiResponse[]>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Encode path segments properly for URL (GitHub API expects each segment encoded)
-  const encodedPath = path
-    ? path
-        .split('/')
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join('/')
-    : '';
-  const url = encodedPath
-    ? `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents/${encodedPath}?ref=${encodeURIComponent(currentConfig.branch)}`
-    : `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents?ref=${encodeURIComponent(currentConfig.branch)}`;
-
-  try {
-    const result = await githubCircuitBreaker.execute(async () => {
-      return retryWithBackoff(
-        async () => {
-          const response = await fetch(url, {
-            headers: buildGitHubHeaders(),
-          });
-
-          if (!response.ok) {
-            // Check for rate limiting
-            if (response.status === 403) {
-              const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
-              const rateLimitReset = response.headers.get('x-ratelimit-reset');
-              const error = new GitHubApiError(
-                `GitHub API rate limit exceeded. ${
-                  rateLimitRemaining === '0' && rateLimitReset
-                    ? `Resets at ${new Date(parseInt(rateLimitReset) * 1000).toLocaleString()}`
-                    : 'Please try again later or authenticate with GitHub for higher limits.'
-                }`,
-                response.status
-              );
-              throw error;
-            }
-
-            // Try to get error message from response body
-            let errorMessage = response.statusText || `HTTP ${response.status}`;
-            let errorData: { message?: string } | null = null;
-            try {
-              errorData = await response.json().catch(() => null);
-              if (errorData?.message) {
-                errorMessage = errorData.message;
-              }
-            } catch {
-              // Ignore JSON parse errors, use statusText
-            }
-
-            // If branch doesn't exist (404, 422, or "No commit found"), try trusted learning versions
-            // GitHub API returns 422 for invalid refs, 404 for missing resources
-            if (
-              response.status === 404 ||
-              response.status === 422 ||
-              errorMessage.includes('No commit found')
-            ) {
-              try {
-                const validBranch = await tryTrustedVersions(
-                  currentConfig.owner,
-                  currentConfig.repo,
-                  currentConfig.branch
-                );
-
-                if (validBranch) {
-                  // Update config with valid branch
-                  currentConfig.branch = validBranch;
-                  // Retry the request with the valid branch
-                  const retryUrl = encodedPath
-                    ? `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents/${encodedPath}?ref=${encodeURIComponent(validBranch)}`
-                    : `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents?ref=${encodeURIComponent(validBranch)}`;
-
-                  const retryResponse = await fetch(retryUrl, {
-                    headers: {
-                      Accept: 'application/vnd.github.v3+json',
-                      'User-Agent': 'Explorar.dev',
-                    },
-                  });
-
-                  if (retryResponse.ok) {
-                    const retryData = await retryResponse.json();
-                    const contents = Array.isArray(retryData) ? retryData : [];
-
-                    // Update cache key with new branch
-                    const newCacheKey = getCacheKey(
-                      currentConfig.owner,
-                      currentConfig.repo,
-                      validBranch,
-                      path,
-                      'directory'
-                    );
-                    await setCachedData(newCacheKey, contents);
-
-                    return contents;
-                  }
-                }
-              } catch (retryError) {
-                console.error('Error retrying directory fetch with trusted version:', retryError);
-                // If retry fails, fall through to original error
-              }
-            }
-
-            const pathDisplay = path || 'root';
-            const error = new GitHubApiError(
-              `Failed to fetch directory "${pathDisplay}": ${errorMessage}`,
-              response.status
-            );
-            throw error;
-          }
-
-          const data = await response.json();
-          const contents = Array.isArray(data) ? data : [];
-
-          // Cache the result
-          await setCachedData(cacheKey, contents);
-
-          return contents;
-        },
-        {
-          maxRetries: 3,
-          initialDelay: 1000,
-          onRetry: () => {
-            // Retry in progress
-          },
-        }
-      );
-    });
-
-    if (result.success && result.data) {
-      return result.data;
-    }
-
-    throw result.error || new GitHubApiError('Failed to fetch directory contents after retries');
-  } catch (error) {
-    if (error instanceof GitHubApiError) {
-      throw error;
-    }
-    const apiError = new GitHubApiError(
-      `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-    throw apiError;
-  }
+  // If static files don't have it, it doesn't exist - throw error instead of falling back to GitHub API
+  throw new GitHubApiError(`Directory not found in static storage: ${path}`, 404);
 }
 
 /**
@@ -497,7 +300,7 @@ export async function fetchFileContent(path: string): Promise<string> {
     throw error;
   }
 
-  // Try local storage first
+  // Always try static files first (served from out/repos/ via HTTP)
   const storageResult = await tryFetchFileFromStorage(
     currentConfig.owner,
     currentConfig.repo,
@@ -508,216 +311,8 @@ export async function fetchFileContent(path: string): Promise<string> {
     return storageResult;
   }
 
-  // Check if file is available in storage - if not, download on-demand
-  const identifier = getGitHubRepoIdentifier(currentConfig.owner, currentConfig.repo);
-  const fileAvailable = await isFileAvailable('github', identifier, currentConfig.branch, path);
-
-  if (!fileAvailable) {
-    // File is not downloaded - download it on-demand (lazy loading)
-    try {
-      const content = await downloadFileFromGitHub(
-        currentConfig.owner,
-        currentConfig.repo,
-        currentConfig.branch,
-        path
-      );
-      return content;
-    } catch (error) {
-      console.error('Error downloading file from GitHub:', error);
-      // Fall through to API fetch below
-    }
-  }
-
-  // If not in local storage, try cache
-  const cacheKey = getCacheKey(
-    currentConfig.owner,
-    currentConfig.repo,
-    currentConfig.branch,
-    path,
-    'file'
-  );
-
-  const cached = await getCachedData<string>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Encode path segments properly for URL (GitHub API expects each segment encoded)
-  const encodedPath = path
-    ? path
-        .split('/')
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join('/')
-    : '';
-  const url = encodedPath
-    ? `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents/${encodedPath}?ref=${encodeURIComponent(currentConfig.branch)}`
-    : `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents?ref=${encodeURIComponent(currentConfig.branch)}`;
-
-  try {
-    const result = await githubCircuitBreaker.execute(async () => {
-      return retryWithBackoff(
-        async () => {
-          const response = await fetch(url, {
-            headers: buildGitHubHeaders(),
-          });
-
-          if (!response.ok) {
-            // Check for rate limiting
-            if (response.status === 403) {
-              const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
-              const rateLimitReset = response.headers.get('x-ratelimit-reset');
-              const error = new GitHubApiError(
-                `GitHub API rate limit exceeded. ${
-                  rateLimitRemaining === '0' && rateLimitReset
-                    ? `Resets at ${new Date(parseInt(rateLimitReset) * 1000).toLocaleString()}`
-                    : 'Please try again later or authenticate with GitHub for higher limits.'
-                }`,
-                response.status
-              );
-              throw error;
-            }
-
-            // Try to get error message from response body
-            let errorMessage = response.statusText || `HTTP ${response.status}`;
-            let errorData: { message?: string } | null = null;
-            try {
-              errorData = await response.json().catch(() => null);
-              if (errorData?.message) {
-                errorMessage = errorData.message;
-              }
-            } catch {
-              // Ignore JSON parse errors, use statusText
-            }
-
-            // If branch doesn't exist (404, 422, or "No commit found"), try trusted learning versions
-            // GitHub API returns 422 for invalid refs, 404 for missing resources
-            if (
-              response.status === 404 ||
-              response.status === 422 ||
-              errorMessage.includes('No commit found')
-            ) {
-              try {
-                const validBranch = await tryTrustedVersions(
-                  currentConfig.owner,
-                  currentConfig.repo,
-                  currentConfig.branch
-                );
-
-                if (validBranch) {
-                  // Update config with valid branch
-                  currentConfig.branch = validBranch;
-                  // Retry the request with the valid branch
-                  const retryEncodedPath = path
-                    ? path
-                        .split('/')
-                        .filter(Boolean)
-                        .map((segment) => encodeURIComponent(segment))
-                        .join('/')
-                    : '';
-                  const retryUrl = retryEncodedPath
-                    ? `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents/${retryEncodedPath}?ref=${encodeURIComponent(validBranch)}`
-                    : `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents?ref=${encodeURIComponent(validBranch)}`;
-
-                  const retryResponse = await fetch(retryUrl, {
-                    headers: {
-                      Accept: 'application/vnd.github.v3+json',
-                      'User-Agent': 'Explorar.dev',
-                    },
-                  });
-
-                  if (retryResponse.ok) {
-                    const retryData: GitHubApiResponse = await retryResponse.json();
-
-                    if (retryData.type === 'dir') {
-                      throw new GitHubApiError(`Path is a directory, not a file: ${path}`);
-                    }
-
-                    if (retryData.type !== 'file' || !retryData.content) {
-                      throw new GitHubApiError(
-                        `Invalid file response from GitHub API - File: ${path}`
-                      );
-                    }
-
-                    // Decode base64 content
-                    const content =
-                      retryData.encoding === 'base64'
-                        ? atob(retryData.content.replace(/\n/g, ''))
-                        : retryData.content;
-
-                    // Update cache key with new branch
-                    const newCacheKey = getCacheKey(
-                      currentConfig.owner,
-                      currentConfig.repo,
-                      validBranch,
-                      path,
-                      'file'
-                    );
-                    await setCachedData(newCacheKey, content);
-
-                    return content;
-                  }
-                }
-              } catch (retryError) {
-                console.error('Error retrying file fetch with trusted version:', retryError);
-                // If retry fails, fall through to original error
-              }
-            }
-
-            const error = new GitHubApiError(
-              `Failed to fetch file "${path}": ${errorMessage}`,
-              response.status
-            );
-            throw error;
-          }
-
-          const data: GitHubApiResponse = await response.json();
-
-          if (data.type === 'dir') {
-            const error = new GitHubApiError(`Path is a directory, not a file: ${path}`);
-            throw error;
-          }
-
-          if (data.type !== 'file' || !data.content) {
-            const error = new GitHubApiError(
-              `Invalid file response from GitHub API - File: ${path}`
-            );
-            throw error;
-          }
-
-          // Decode base64 content
-          const content =
-            data.encoding === 'base64' ? atob(data.content.replace(/\n/g, '')) : data.content;
-
-          // Cache the result
-          await setCachedData(cacheKey, content);
-
-          return content;
-        },
-        {
-          maxRetries: 3,
-          initialDelay: 1000,
-          onRetry: () => {
-            // Retry in progress
-          },
-        }
-      );
-    });
-
-    if (result.success && result.data) {
-      return result.data;
-    }
-
-    throw result.error || new GitHubApiError('Failed to fetch file content after retries');
-  } catch (error) {
-    if (error instanceof GitHubApiError) {
-      throw error;
-    }
-    const apiError = new GitHubApiError(
-      `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-    throw apiError;
-  }
+  // If static files don't have it, it doesn't exist - throw error instead of falling back to GitHub API
+  throw new GitHubApiError(`File not found in static storage: ${path}`, 404);
 }
 
 /**
@@ -798,11 +393,36 @@ async function updateFileLoadedStatus(
 }
 
 /**
- * Build file tree from stored tree structure or fallback to API
+ * Build file tree from static files, stored tree structure, or fallback to API
  */
 export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
   try {
     const { owner, repo, branch } = currentConfig;
+
+    // Check if this is a curated repo (pre-downloaded at build time)
+    if (isCuratedRepo(owner, repo)) {
+      const staticTree = await getTreeStructureFromStatic(owner, repo, branch);
+      if (staticTree && staticTree.length > 0) {
+        // Extract subtree for requested path
+        const subtree = extractSubtree(staticTree, path);
+
+        // Mark all files as loaded (they're available in static files)
+        const markAsLoaded = (nodes: FileNode[]): void => {
+          for (const node of nodes) {
+            if (node.type === 'file') {
+              node.isLoaded = true;
+            } else if (node.children) {
+              markAsLoaded(node.children);
+            }
+          }
+        };
+        markAsLoaded(subtree);
+
+        return subtree;
+      }
+    }
+
+    // For non-curated repos, use IndexedDB storage
     const identifier = getGitHubRepoIdentifier(owner, repo);
 
     // First, try to get complete tree structure from storage

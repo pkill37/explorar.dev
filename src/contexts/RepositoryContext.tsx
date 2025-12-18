@@ -23,7 +23,8 @@ import {
   DownloadProgress,
   BranchDownloadStatus,
 } from '@/lib/github-archive';
-import { getTrustedVersions, filterUnstableBranches } from '@/lib/github-api';
+import { getTrustedVersion, filterUnstableBranches } from '@/lib/github-api';
+import { isCuratedRepo } from '@/lib/repo-static';
 
 export interface RepositoryState {
   // Current repository
@@ -114,30 +115,47 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // Check if repository exists
-        console.log('[Repository Context] Checking if repository exists:', {
-          source,
-          identifier,
-          displayName,
-        });
-        const exists = await repositoryExists(source, identifier);
-        console.log('[Repository Context] Repository exists check result:', {
-          source,
-          identifier,
-          displayName,
-          exists,
-        });
-        if (!exists) {
-          console.error('[Repository Context] Repository not found in local storage:', {
+        // For curated GitHub repos, they're already available at build time
+        let isCurated = false;
+        if (source === 'github') {
+          const { owner, repo } = parseGitHubRepoIdentifier(identifier);
+          isCurated = isCuratedRepo(owner, repo);
+        }
+
+        // Check if repository exists (for non-curated repos, check IndexedDB)
+        if (!isCurated) {
+          console.log('[Repository Context] Checking if repository exists:', {
             source,
             identifier,
             displayName,
           });
-          throw new Error(`Repository ${displayName} not found in local storage`);
+          const exists = await repositoryExists(source, identifier);
+          console.log('[Repository Context] Repository exists check result:', {
+            source,
+            identifier,
+            displayName,
+            exists,
+          });
+          if (!exists) {
+            console.error('[Repository Context] Repository not found in local storage:', {
+              source,
+              identifier,
+              displayName,
+            });
+            throw new Error(`Repository ${displayName} not found in local storage`);
+          }
         }
 
         // Get available branches
-        let branches = await getAvailableBranches(source, identifier);
+        // For curated repos, use trusted branch directly
+        let branches: string[] = [];
+        if (isCurated && source === 'github') {
+          const { owner, repo } = parseGitHubRepoIdentifier(identifier);
+          const trustedVersion = getTrustedVersion(owner, repo);
+          branches = trustedVersion ? [trustedVersion] : [];
+        } else {
+          branches = await getAvailableBranches(source, identifier);
+        }
 
         // Filter out main/master branches - they are unstable
         if (source === 'github') {
@@ -152,7 +170,8 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
         let trustedBranches: string[] = [];
         if (source === 'github') {
           const { owner, repo } = parseGitHubRepoIdentifier(identifier);
-          trustedBranches = getTrustedVersions(owner, repo);
+          const trustedVersion = getTrustedVersion(owner, repo);
+          trustedBranches = trustedVersion ? [trustedVersion] : [];
         }
 
         // Set default branch (first trusted branch if available, otherwise first available stable branch)
@@ -160,6 +179,15 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
           source === 'github' && trustedBranches.length > 0
             ? trustedBranches.find((branch) => branches.includes(branch)) || branches[0]
             : branches[0];
+
+        // For curated repos, mark branch as available immediately
+        const downloadStatus: Record<string, BranchDownloadStatus> = {};
+        if (isCurated && defaultBranch) {
+          downloadStatus[defaultBranch] = {
+            isDownloading: false,
+            isAvailable: true,
+          };
+        }
 
         setState((prev) => ({
           ...prev,
@@ -169,6 +197,7 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
           currentBranch: defaultBranch,
           availableBranches: branches,
           trustedBranches,
+          downloadStatus,
           isLoading: false,
           isSetup: true,
           error: null,
@@ -212,7 +241,20 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
 
       const { owner, repo } = parseGitHubRepoIdentifier(state.identifier);
 
-      // Check download status
+      // Check if this is a curated repo (already downloaded at build time)
+      if (isCuratedRepo(owner, repo)) {
+        // Curated repos are already available, mark as available
+        setState((prev) => ({
+          ...prev,
+          downloadStatus: {
+            ...prev.downloadStatus,
+            [branch]: { isDownloading: false, isAvailable: true },
+          },
+        }));
+        return;
+      }
+
+      // For non-curated repos, check download status
       const status = await getBranchDownloadStatus(owner, repo, branch);
 
       if (status.isAvailable || status.isDownloading) {

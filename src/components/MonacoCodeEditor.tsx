@@ -2,7 +2,14 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { findSymbolsInFile, findDefinition, type SymbolReference } from '@/lib/cross-reference';
+import {
+  findSymbolsInFile,
+  findDefinition,
+  findAllReferences,
+  type SymbolReference,
+} from '@/lib/cross-reference';
+import '@/lib/monaco-config'; // Configure Monaco to use local files before importing
+import { configureMonacoWorkers } from '@/lib/monaco-workers';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {
@@ -132,7 +139,13 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     if (
       content &&
       filePath &&
-      (filePath.endsWith('.c') || filePath.endsWith('.h') || filePath.endsWith('.S'))
+      (filePath.endsWith('.c') ||
+        filePath.endsWith('.h') ||
+        filePath.endsWith('.cpp') ||
+        filePath.endsWith('.cc') ||
+        filePath.endsWith('.cxx') ||
+        filePath.endsWith('.hpp') ||
+        filePath.endsWith('.S'))
     ) {
       symbolsRef.current = findSymbolsInFile(content, filePath);
     } else {
@@ -268,27 +281,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     async (editor: unknown, monaco: unknown) => {
       editorRef.current = editor;
 
-      // Configure Monaco Editor to use CDN for workers
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).MonacoEnvironment = {
-          getWorkerUrl: function (moduleId: string, label: string) {
-            if (label === 'json') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/json/json.worker.js`;
-            }
-            if (label === 'css' || label === 'scss' || label === 'less') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/css/css.worker.js`;
-            }
-            if (label === 'html' || label === 'handlebars' || label === 'razor') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/html/html.worker.js`;
-            }
-            if (label === 'typescript' || label === 'javascript') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/typescript/ts.worker.js`;
-            }
-            return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/editor/editor.worker.js`;
-          },
-        };
-      }
+      // Configure Monaco Editor to use local workers
+      configureMonacoWorkers();
 
       // Configure editor options
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -375,10 +369,25 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         (editor as any).getAction('editor.action.previousMatchFindAction')?.run();
       });
 
-      // Add hover provider for cross-referencing
-      if (language === 'c') {
+      // Add F12 for Go to Definition
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (editor as any).addCommand((monaco as any).KeyCode.F12, () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (monaco as any).languages.registerHoverProvider('c', {
+        (editor as any).getAction('editor.action.revealDefinition')?.run();
+      });
+
+      // Add Shift+F12 for Find All References
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (editor as any).addCommand((monaco as any).KeyMod.Shift | (monaco as any).KeyCode.F12, () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (editor as any).getAction('editor.action.goToReferences')?.run();
+      });
+
+      // Register LSP providers for C and C++
+      const registerLSPProviders = (lang: string) => {
+        // Rich hover provider
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (monaco as any).languages.registerHoverProvider(lang, {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provideHover: (model: any, position: any) => {
             const word = model.getWordAtPosition(position);
@@ -386,8 +395,71 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
             const symbolName = word.word;
             const definition = findDefinition(symbolName, symbolsRef.current);
+            const allRefs = findAllReferences(symbolName, symbolsRef.current);
+            const usageCount = allRefs.length;
 
             if (definition) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const contents: any[] = [];
+
+              // Header with symbol name and type
+              contents.push({
+                value: `**${symbolName}** \`${definition.type}\``,
+              });
+
+              // Function signature or struct info
+              if (definition.type === 'function' && definition.signature) {
+                contents.push({
+                  value: '```c\n' + definition.signature + '\n```',
+                });
+              } else if (
+                (definition.type === 'struct' || definition.type === 'class') &&
+                definition.members
+              ) {
+                if (definition.members.length > 0) {
+                  const membersList = definition.members
+                    .slice(0, 10)
+                    .map((m) => `  ${m.type} ${m.name};`)
+                    .join('\n');
+                  const moreText =
+                    definition.members.length > 10
+                      ? `\n  // ... ${definition.members.length - 10} more`
+                      : '';
+                  contents.push({
+                    value: '```c\n' + membersList + moreText + '\n```',
+                  });
+                }
+              }
+
+              // Documentation
+              if (definition.documentation) {
+                contents.push({
+                  value: `*${definition.documentation}*`,
+                });
+              }
+
+              // Usage statistics
+              contents.push({
+                value: `**${usageCount}** reference${usageCount !== 1 ? 's' : ''} found`,
+              });
+
+              // Related symbols
+              if (definition.relatedSymbols.length > 0) {
+                const relatedList = definition.relatedSymbols.slice(0, 5).join(', ');
+                const moreRelated =
+                  definition.relatedSymbols.length > 5
+                    ? ` +${definition.relatedSymbols.length - 5} more`
+                    : '';
+                contents.push({
+                  value: `*Related: ${relatedList}${moreRelated}*`,
+                });
+              }
+
+              // Location info
+              contents.push({
+                value: `${definition.isDefinition ? '📍' : '📝'} Line ${definition.line} in ${definition.file.split('/').pop()}`,
+              });
+
               return {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 range: new (monaco as any).Range(
@@ -396,11 +468,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
                   position.lineNumber,
                   word.endColumn
                 ),
-                contents: [
-                  { value: `**${symbolName}** (${definition.type})` },
-                  { value: definition.isDefinition ? '📍 Definition' : '📝 Declaration' },
-                  { value: `Line ${definition.line} in ${definition.file.split('/').pop()}` },
-                ],
+                contents,
               };
             }
 
@@ -408,35 +476,148 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
           },
         });
 
-        // Add Ctrl+Click to go to definition
+        // Reference provider for "Find All References"
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (editor as any).onMouseDown((e: any) => {
-          if (e.event.ctrlKey || e.event.metaKey) {
-            const position = e.target.position;
-            if (!position) return;
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const model = (editor as any).getModel();
+        (monaco as any).languages.registerReferenceProvider(lang, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          provideReferences: (model: any, position: any) => {
             const word = model.getWordAtPosition(position);
-            if (!word) return;
+            if (!word) return [];
+
+            const symbolName = word.word;
+            const references = findAllReferences(symbolName, symbolsRef.current);
+
+            return references.map((ref) => ({
+              uri: model.uri,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              range: new (monaco as any).Range(
+                ref.line,
+                ref.column,
+                ref.line,
+                ref.column + symbolName.length
+              ),
+            }));
+          },
+        });
+
+        // Definition provider for "Go to Definition" (F12)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (monaco as any).languages.registerDefinitionProvider(lang, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          provideDefinition: (model: any, position: any) => {
+            const word = model.getWordAtPosition(position);
+            if (!word) return [];
 
             const symbolName = word.word;
             const definition = findDefinition(symbolName, symbolsRef.current);
 
             if (definition) {
-              // Scroll to definition in current file
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor as any).revealLineInCenter(definition.line);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (editor as any).setPosition({
-                lineNumber: definition.line,
-                column: definition.column,
-              });
-              e.event.preventDefault();
+              return [
+                {
+                  uri: model.uri,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  range: new (monaco as any).Range(
+                    definition.line,
+                    definition.column,
+                    definition.line,
+                    definition.column + definition.name.length
+                  ),
+                },
+              ];
             }
-          }
+
+            return [];
+          },
         });
+
+        // Code lens provider for reference counts
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (monaco as any).languages.registerCodeLensProvider(lang, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          provideCodeLenses: (_model: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const lenses: any[] = [];
+
+            for (const symbol of symbolsRef.current) {
+              if (symbol.isDefinition) {
+                const refCount = symbol.references.length;
+                if (refCount > 0) {
+                  lenses.push({
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    range: new (monaco as any).Range(symbol.line, 1, symbol.line, 1),
+                    id: `lens-${symbol.name}-${symbol.line}`,
+                    command: {
+                      id: '',
+                      title: `${refCount} reference${refCount !== 1 ? 's' : ''}`,
+                    },
+                  });
+                }
+              }
+            }
+
+            return {
+              lenses,
+              dispose: () => {},
+            };
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          resolveCodeLens: (model: any, codeLens: any) => {
+            // When code lens is clicked, show references
+            if (codeLens.command && codeLens.command.title) {
+              const symbolName = codeLens.id.replace(/^lens-/, '').replace(/-\d+$/, '');
+              const symbol = symbolsRef.current.find(
+                (s) => s.name === symbolName && s.isDefinition
+              );
+              if (symbol) {
+                codeLens.command = {
+                  id: 'editor.action.goToReferences',
+                  title: codeLens.command.title,
+                  arguments: [
+                    model.uri,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    new (monaco as any).Position(symbol.line, symbol.column),
+                  ],
+                };
+              }
+            }
+            return codeLens;
+          },
+        });
+      };
+
+      // Register providers for C and C++
+      if (language === 'c' || language === 'cpp') {
+        registerLSPProviders(language);
       }
+
+      // Add Ctrl+Click to go to definition
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (editor as any).onMouseDown((e: any) => {
+        if (e.event.ctrlKey || e.event.metaKey) {
+          const position = e.target.position;
+          if (!position) return;
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const model = (editor as any).getModel();
+          const word = model.getWordAtPosition(position);
+          if (!word) return;
+
+          const symbolName = word.word;
+          const definition = findDefinition(symbolName, symbolsRef.current);
+
+          if (definition) {
+            // Scroll to definition in current file
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (editor as any).revealLineInCenter(definition.line);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (editor as any).setPosition({
+              lineNumber: definition.line,
+              column: definition.column,
+            });
+            e.event.preventDefault();
+          }
+        }
+      });
     },
     [language, onCursorChange]
   );

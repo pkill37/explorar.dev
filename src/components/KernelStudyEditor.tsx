@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import '@/lib/monaco-config'; // Configure Monaco to use local files before importing
+import { configureMonacoWorkers } from '@/lib/monaco-workers';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {
@@ -253,27 +255,8 @@ const KernelStudyEditor: React.FC<KernelStudyEditorProps> = ({
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      // Configure Monaco Editor to use CDN for workers
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).MonacoEnvironment = {
-          getWorkerUrl: function (moduleId: string, label: string) {
-            if (label === 'json') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/json/json.worker.js`;
-            }
-            if (label === 'css' || label === 'scss' || label === 'less') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/css/css.worker.js`;
-            }
-            if (label === 'html' || label === 'handlebars' || label === 'razor') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/html/html.worker.js`;
-            }
-            if (label === 'typescript' || label === 'javascript') {
-              return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/language/typescript/ts.worker.js`;
-            }
-            return `https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/editor/editor.worker.js`;
-          },
-        };
-      }
+      // Configure Monaco Editor to use local workers
+      configureMonacoWorkers();
 
       // Configure editor options
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

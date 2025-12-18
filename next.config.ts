@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withMonacoEditor } from './scripts/monaco-plugin';
 
 const nextConfig: NextConfig = {
   // Enable static site generation with export
@@ -9,10 +10,30 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
 
-  // Configure Monaco Editor to use CDN
   env: {
-    MONACO_EDITOR_CDN: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs',
+    // Production Cloudflare Worker API URL
+    NEXT_PUBLIC_WORKER_API_URL: 'https://shared-data-store-api.fabiu-maia.workers.dev',
+  },
+
+  webpack: (config) => {
+    config.module.rules.push({
+      test: /\.md$/,
+      resourceQuery: /raw/,
+      type: 'asset/source',
+    });
+    return config;
+  },
+
+  // Configure Turbopack (Next.js 16+) to support raw markdown imports
+  turbopack: {
+    rules: {
+      '*.md': {
+        loaders: ['raw-loader'],
+        as: '*.js',
+      },
+    },
   },
 };
 
-export default nextConfig;
+// Automatically copy Monaco Editor files during build/dev
+export default withMonacoEditor(nextConfig);

@@ -1,6 +1,6 @@
 'use client';
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { notFound, useRouter } from 'next/navigation';
 import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
 import CodeEditorContainer from '@/components/CodeEditorContainer';
@@ -17,10 +17,7 @@ import {
   getRepoIdentifier,
 } from '@/lib/github-api';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
-import { createLinuxKernelGuide } from '@/lib/guides/linux-kernel';
-import { createLLVMGuide } from '@/lib/guides/llvm';
-import { createGlibcGuide } from '@/lib/guides/glibc';
-import { createCPythonGuide } from '@/lib/guides/cpython';
+import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
 import LoadingScreen from '@/components/LoadingScreen';
 import { useRepository } from '@/contexts/RepositoryContext';
 import {
@@ -30,6 +27,7 @@ import {
   hasTreeStructure,
 } from '@/lib/repo-storage';
 import { downloadDirectoryContents } from '@/lib/github-archive';
+import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
 import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -94,12 +92,11 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   // Initialize with consistent values for SSR (will be updated after hydration)
   const [repoLabel, setRepoLabel] = useState<string>('torvalds/linux');
 
-  // Kernel version state - use v6.1 for Linux kernel, otherwise use provided branch
+  // Kernel version state - use default branch from project config
   const [selectedVersion, setSelectedVersion] = useState<string>(() => {
-    if (owner === 'torvalds' && repo === 'linux') {
-      return branch || 'v6.1';
-    }
-    return branch || 'v6.1';
+    const config = owner && repo ? getProjectConfig(owner, repo) : null;
+    const defaultBranch = config?.defaultBranch || 'main';
+    return branch || defaultBranch;
   });
 
   // Get project config
@@ -196,21 +193,27 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       }
 
       try {
-        // Check if repository exists locally
+        // Check if this is a curated repo (pre-downloaded at build time)
+        const isCurated = isCuratedRepo(owner, repo);
         const identifier = getRepoIdentifier(owner, repo);
-        const exists = await repositoryExists('github', identifier);
 
-        if (!exists) {
-          // Repository not found locally, redirect to main page
-          router.push('/');
-          return;
+        // For curated repos, skip IndexedDB check (they're in static files)
+        // For non-curated repos, check if repository exists in IndexedDB
+        if (!isCurated) {
+          const exists = await repositoryExists('github', identifier);
+          if (!exists) {
+            // Repository not found locally, redirect to main page
+            router.push('/');
+            return;
+          }
         }
 
         // Repository exists, set it in context
         await setRepository('github', identifier, `${owner}/${repo}`);
 
         // Set GitHub API config for backward compatibility
-        const defaultBranch = owner === 'torvalds' && repo === 'linux' ? 'v6.1' : branch || 'v6.1';
+        const config = getProjectConfig(owner, repo);
+        const defaultBranch = config?.defaultBranch || branch || 'main';
         await setGitHubRepoWithDefaultBranch(owner, repo, branch || defaultBranch);
         setRepoLabel(`${owner}/${repo}`);
 
@@ -232,12 +235,19 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
           setSelectedVersion(branchToUse);
         }
 
-        // Check if tree structure exists for the current branch
-        const treeExists = await hasTreeStructure('github', identifier, branchToUse);
+        // Check if tree structure exists
+        // For curated repos, check static files; for others, check IndexedDB
+        let treeExists = false;
+        if (isCurated) {
+          const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
+          treeExists = staticTree !== null && staticTree.length > 0;
+        } else {
+          treeExists = await hasTreeStructure('github', identifier, branchToUse);
+        }
         setIsTreeStructureReady(treeExists);
 
-        // If tree structure doesn't exist, wait for download to complete
-        if (!treeExists) {
+        // If tree structure doesn't exist, wait for download to complete (only for non-curated repos)
+        if (!treeExists && !isCurated) {
           // Clear any existing intervals
           if (treeCheckIntervalRef.current) {
             clearInterval(treeCheckIntervalRef.current);
@@ -487,7 +497,9 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         const handleDirectoryExpand = async () => {
           try {
             const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
-            const branchToUse = currentBranch || branch || 'v6.1';
+            const config = owner && repo ? getProjectConfig(owner, repo) : null;
+            const defaultBranch = config?.defaultBranch || 'main';
+            const branchToUse = currentBranch || branch || defaultBranch;
 
             // Check if directory metadata exists
             const metadata = await getDirectoryMetadata(
@@ -643,18 +655,17 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       return createGenericGuide(owner || 'torvalds', repo || 'linux');
     }
 
-    // Load guide based on project type
-    if (projectConfig.id === 'linux-kernel') {
-      return createLinuxKernelGuide(openFileInTab);
-    } else if (projectConfig.id === 'llvm') {
-      return createLLVMGuide(openFileInTab);
-    } else if (projectConfig.id === 'glibc') {
-      return createGlibcGuide(openFileInTab);
-    } else if (projectConfig.id === 'cpython') {
-      return createCPythonGuide(openFileInTab);
+    // Try to load guide from markdown
+    const guideId = projectConfig.guides[0]?.id;
+    if (guideId) {
+      try {
+        return loadGuideFromMarkdown(guideId, openFileInTab);
+      } catch (error) {
+        console.error(`Failed to load guide ${guideId}:`, error);
+      }
     }
 
-    // Project config exists but no specific guide - use generic guide
+    // Fallback to generic guide
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
   }, [projectConfig, owner, repo, openFileInTab]);
 
@@ -664,61 +675,43 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return <LoadingScreen />;
   }
 
-  // Repository loading, download progress, or tree structure not ready
-  if (repoLoading || downloadProgress || !isTreeStructureReady) {
-    return (
-      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
-        <div className="text-center max-w-md">
-          {downloadProgress ? (
-            <>
-              <div className="text-lg mb-4">Downloading Repository Structure</div>
-              <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
-                <div
-                  className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${downloadProgress.progress}%` }}
-                />
-              </div>
-              <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
-              {downloadProgress.phase === 'downloading' &&
-                downloadProgress.filesProcessed &&
-                downloadProgress.totalFiles && (
-                  <div className="text-xs opacity-50">
-                    Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles}{' '}
-                    items
-                  </div>
-                )}
-            </>
-          ) : (
-            <>
-              <div className="text-lg mb-2">
-                {isTreeStructureReady
-                  ? 'Setting up repository...'
-                  : 'Loading repository structure...'}
-              </div>
-              <div className="text-sm opacity-70">Please wait</div>
-            </>
-          )}
+  // Repository loading, download progress (only for non-curated repos), or tree structure not ready
+  // For curated repos, skip download progress check since they're already available
+  const isCurated = owner && repo ? isCuratedRepo(owner, repo) : false;
+  const showDownloadProgress = downloadProgress && !isCurated;
+  if (repoLoading || showDownloadProgress || !isTreeStructureReady) {
+    if (showDownloadProgress) {
+      return (
+        <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="text-lg mb-4">Downloading Repository Structure</div>
+            <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
+              <div
+                className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
+                style={{ width: `${downloadProgress.progress}%` }}
+              />
+            </div>
+            <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
+            {downloadProgress.phase === 'downloading' &&
+              downloadProgress.filesProcessed &&
+              downloadProgress.totalFiles && (
+                <div className="text-xs opacity-50">
+                  Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles} items
+                </div>
+              )}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    // Use the standard loading UI
+    return <LoadingScreen />;
   }
 
   // Repository error
   if (repoError) {
-    return (
-      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-lg mb-4 text-[var(--vscode-errorForeground)]">Repository Error</div>
-          <div className="text-sm mb-4 opacity-70">{repoError}</div>
-          <button
-            onClick={() => router.push('/')}
-            className="px-4 py-2 bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] rounded text-sm"
-          >
-            Go Home
-          </button>
-        </div>
-      </div>
-    );
+    notFound();
+    return null;
   }
 
   return (

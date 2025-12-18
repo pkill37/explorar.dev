@@ -15,6 +15,12 @@ interface ChapterQuizProps {
 }
 
 export default function ChapterQuiz({ questions }: ChapterQuizProps) {
+  // Validate and normalize questions to ensure options is always an array
+  const normalizedQuestions = questions.map((q) => ({
+    ...q,
+    options: Array.isArray(q.options) ? q.options : [],
+  }));
+
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -28,7 +34,7 @@ export default function ChapterQuiz({ questions }: ChapterQuizProps) {
   };
 
   const handleSubmit = () => {
-    if (Object.keys(selectedAnswers).length !== questions.length) {
+    if (Object.keys(selectedAnswers).length !== normalizedQuestions.length) {
       return; // Don't submit if not all questions answered
     }
 
@@ -43,12 +49,12 @@ export default function ChapterQuiz({ questions }: ChapterQuizProps) {
   };
 
   const score = submitted
-    ? questions.reduce((acc, q) => {
+    ? normalizedQuestions.reduce((acc, q) => {
         return acc + (selectedAnswers[q.id] === q.correctAnswer ? 1 : 0);
       }, 0)
     : 0;
 
-  const allAnswered = Object.keys(selectedAnswers).length === questions.length;
+  const allAnswered = Object.keys(selectedAnswers).length === normalizedQuestions.length;
 
   return (
     <div className="chapter-quiz">
@@ -56,13 +62,13 @@ export default function ChapterQuiz({ questions }: ChapterQuizProps) {
         <span className="quiz-title">💡 KNOWLEDGE CHECK</span>
         {showResults && (
           <span className="quiz-score">
-            {score}/{questions.length} correct
+            {score}/{normalizedQuestions.length} correct
           </span>
         )}
       </div>
 
       <div className="quiz-questions">
-        {questions.map((question, qIndex) => {
+        {normalizedQuestions.map((question, qIndex) => {
           const isCorrect = selectedAnswers[question.id] === question.correctAnswer;
 
           return (

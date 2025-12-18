@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import GitHubRateLimitWrapper from '@/components/GitHubRateLimitWrapper';
 import { RepositoryProvider } from '@/contexts/RepositoryContext';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -215,9 +216,11 @@ export default function RootLayout({
             __html: JSON.stringify(organizationSchema),
           }}
         />
-        <GitHubRateLimitWrapper>
-          <RepositoryProvider>{children}</RepositoryProvider>
-        </GitHubRateLimitWrapper>
+        <AuthProvider>
+          <GitHubRateLimitWrapper>
+            <RepositoryProvider>{children}</RepositoryProvider>
+          </GitHubRateLimitWrapper>
+        </AuthProvider>
       </body>
     </html>
   );

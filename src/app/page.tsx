@@ -2,24 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { getTrustedVersions } from '@/lib/github-api';
+import { getTrustedVersion } from '@/lib/github-api';
 import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
+import AuthButton from '@/components/AuthButton';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Icon Components
-const LinkedInIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-  </svg>
-);
-
 const DiscordIcon = ({ className }: { className?: string }) => (
   <svg
     className={className}
@@ -60,24 +51,24 @@ const SOCIAL_LINKS = [
     url: 'https://github.com/pkill37/explorar.dev',
     icon: GitHubIcon,
     color: 'hover:bg-gray-900 hover:text-white',
-  },
-  {
-    name: 'LinkedIn',
-    url: 'https://www.linkedin.com/in/f%C3%A1bio-maia-a037b7227/',
-    icon: LinkedInIcon,
-    color: 'hover:bg-[#0077b5] hover:text-white',
+    title: 'Contribute & Build Together',
+    description: 'Fork, star, and help improve the codebase',
   },
   {
     name: 'Discord',
     url: 'https://discord.gg/fuXYz44tSs',
     icon: DiscordIcon,
     color: 'hover:bg-[#5865F2] hover:text-white',
+    title: 'Join Our Community',
+    description: 'Discuss code, share discoveries, get help',
   },
   {
     name: 'Telegram',
     url: 'https://t.me/explorardev',
     icon: TelegramIcon,
     color: 'hover:bg-[#0088cc] hover:text-white',
+    title: 'Stay Updated',
+    description: 'Get news, updates & quick discussions',
   },
 ];
 
@@ -89,7 +80,43 @@ interface GitHubRepo {
   description?: string;
   icon?: string;
   gradient?: string;
+  category?: string;
 }
+
+interface Category {
+  name: string;
+  icon: string;
+  gradient: string;
+  description: string;
+}
+
+// Repository categories
+const CATEGORIES: Category[] = [
+  {
+    name: 'System & Kernel',
+    icon: '🖥️',
+    gradient: 'from-orange-500/20 to-red-500/20',
+    description: 'Operating systems and kernel implementations',
+  },
+  {
+    name: 'Compilers & Toolchains',
+    icon: '⚙️',
+    gradient: 'from-blue-500/20 to-cyan-500/20',
+    description: 'Compiler toolchains and build systems',
+  },
+  {
+    name: 'Languages',
+    icon: '🐍',
+    gradient: 'from-yellow-500/20 to-green-500/20',
+    description: 'Programming language implementations',
+  },
+  {
+    name: 'Libraries & Frameworks',
+    icon: '📚',
+    gradient: 'from-purple-500/20 to-pink-500/20',
+    description: 'Core libraries and framework codebases',
+  },
+];
 
 // Curated quickstart repositories
 const QUICKSTART_REPOS: GitHubRepo[] = [
@@ -99,9 +126,13 @@ const QUICKSTART_REPOS: GitHubRepo[] = [
     displayName: 'Linux Kernel',
     icon: '🐧',
     gradient: 'from-orange-500/10 to-red-500/10',
+    category: 'System & Kernel',
     description:
       'Explore the Linux kernel source code. Study kernel architecture, system calls, device drivers, and core subsystems.',
-    trustedBranches: getTrustedVersions('torvalds', 'linux'),
+    trustedBranches: (() => {
+      const v = getTrustedVersion('torvalds', 'linux');
+      return v ? [v] : [];
+    })(),
   },
   {
     owner: 'llvm',
@@ -109,9 +140,13 @@ const QUICKSTART_REPOS: GitHubRepo[] = [
     displayName: 'LLVM Project',
     icon: '⚙️',
     gradient: 'from-blue-500/10 to-cyan-500/10',
+    category: 'Compilers & Toolchains',
     description:
       'Explore the LLVM compiler infrastructure. Study compiler design, optimization passes, and code generation.',
-    trustedBranches: getTrustedVersions('llvm', 'llvm-project'),
+    trustedBranches: (() => {
+      const v = getTrustedVersion('llvm', 'llvm-project');
+      return v ? [v] : [];
+    })(),
   },
   {
     owner: 'python',
@@ -119,30 +154,40 @@ const QUICKSTART_REPOS: GitHubRepo[] = [
     displayName: 'CPython',
     icon: '🐍',
     gradient: 'from-yellow-500/10 to-blue-500/10',
+    category: 'Languages',
     description:
       'Explore the Python interpreter source code. Learn how Python works under the hood, from bytecode execution to garbage collection.',
-    trustedBranches: getTrustedVersions('python', 'cpython'),
+    trustedBranches: (() => {
+      const v = getTrustedVersion('python', 'cpython');
+      return v ? [v] : [];
+    })(),
   },
   {
     owner: 'bminor',
     repo: 'glibc',
     displayName: 'GNU C Library',
-    icon: '📚',
-    gradient: 'from-purple-500/10 to-pink-500/10',
+    icon: '🖥️',
+    gradient: 'from-orange-500/10 to-red-500/10',
+    category: 'System & Kernel',
     description:
       'Explore the GNU C Library source code. Study standard C library implementations, system calls, and POSIX compliance.',
-    trustedBranches: getTrustedVersions('bminor', 'glibc'),
+    trustedBranches: (() => {
+      const v = getTrustedVersion('bminor', 'glibc');
+      return v ? [v] : [];
+    })(),
   },
 ];
 
 export default function Home() {
   const router = useRouter();
   const { setRepository } = useRepository();
+  const { isAuthenticated } = useAuth();
 
   const [repositories, setRepositories] = useState<RepositoryMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [showDashboardLink, setShowDashboardLink] = useState(false);
 
   // Load existing repositories
   const loadData = async () => {
@@ -158,6 +203,12 @@ export default function Home() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setShowDashboardLink(!!localStorage.getItem('auth_token'));
+    }
+  }, [isAuthenticated]);
 
   // Get selected branch for a repo (defaults to first trusted branch)
   const getSelectedBranch = (repo: GitHubRepo): string => {
@@ -290,24 +341,17 @@ export default function Home() {
         <div className="circuit-trace"></div>
       </div>
 
-      {/* Social Links - Top Left Corner */}
-      <div className="fixed top-3 left-3 sm:top-4 sm:left-4 z-50 flex items-center gap-1.5 sm:gap-2">
-        {SOCIAL_LINKS.map((link, index) => {
-          const IconComponent = link.icon;
-          return (
-            <a
-              key={index}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`group flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-md hover:scale-110 hover:text-gray-200 ${link.color}`}
-              title={link.name}
-              aria-label={link.name}
-            >
-              <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:scale-110" />
-            </a>
-          );
-        })}
+      {/* Auth Button - Top Right Corner */}
+      <div className="fixed top-3 right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-3">
+        <AuthButton />
+        {showDashboardLink && (
+          <Link
+            href="/dashboard"
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            Dashboard
+          </Link>
+        )}
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-12 pb-4 sm:pt-16 sm:pb-6 relative z-10">
@@ -345,170 +389,233 @@ export default function Home() {
             </div>
           )}
 
-          {/* Repository Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {QUICKSTART_REPOS.map((repo) => {
-              const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+          {/* Repository Categories */}
+          <div className="space-y-6">
+            {CATEGORIES.map((category) => {
+              const categoryRepos = QUICKSTART_REPOS.filter(
+                (repo) => repo.category === category.name
+              );
+
+              if (categoryRepos.length === 0) return null;
 
               return (
-                <button
-                  key={`${repo.owner}/${repo.repo}`}
-                  onClick={() => handleRepositoryAction(repo)}
-                  disabled={isDownloading}
-                  className="group relative p-4 bg-gradient-to-br from-gray-800/50 to-gray-800/30 border border-gray-700/50 rounded-xl hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 transition-all duration-300 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none overflow-hidden w-full"
+                <div
+                  key={category.name}
+                  className="relative bg-gradient-to-br from-gray-800/50 to-gray-800/30 border border-gray-700/50 rounded-xl p-6 hover:border-gray-600 transition-all duration-300 overflow-hidden"
                 >
-                  {/* Background gradient overlay */}
+                  {/* Category Background Gradient */}
                   <div
-                    className={`absolute inset-0 bg-gradient-to-br ${repo.gradient || 'from-blue-500/10 to-purple-500/10'} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+                    className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-30 rounded-xl pointer-events-none`}
                   />
 
-                  <div className="relative z-10">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <div className="text-2xl flex-shrink-0">{repo.icon || '📦'}</div>
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <p className="text-sm font-bold group-hover:text-gray-100 transition-colors font-mono text-gray-200">
-                            {repo.owner}/{repo.repo}
-                          </p>
-                          {repo.trustedBranches.length > 0 && (
-                            <div className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-xs font-medium rounded border border-gray-600/50 flex-shrink-0">
-                              {getSelectedBranch(repo)}
+                  {/* Category Header */}
+                  <div className="relative z-10 flex items-center gap-3 mb-4">
+                    <div className="text-3xl">{category.icon}</div>
+                    <div className="flex-1">
+                      <h2 className="text-xl font-bold text-gray-100 mb-1">{category.name}</h2>
+                      <p className="text-xs text-gray-400">{category.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Repositories Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
+                    {categoryRepos.map((repo) => {
+                      const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+
+                      return (
+                        <button
+                          key={`${repo.owner}/${repo.repo}`}
+                          onClick={() => handleRepositoryAction(repo)}
+                          disabled={isDownloading}
+                          className="group relative p-4 bg-gradient-to-br from-gray-900/50 to-gray-900/30 border border-gray-700/50 rounded-lg hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 transition-all duration-300 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none overflow-hidden w-full"
+                        >
+                          {/* Background gradient overlay */}
+                          <div
+                            className={`absolute inset-0 bg-gradient-to-br ${repo.gradient || 'from-blue-500/10 to-purple-500/10'} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+                          />
+
+                          <div className="relative z-10">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                <div className="text-2xl flex-shrink-0">{repo.icon || '📦'}</div>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <p className="text-sm font-bold group-hover:text-gray-100 transition-colors font-mono text-gray-200">
+                                    {repo.owner}/{repo.repo}
+                                  </p>
+                                  {repo.trustedBranches.length > 0 && (
+                                    <div className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-xs font-medium rounded border border-gray-600/50 flex-shrink-0">
+                                      {getSelectedBranch(repo)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
 
-                    {repo.description && (
-                      <p className="text-xs text-gray-400 mb-3 leading-snug line-clamp-2">
-                        {repo.description}
-                      </p>
-                    )}
+                            {repo.description && (
+                              <p className="text-xs text-gray-400 mb-3 leading-snug line-clamp-2">
+                                {repo.description}
+                              </p>
+                            )}
 
-                    {isDownloading && (
-                      <div className="flex items-center justify-end gap-1.5 pt-3">
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/50 rounded-lg text-xs font-medium text-gray-300 flex-shrink-0">
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                          </svg>
-                          <span className="hidden sm:inline">Downloading...</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Coming Soon: Arbitrary Git Repository */}
-          <div className="mt-6 flex justify-center">
-            <div className="w-full max-w-md">
-              <div className="group relative p-4 bg-gradient-to-br from-gray-800/30 to-gray-800/20 border border-gray-700/30 rounded-xl opacity-60 cursor-not-allowed overflow-hidden">
-                {/* Background gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-700/20 to-gray-700/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      <div className="text-2xl flex-shrink-0">🔗</div>
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <p className="text-sm font-bold transition-colors font-mono text-gray-300">
-                          arbitrary git repository
-                        </p>
-                        <div className="px-2 py-0.5 bg-gray-700/30 text-gray-500 text-xs font-medium rounded border border-gray-600/30 flex-shrink-0">
-                          coming soon
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-gray-500 mb-3 leading-snug">
-                    Explore any public GitHub repository by entering its URL.
-                  </p>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="https://github.com/owner/repo"
-                      disabled
-                      className="flex-1 px-3 py-2 text-sm bg-gray-800/30 border border-gray-700/30 rounded-lg text-gray-500 placeholder:text-gray-600 font-mono disabled:cursor-not-allowed"
-                    />
-                    <button
-                      disabled
-                      className="px-4 py-2 text-sm font-medium bg-gray-700/30 text-gray-500 rounded-lg disabled:cursor-not-allowed flex-shrink-0"
-                    >
-                      Explore
-                    </button>
+                            {isDownloading && (
+                              <div className="flex items-center justify-end gap-1.5 pt-3">
+                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/50 rounded-lg text-xs font-medium text-gray-300 flex-shrink-0">
+                                  <svg
+                                    className="w-3.5 h-3.5 animate-spin"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                  </svg>
+                                  <span className="hidden sm:inline">Downloading...</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       </main>
 
-      {/* Footer with Badges */}
-      <footer className="w-full py-4 px-4 border-t border-gray-800/50 relative z-10">
+      {/* Footer with Community Links */}
+      <footer className="w-full py-8 px-4 border-t border-gray-800/50 relative z-10">
         <div className="w-full max-w-6xl mx-auto">
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            <a
-              href="https://startupfa.me/s/explorardev?utm_source=explorar.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-opacity hover:opacity-80"
-            >
-              <Image
-                src="https://startupfa.me/badges/featured/dark.webp"
-                alt="Explorar.dev - Featured on Startup Fame"
-                width={171}
-                height={54}
-                className="h-auto"
-                unoptimized
-              />
-            </a>
-            <a
-              href="https://dofollow.tools"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-opacity hover:opacity-80"
-            >
-              <Image
-                src="https://dofollow.tools/badge/badge_dark.svg"
-                alt="Featured on Dofollow.Tools"
-                width={200}
-                height={54}
-                className="h-auto"
-                unoptimized
-              />
-            </a>
-            <a
-              href="https://twelve.tools"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-opacity hover:opacity-80"
-            >
-              <Image
-                src="https://twelve.tools/badge3-dark.svg"
-                alt="Featured on Twelve Tools"
-                width={200}
-                height={54}
-                className="h-auto"
-                unoptimized
-              />
-            </a>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            {/* Left Column - Community Header */}
+            <div className="lg:col-span-1">
+              <h3 className="text-lg font-semibold text-gray-200 mb-2">Join Our Community</h3>
+              <p className="text-sm text-gray-400 leading-relaxed mb-4">
+                Connect with fellow developers, share your discoveries, and contribute to making
+                code exploration better for everyone.
+              </p>
+              <div className="mb-3">
+                <p className="text-sm text-gray-300 font-medium mb-1">
+                  🚀 Help us build the future of code exploration
+                </p>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Add new features • Fix bugs • Improve documentation • Share feedback
+                </p>
+              </div>
+
+              {/* Meta + contribution links */}
+              <div className="mt-6 pt-4 border-t border-gray-800/50">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                  <span>Open-source</span>
+                  <span aria-hidden="true">•</span>
+                  <span>Built by the community, for the community</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Community Links */}
+            <div className="lg:col-span-1 space-y-4">
+              {SOCIAL_LINKS.map((link, index) => {
+                const IconComponent = link.icon;
+                const isGitHub = link.name === 'GitHub';
+
+                return isGitHub ? (
+                  <div
+                    key={index}
+                    className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 w-full ${link.color} border-green-500/30 bg-gradient-to-r from-green-500/10 to-blue-500/10`}
+                    title={link.title}
+                    aria-label={link.title}
+                  >
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 flex-1 min-w-0"
+                      aria-label={link.title}
+                      title={link.title}
+                    >
+                      <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
+                      <div className="flex flex-col text-left flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
+                          {link.title}
+                        </span>
+                        <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
+                          {link.description}
+                        </span>
+                      </div>
+                    </a>
+
+                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                      <div className="px-2 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-md">
+                        <span className="text-xs font-medium text-green-300">⭐ Star</span>
+                      </div>
+                      <div className="px-2 py-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-md">
+                        <span className="text-xs font-medium text-orange-300">🍴 Fork</span>
+                      </div>
+                      <a
+                        href="https://github.com/pkill37/explorar.dev/issues"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
+                        aria-label="🐛 Report an issue"
+                        title="Report an issue"
+                      >
+                        <span className="text-xs font-medium text-gray-300">🐛 Issue</span>
+                      </a>
+                      <a
+                        href="https://github.com/pkill37/explorar.dev/pulls"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
+                        aria-label="📝 Submit a PR"
+                        title="Submit a PR"
+                      >
+                        <span className="text-xs font-medium text-gray-300">📝 PR</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <a
+                    key={index}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 w-full ${link.color}`}
+                    title={link.title}
+                    aria-label={link.title}
+                  >
+                    <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
+                    <div className="flex flex-col text-left flex-1">
+                      <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
+                        {link.title}
+                      </span>
+                      <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
+                        {link.description}
+                      </span>
+                    </div>
+                    {link.name === 'Discord' || link.name === 'Telegram' ? (
+                      <div className="ml-auto">
+                        <div className="px-2 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-md">
+                          <span className="text-xs font-medium text-blue-300">Join</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </a>
+                );
+              })}
+            </div>
           </div>
         </div>
       </footer>

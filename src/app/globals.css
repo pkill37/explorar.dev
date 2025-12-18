@@ -220,3 +220,41 @@ body {
   width: 190px;
   animation-delay: 4.5s;
 }
+
+/* Code lens styles */
+.monaco-editor .codelens-decoration {
+  opacity: 0.7;
+  font-size: 12px;
+  padding-left: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.monaco-editor .codelens-decoration:hover {
+  opacity: 1;
+}
+
+.monaco-editor .codelens-decoration a {
+  color: var(--vscode-textLink-foreground, #4a9eff);
+  text-decoration: none;
+}
+
+.monaco-editor .codelens-decoration a:hover {
+  text-decoration: underline;
+}
+
+/* Enhanced hover tooltip styles */
+.monaco-editor .monaco-hover {
+  max-width: 500px;
+}
+
+.monaco-editor .monaco-hover .hover-contents {
+  padding: 8px 12px;
+}
+
+.monaco-editor .monaco-hover .hover-contents .markdown-hover pre {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 4px 0;
+}
