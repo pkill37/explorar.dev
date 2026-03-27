@@ -1,3 +1,13 @@
+---
+owner: frida
+repo: frida
+defaultBranch: main
+guideId: frida-guide
+name: Frida Dynamic Instrumentation Framework In The Mind
+description: Understanding Frida Before Hooking
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+---
+
 # Frida Dynamic Instrumentation Framework In The Mind
 
 ## Understanding Frida Before Hooking

@@ -12,6 +12,13 @@ export function isCuratedRepo(owner: string, repo: string): boolean {
 }
 
 /**
+ * Get repository mode: curated (static files) or arbitrary (GitHub API)
+ */
+export function getRepositoryMode(owner: string, repo: string): 'curated' | 'arbitrary' {
+  return isCuratedRepo(owner, repo) ? 'curated' : 'arbitrary';
+}
+
+/**
  * Get the static file path for a repository file
  */
 function getStaticFilePath(owner: string, repo: string, branch: string, filePath: string): string {

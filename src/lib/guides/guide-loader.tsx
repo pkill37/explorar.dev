@@ -1,23 +1,10 @@
-// Guide Loader - Loads markdown guides and converts them to React components
-import cpythonMd from './cpython.md?raw';
-import linuxKernelMd from './linux-kernel.md?raw';
-import glibcMd from './glibc.md?raw';
-import llvmMd from './llvm.md?raw';
+// Guide Loader - Loads markdown guides from docs/ folder and converts them to React components
 import { parseGuideMarkdown } from './parser';
 import { GuideSection } from '@/lib/project-guides';
+import { getGuideDocument, getAvailableGuideIds } from './docs-loader';
 
 /**
- * Map of guide IDs to their markdown content
- */
-const GUIDE_MARKDOWN: Record<string, string> = {
-  'cpython-guide': cpythonMd,
-  'linux-kernel-guide': linuxKernelMd,
-  'glibc-guide': glibcMd,
-  'llvm-guide': llvmMd,
-};
-
-/**
- * Load a guide from markdown and parse it into React components
+ * Load a guide from markdown (docs/ folder) and parse it into React components
  *
  * @param guideId - The unique identifier for the guide (e.g., 'cpython-guide')
  * @param openFileInTab - Callback function to open files in the editor
@@ -28,20 +15,19 @@ export function loadGuideFromMarkdown(
   guideId: string,
   openFileInTab: (path: string, searchPattern?: string) => void
 ): GuideSection[] {
-  const markdown = GUIDE_MARKDOWN[guideId];
+  const guideDoc = getGuideDocument(guideId);
 
-  if (!markdown) {
-    throw new Error(
-      `Guide not found: ${guideId}. Available guides: ${Object.keys(GUIDE_MARKDOWN).join(', ')}`
-    );
+  if (!guideDoc) {
+    const availableGuides = getAvailableGuideIds();
+    throw new Error(`Guide not found: ${guideId}. Available guides: ${availableGuides.join(', ')}`);
   }
 
-  return parseGuideMarkdown(markdown, openFileInTab);
+  return parseGuideMarkdown(guideDoc.content, openFileInTab);
 }
 
 /**
  * Get list of available guide IDs
  */
 export function getAvailableGuides(): string[] {
-  return Object.keys(GUIDE_MARKDOWN);
+  return getAvailableGuideIds();
 }

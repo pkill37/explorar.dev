@@ -47,7 +47,7 @@ test.describe('Sanity Checks', () => {
     const response = await page.goto('/robots.txt');
     expect(response?.status()).toBe(200);
     const content = await page.textContent('body');
-    expect(content).toContain('User-agent');
+    expect(content).toContain('User-Agent');
   });
 
   test('sitemap.xml is accessible', async ({ page }) => {

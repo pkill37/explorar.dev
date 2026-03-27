@@ -43,3 +43,7 @@ next-env.d.ts
 # repos
 /public/repos
 /public/monaco-editor
+
+# Cloudflare Workers / Wrangler
+api/.wrangler/
+api/.dev.vars

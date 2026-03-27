@@ -8,8 +8,7 @@ import {
   findAllReferences,
   type SymbolReference,
 } from '@/lib/cross-reference';
-import '@/lib/monaco-config'; // Configure Monaco to use local files before importing
-import { configureMonacoWorkers } from '@/lib/monaco-workers';
+import { configureMonacoEnvironment as configureMonacoWorkers } from '@/lib/monaco-config';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {

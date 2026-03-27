@@ -4,7 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import GitHubRateLimitWrapper from '@/components/GitHubRateLimitWrapper';
 import { RepositoryProvider } from '@/contexts/RepositoryContext';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { initializeWebPlatform } from '@/lib/platform/web';
+import { config } from '@/lib/config';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -191,6 +192,14 @@ export default function RootLayout({
     ],
   };
 
+  // Initialize web platform on client side
+  if (typeof window !== 'undefined') {
+    initializeWebPlatform({
+      guidesApiUrl: config.getGuidesApiUrl(),
+      guidesApiKey: config.getGuidesApiKey(),
+    });
+  }
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -216,11 +225,9 @@ export default function RootLayout({
             __html: JSON.stringify(organizationSchema),
           }}
         />
-        <AuthProvider>
-          <GitHubRateLimitWrapper>
-            <RepositoryProvider>{children}</RepositoryProvider>
-          </GitHubRateLimitWrapper>
-        </AuthProvider>
+        <GitHubRateLimitWrapper>
+          <RepositoryProvider>{children}</RepositoryProvider>
+        </GitHubRateLimitWrapper>
       </body>
     </html>
   );

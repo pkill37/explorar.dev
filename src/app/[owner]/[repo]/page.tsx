@@ -1,16 +1,18 @@
 import { Suspense } from 'react';
 import RepositoryExplorerClient from './client';
 import LoadingScreen from '@/components/LoadingScreen';
+import { getAllGuideDocuments } from '@/lib/guides/docs-loader';
 
-// For static export, we need to provide generateStaticParams
-// Pre-generate common repository routes for static export
+// Only pre-generated routes are valid; all others return 404
+export const dynamicParams = false;
+
+// Generate routes for all curated repositories from docs/ guides
 export async function generateStaticParams() {
-  return [
-    { owner: 'torvalds', repo: 'linux' },
-    { owner: 'python', repo: 'cpython' },
-    { owner: 'bminor', repo: 'glibc' },
-    { owner: 'llvm', repo: 'llvm-project' },
-  ];
+  const guides = getAllGuideDocuments();
+  return Array.from(guides.values()).map((doc) => ({
+    owner: doc.metadata.owner,
+    repo: doc.metadata.repo,
+  }));
 }
 
 interface PageProps {

@@ -1,3 +1,13 @@
+---
+owner: python
+repo: cpython
+defaultBranch: v3.12.0
+guideId: cpython-guide
+name: CPython In The Mind
+description: Understanding CPython Before Code
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5']
+---
+
 # CPython In The Mind
 
 ## Understanding CPython Before Code

@@ -1,3 +1,13 @@
+---
+owner: pytorch
+repo: pytorch
+defaultBranch: main
+guideId: pytorch-guide
+name: PyTorch Deep Learning Framework In The Mind
+description: Understanding PyTorch Before Training
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5']
+---
+
 # PyTorch Deep Learning Framework In The Mind
 
 ## Understanding PyTorch Before Training

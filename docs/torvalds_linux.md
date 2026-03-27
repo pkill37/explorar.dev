@@ -1,3 +1,13 @@
+---
+owner: torvalds
+repo: linux
+defaultBranch: v6.1
+guideId: linux-kernel-guide
+name: Linux Kernel In The Mind
+description: Understanding Linux Kernel Before Code
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9']
+---
+
 # Linux Kernel In The Mind
 
 ## Understanding Linux Kernel Before Code

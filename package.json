@@ -1,14 +1,14 @@
 {
   "name": "explorar.dev",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "predev": "tsx scripts/download-repos.ts --only=python/cpython --depth=1",
-    "dev": "next dev --turbopack",
+    "predev": "tsx scripts/download-repos.ts --only=python/cpython --only=torvalds/linux --depth=1",
+    "dev": "next dev --turbopack --port 3000",
     "prebuild": "tsx scripts/download-repos.ts --depth=1",
     "build": "next build",
     "clean": "rm -rf public/repos && rm -rf out && rm -rf node_modules",
-    "lint": "tsc --noEmit && eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && depcheck --ignores @tailwindcss/postcss,tailwindcss,raw-loader,@types/node,@types/react-dom",
+    "lint": "tsc --noEmit && eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && depcheck --ignores '@tailwindcss/postcss,tailwindcss,raw-loader,@types/node,@types/react-dom'",
     "fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix && prettier --write \"**/*.{js,mjs,jsx,ts,tsx,json,css,md,mdx}\" && npm audit fix",
     "test": "playwright test",
     "test:sanity": "playwright test tests/sanity.spec.ts",

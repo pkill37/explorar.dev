@@ -1,3 +1,13 @@
+---
+owner: llvm
+repo: llvm-project
+defaultBranch: llvmorg-18.1.0
+guideId: llvm-guide
+name: LLVM Compiler Infrastructure In The Mind
+description: Understanding LLVM Before Code
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+---
+
 # LLVM Compiler Infrastructure In The Mind
 
 ## Understanding LLVM Before Code

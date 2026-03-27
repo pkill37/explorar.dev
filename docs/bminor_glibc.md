@@ -1,3 +1,13 @@
+---
+owner: bminor
+repo: glibc
+defaultBranch: glibc-2.39
+guideId: glibc-guide
+name: GNU C Library (glibc) In The Mind
+description: Understanding glibc Before Code
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+---
+
 # GNU C Library (glibc) In The Mind
 
 ## Understanding glibc Before Code

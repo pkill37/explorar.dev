@@ -1493,3 +1493,50 @@
     width: 95vw;
   }
 }
+
+/* Right Panel Tabs */
+.right-panel-tabs {
+  display: flex;
+  background: var(--vscode-bg-secondary);
+  border-bottom: 1px solid var(--vscode-border);
+  flex-shrink: 0;
+}
+
+.right-panel-tab {
+  flex: 1;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.right-panel-tab:hover {
+  background: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.right-panel-tab.active {
+  color: var(--vscode-text-primary);
+  border-bottom-color: var(--vscode-text-accent);
+  background: var(--vscode-bg-tertiary);
+}
+
+/* Giscus Panel Styles */
+.giscus-container {
+  background: var(--vscode-bg-secondary);
+}
+
+.giscus-container .giscus {
+  width: 100%;
+}
+
+.giscus-container .giscus-frame {
+  width: 100% !important;
+}

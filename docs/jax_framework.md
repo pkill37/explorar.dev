@@ -1,3 +1,13 @@
+---
+owner: google
+repo: jax
+defaultBranch: main
+guideId: jax-guide
+name: JAX In The Mind
+description: Understanding JAX Before Computing
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+---
+
 # JAX: Composable Transformations for Array Programming In The Mind
 
 ## Understanding JAX Before Computing

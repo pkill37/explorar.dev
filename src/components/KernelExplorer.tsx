@@ -71,7 +71,6 @@ interface KernelExplorerProps {
 
 export default function KernelExplorer({ owner, repo, branch }: KernelExplorerProps) {
   const router = useRouter();
-  const githubUrlRef = useRef<HTMLInputElement>(null);
   const {
     setRepository,
     switchBranch,
@@ -327,12 +326,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         }
         if (savedRightPanelWidth) {
           setRightPanelWidth(parseInt(savedRightPanelWidth, 10));
-        }
-        if (githubUrlRef.current) {
-          const savedGitHubUrl = loadFromLocalStorage('kernel-explorer-github-url', '') as string;
-          if (savedGitHubUrl) {
-            githubUrlRef.current.value = savedGitHubUrl;
-          }
         }
       }, 0);
     }
@@ -870,6 +863,12 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
             flexShrink: 0,
           }}
         >
+          {/* Right Panel Header */}
+          {!isMobile && (
+            <div className="right-panel-tabs">
+              <span className="right-panel-tab active">Guide</span>
+            </div>
+          )}
           {isMobile && (
             <div
               style={{
@@ -891,7 +890,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                   padding: '4px 8px',
                   fontSize: '18px',
                 }}
-                aria-label="Close guide"
+                aria-label="Close panel"
               >
                 ✕
               </button>
@@ -907,13 +906,15 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
               overflow: 'hidden',
             }}
           >
-            <GuidePanel
-              sections={guideSections}
-              defaultOpenIds={
-                projectConfig?.guides?.[0]?.defaultOpenIds ||
-                (guideSections.length > 0 ? [guideSections[0].id] : [])
-              }
-            />
+            {(!isMobile || mobileView === 'guide') && (
+              <GuidePanel
+                sections={guideSections}
+                defaultOpenIds={
+                  projectConfig?.guides?.[0]?.defaultOpenIds ||
+                  (guideSections.length > 0 ? [guideSections[0].id] : [])
+                }
+              />
+            )}
           </div>
         </div>
       </div>

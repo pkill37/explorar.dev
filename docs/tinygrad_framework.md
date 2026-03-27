@@ -1,3 +1,13 @@
+---
+owner: tinygrad
+repo: tinygrad
+defaultBranch: master
+guideId: tinygrad-guide
+name: TinyGrad In The Mind
+description: Understanding TinyGrad Before Coding
+defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+---
+
 # TinyGrad: A Deep Learning Framework In The Mind
 
 ## Understanding TinyGrad Before Coding

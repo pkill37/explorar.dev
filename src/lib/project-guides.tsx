@@ -1,6 +1,7 @@
-// Generic project guide configuration system
+// Dynamic project guide configuration system using docs/ markdown files
 import React from 'react';
 import { QuizQuestion } from '@/components/ChapterQuiz';
+import { getGuideByRepo } from './guides/docs-loader';
 
 export interface FileRecommendation {
   path: string;
@@ -165,89 +166,38 @@ export function createFileRecommendationsComponent(
   );
 }
 
-// Get project config by owner/repo
+/**
+ * Get project config by owner/repo
+ * Dynamically builds configuration from docs/ markdown files
+ */
 export function getProjectConfig(owner: string, repo: string): ProjectConfig | null {
-  const configs: Record<string, ProjectConfig> = {
-    'torvalds/linux': {
-      id: 'linux-kernel',
-      name: 'Linux Kernel',
-      owner: 'torvalds',
-      repo: 'linux',
-      defaultBranch: 'v6.1',
-      guides: [
-        {
-          id: 'linux-kernel-guide',
-          name: 'Linux Kernel In The Mind',
-          description: 'Understanding Linux Kernel Before Code',
-          sections: [], // Will be populated by guide factory
-          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9'],
-        },
-      ],
-      suggestions: {
-        fundamental: [],
+  const guideDoc = getGuideByRepo(owner, repo);
+
+  if (!guideDoc) {
+    return null;
+  }
+
+  const { metadata } = guideDoc;
+
+  return {
+    id: `${owner}-${repo}`.toLowerCase().replace(/\//g, '-'),
+    name: metadata.name,
+    owner: metadata.owner,
+    repo: metadata.repo,
+    defaultBranch: metadata.defaultBranch,
+    guides: [
+      {
+        id: metadata.guideId,
+        name: metadata.name,
+        description: metadata.description,
+        sections: [], // Will be populated by guide loader
+        defaultOpenIds: metadata.defaultOpenIds,
       },
-    },
-    'llvm/llvm-project': {
-      id: 'llvm',
-      name: 'LLVM',
-      owner: 'llvm',
-      repo: 'llvm-project',
-      defaultBranch: 'llvmorg-18.1.0',
-      guides: [
-        {
-          id: 'llvm-guide',
-          name: 'LLVM Compiler Infrastructure In The Mind',
-          description: 'Understanding LLVM Before Code',
-          sections: [], // Will be populated by guide factory
-          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4'],
-        },
-      ],
-      suggestions: {
-        fundamental: [],
-      },
-    },
-    'bminor/glibc': {
-      id: 'glibc',
-      name: 'GNU C Library (glibc)',
-      owner: 'bminor',
-      repo: 'glibc',
-      defaultBranch: 'glibc-2.39',
-      guides: [
-        {
-          id: 'glibc-guide',
-          name: 'glibc In The Mind',
-          description: 'Understanding glibc Before Code',
-          sections: [], // Will be populated by guide factory
-          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4'],
-        },
-      ],
-      suggestions: {
-        fundamental: [],
-      },
-    },
-    'python/cpython': {
-      id: 'cpython',
-      name: 'CPython',
-      owner: 'python',
-      repo: 'cpython',
-      defaultBranch: 'v3.12.0',
-      guides: [
-        {
-          id: 'cpython-guide',
-          name: 'CPython In The Mind',
-          description: 'Understanding CPython Before Code',
-          sections: [], // Will be populated by guide factory
-          defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'],
-        },
-      ],
-      suggestions: {
-        fundamental: [],
-      },
+    ],
+    suggestions: {
+      fundamental: [],
     },
   };
-
-  const key = `${owner}/${repo}`;
-  return configs[key] || null;
 }
 
 // Create a generic guide for unsupported repositories
@@ -322,7 +272,26 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                 }}
               >
                 <li>
-                  Open an issue or discussion on{' '}
+                  Create a markdown guide in the <code>docs/</code> folder following our format (see{' '}
+                  <a
+                    href={`${explorarRepoUrl}/blob/main/docs/python_cpython.md`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: 'var(--vscode-textLink-foreground, #4a9eff)',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    example
+                  </a>
+                  )
+                </li>
+                <li>
+                  Add YAML frontmatter with owner, repo, defaultBranch, guideId, name, and
+                  description
+                </li>
+                <li>
+                  Submit a pull request to{' '}
                   <a
                     href={explorarRepoUrl}
                     target="_blank"
@@ -331,24 +300,9 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                       color: 'var(--vscode-textLink-foreground, #4a9eff)',
                       textDecoration: 'none',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.textDecoration = 'underline';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.textDecoration = 'none';
-                    }}
                   >
-                    our GitHub repository
-                  </a>{' '}
-                  requesting support for this repository
-                </li>
-                <li>
-                  Contribute a learning guide by creating a guide file following our existing
-                  patterns
-                </li>
-                <li>
-                  Share your ideas on how we can automatically generate learning experiences for
-                  arbitrary repositories
+                    our repository
+                  </a>
                 </li>
               </ul>
             </div>
@@ -382,7 +336,7 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                 <span>Request Support</span>
               </a>
               <a
-                href={explorarRepoUrl}
+                href={`${explorarRepoUrl}/blob/main/CONTRIBUTING.md`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -407,8 +361,8 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <span>🔓</span>
-                <span>View Repository</span>
+                <span>📖</span>
+                <span>Contribution Guide</span>
               </a>
             </div>
           </div>
@@ -439,8 +393,8 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
             >
               {owner}/{repo}
             </a>{' '}
-            using our code explorer. We're continuously working on expanding our learning
-            experiences!
+            using our code explorer. The guides are contributor-driven - all you need to do is add a
+            markdown file to the docs/ folder!
           </p>
         </div>
       ),

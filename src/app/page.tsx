@@ -6,9 +6,7 @@ import { getTrustedVersion } from '@/lib/github-api';
 import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
-import AuthButton from '@/components/AuthButton';
-import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
+import { getMultipleRepoMetadata, type RepoMetadata } from '@/lib/repo-metadata';
 
 // Icon Components
 const DiscordIcon = ({ className }: { className?: string }) => (
@@ -181,13 +179,11 @@ const QUICKSTART_REPOS: GitHubRepo[] = [
 export default function Home() {
   const router = useRouter();
   const { setRepository } = useRepository();
-  const { isAuthenticated } = useAuth();
-
   const [repositories, setRepositories] = useState<RepositoryMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-  const [showDashboardLink, setShowDashboardLink] = useState(false);
+  const [repoMetadata, setRepoMetadata] = useState<Map<string, RepoMetadata | null>>(new Map());
 
   // Load existing repositories
   const loadData = async () => {
@@ -204,11 +200,25 @@ export default function Home() {
     loadData();
   }, []);
 
+  // Fetch repository metadata (owner avatars) for quickstart repos
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setShowDashboardLink(!!localStorage.getItem('auth_token'));
-    }
-  }, [isAuthenticated]);
+    const fetchMetadata = async () => {
+      try {
+        const reposToFetch = QUICKSTART_REPOS.map((repo) => ({
+          owner: repo.owner,
+          repo: repo.repo,
+        }));
+
+        const metadata = await getMultipleRepoMetadata(reposToFetch);
+        setRepoMetadata(metadata);
+      } catch (err) {
+        console.error('Failed to fetch repository metadata:', err);
+        // Don't set error state - this is non-critical, UI will fall back to emojis
+      }
+    };
+
+    fetchMetadata();
+  }, []);
 
   // Get selected branch for a repo (defaults to first trusted branch)
   const getSelectedBranch = (repo: GitHubRepo): string => {
@@ -341,19 +351,6 @@ export default function Home() {
         <div className="circuit-trace"></div>
       </div>
 
-      {/* Auth Button - Top Right Corner */}
-      <div className="fixed top-3 right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-3">
-        <AuthButton />
-        {showDashboardLink && (
-          <Link
-            href="/dashboard"
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            Dashboard
-          </Link>
-        )}
-      </div>
-
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-12 pb-4 sm:pt-16 sm:pb-6 relative z-10">
         <div className="w-full max-w-6xl mx-auto">
           {/* Header */}
@@ -389,108 +386,300 @@ export default function Home() {
             </div>
           )}
 
-          {/* Repository Categories */}
-          <div className="space-y-6">
-            {CATEGORIES.map((category) => {
-              const categoryRepos = QUICKSTART_REPOS.filter(
-                (repo) => repo.category === category.name
-              );
+          {/* Repository Sea - Whiteboard-style exploration */}
+          <div className="mb-16 relative">
+            {/* Subtle grid background for whiteboard feel */}
+            <div
+              className="absolute inset-0 opacity-10 pointer-events-none"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)',
+                backgroundSize: '40px 40px',
+              }}
+            ></div>
 
-              if (categoryRepos.length === 0) return null;
+            {/* Free-flowing repository cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-auto">
+              {QUICKSTART_REPOS.map((repo, index) => {
+                const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+                const category = CATEGORIES.find((c) => c.name === repo.category);
 
-              return (
-                <div
-                  key={category.name}
-                  className="relative bg-gradient-to-br from-gray-800/50 to-gray-800/30 border border-gray-700/50 rounded-xl p-6 hover:border-gray-600 transition-all duration-300 overflow-hidden"
-                >
-                  {/* Category Background Gradient */}
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-30 rounded-xl pointer-events-none`}
-                  />
+                // Create visual variety with different card heights
+                const isLarge = index % 5 === 0;
 
-                  {/* Category Header */}
-                  <div className="relative z-10 flex items-center gap-3 mb-4">
-                    <div className="text-3xl">{category.icon}</div>
-                    <div className="flex-1">
-                      <h2 className="text-xl font-bold text-gray-100 mb-1">{category.name}</h2>
-                      <p className="text-xs text-gray-400">{category.description}</p>
-                    </div>
-                  </div>
+                // Deterministic rotation based on index (fixes hydration)
+                const rotations = [0.15, -0.2, 0.1, -0.15, 0.05, -0.1, 0.2, -0.05];
+                const rotation = rotations[index % rotations.length];
 
-                  {/* Repositories Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
-                    {categoryRepos.map((repo) => {
-                      const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+                return (
+                  <button
+                    key={`${repo.owner}/${repo.repo}`}
+                    onClick={() => handleRepositoryAction(repo)}
+                    disabled={isDownloading}
+                    className={`group relative p-5 bg-gradient-to-br from-gray-800/80 to-gray-800/60 border border-gray-700/70 rounded-2xl hover:border-gray-600 hover:shadow-2xl hover:shadow-gray-900/70 hover:-translate-y-1 transition-all duration-300 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0 overflow-hidden ${isLarge ? 'sm:col-span-2' : ''}`}
+                    style={{
+                      transform: `rotate(${rotation}deg)`,
+                    }}
+                  >
+                    {/* Floating gradient orbs for depth */}
+                    <div
+                      className={`absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${repo.gradient || 'from-blue-500/30 to-purple-500/30'} blur-3xl opacity-20 group-hover:opacity-100 transition-opacity duration-500`}
+                    />
+                    <div
+                      className={`absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-gradient-to-br ${category?.gradient || 'from-gray-500/30 to-gray-600/30'} blur-3xl opacity-40 group-hover:opacity-70 transition-opacity duration-500`}
+                    />
 
-                      return (
-                        <button
-                          key={`${repo.owner}/${repo.repo}`}
-                          onClick={() => handleRepositoryAction(repo)}
-                          disabled={isDownloading}
-                          className="group relative p-4 bg-gradient-to-br from-gray-900/50 to-gray-900/30 border border-gray-700/50 rounded-lg hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 transition-all duration-300 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none overflow-hidden w-full"
-                        >
-                          {/* Background gradient overlay */}
-                          <div
-                            className={`absolute inset-0 bg-gradient-to-br ${repo.gradient || 'from-blue-500/10 to-purple-500/10'} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
-                          />
-
-                          <div className="relative z-10">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                <div className="text-2xl flex-shrink-0">{repo.icon || '📦'}</div>
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <p className="text-sm font-bold group-hover:text-gray-100 transition-colors font-mono text-gray-200">
-                                    {repo.owner}/{repo.repo}
-                                  </p>
-                                  {repo.trustedBranches.length > 0 && (
-                                    <div className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-xs font-medium rounded border border-gray-600/50 flex-shrink-0">
-                                      {getSelectedBranch(repo)}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {repo.description && (
-                              <p className="text-xs text-gray-400 mb-3 leading-snug line-clamp-2">
-                                {repo.description}
-                              </p>
-                            )}
-
-                            {isDownloading && (
-                              <div className="flex items-center justify-end gap-1.5 pt-3">
-                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/50 rounded-lg text-xs font-medium text-gray-300 flex-shrink-0">
-                                  <svg
-                                    className="w-3.5 h-3.5 animate-spin"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                  <span className="hidden sm:inline">Downloading...</span>
-                                </div>
-                              </div>
-                            )}
+                    <div className="relative z-10">
+                      {/* Category badge */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 px-2.5 py-1 bg-gray-900/70 backdrop-blur-sm border border-gray-700/70 rounded-lg">
+                          <span className="text-xs font-medium text-gray-300">
+                            {category?.name}
+                          </span>
+                        </div>
+                        {repo.trustedBranches.length > 0 && (
+                          <div className="px-2 py-1 bg-gray-700/70 text-gray-200 text-xs font-medium rounded border border-gray-600/70">
+                            {getSelectedBranch(repo)}
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        )}
+                      </div>
+
+                      {/* Repository identity */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="relative w-16 h-16 flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+                          {(() => {
+                            const metadata = repoMetadata.get(`${repo.owner}/${repo.repo}`);
+                            const avatarUrl = metadata?.ownerAvatarUrl;
+
+                            if (avatarUrl) {
+                              return (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={avatarUrl}
+                                  alt={repo.owner}
+                                  className="w-full h-full rounded-full object-cover"
+                                  onError={(e) => {
+                                    // Hide image and show emoji fallback on error
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              );
+                            }
+
+                            // Fallback: show emoji if no metadata available yet or fetch failed
+                            return (
+                              <div className="w-full h-full flex items-center justify-center text-4xl">
+                                {repo.icon || '📦'}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
+                            {repo.displayName}
+                          </h3>
+                          <p className="text-xs font-mono text-gray-400 group-hover:text-gray-300 transition-colors truncate">
+                            {repo.owner}/{repo.repo}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {repo.description && (
+                        <p
+                          className={`text-sm text-gray-400 leading-relaxed ${isLarge ? 'line-clamp-3' : 'line-clamp-2'} mb-4`}
+                        >
+                          {repo.description}
+                        </p>
+                      )}
+
+                      {/* Connection lines decoration for whiteboard feel */}
+                      <div className="absolute top-0 right-0 w-16 h-16 opacity-0 group-hover:opacity-20 transition-opacity duration-300 pointer-events-none">
+                        <svg
+                          className="w-full h-full"
+                          viewBox="0 0 100 100"
+                          fill="none"
+                          stroke="currentColor"
+                        >
+                          <path
+                            d="M 0 50 Q 25 25, 50 50 T 100 50"
+                            strokeWidth="2"
+                            strokeDasharray="4 4"
+                          />
+                        </svg>
+                      </div>
+
+                      {/* Status indicators */}
+                      <div className="flex items-center justify-between pt-3 border-t border-gray-700/30">
+                        {isDownloading ? (
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs font-medium text-blue-300">
+                            <svg
+                              className="w-3.5 h-3.5 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            <span>Downloading...</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">
+                            Click to explore →
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Floating decorative elements for "sea" feel */}
+            <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-blue-400/20 rounded-full animate-pulse"></div>
+            <div
+              className="absolute top-3/4 right-1/3 w-3 h-3 bg-purple-400/20 rounded-full animate-pulse"
+              style={{ animationDelay: '1s' }}
+            ></div>
+            <div
+              className="absolute top-1/2 right-1/4 w-2 h-2 bg-cyan-400/20 rounded-full animate-pulse"
+              style={{ animationDelay: '2s' }}
+            ></div>
+          </div>
+
+          {/* LSP Features Section */}
+          <div className="mb-16 relative bg-gradient-to-br from-gray-800/20 to-gray-800/10 border border-gray-700/30 rounded-xl p-6 sm:p-8 overflow-hidden opacity-70">
+            {/* Background Gradient */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 rounded-xl pointer-events-none" />
+
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-2xl opacity-60">⚡</div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-300 mb-1">
+                    Powered by Language Server Protocol
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Professional-grade code intelligence powered by{' '}
+                    <a
+                      href="https://microsoft.github.io/language-server-protocol/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500/70 hover:text-blue-400 underline"
+                    >
+                      Microsoft's LSP
+                    </a>
+                  </p>
                 </div>
-              );
-            })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                {/* Hover Documentation */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">💡</div>
+                    <h3 className="text-xs font-semibold text-gray-400">Rich Hover Tooltips</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Hover over any symbol to see function signatures, struct members, documentation
+                    comments, and usage statistics. Get instant context without leaving your code.
+                  </p>
+                </div>
+
+                {/* Go to Definition */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">🔍</div>
+                    <h3 className="text-xs font-semibold text-gray-400">Go to Definition</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Press{' '}
+                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                      F12
+                    </kbd>{' '}
+                    or{' '}
+                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                      Ctrl+Click
+                    </kbd>{' '}
+                    to jump directly to symbol definitions. Navigate codebases like a pro.
+                  </p>
+                </div>
+
+                {/* Find All References */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">📊</div>
+                    <h3 className="text-xs font-semibold text-gray-400">Find All References</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Press{' '}
+                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                      Shift+F12
+                    </kbd>{' '}
+                    to find every usage of a symbol across the codebase. Understand impact and
+                    dependencies instantly.
+                  </p>
+                </div>
+
+                {/* Code Lens */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">👁️</div>
+                    <h3 className="text-xs font-semibold text-gray-400">Code Lens</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    See reference counts inline above every definition. Click to explore all usages
+                    and understand code relationships at a glance.
+                  </p>
+                </div>
+
+                {/* Cross-Reference Analysis */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">🔗</div>
+                    <h3 className="text-xs font-semibold text-gray-400">
+                      Cross-Reference Analysis
+                    </h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Discover related symbols and dependencies automatically. See how functions,
+                    structs, and classes interconnect throughout the codebase.
+                  </p>
+                </div>
+
+                {/* Multi-Language Support */}
+                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="text-lg opacity-60">🌐</div>
+                    <h3 className="text-xs font-semibold text-gray-400">C & C++ Support</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Full LSP support for C and C++ codebases. Parse structs, classes, functions, and
+                    macros with intelligent symbol resolution.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-gray-700/30">
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  <strong className="text-gray-500">Built on industry standards:</strong> The same
+                  Language Server Protocol used by VS Code, enabling rich code intelligence without
+                  requiring local development environments. Explore massive codebases with
+                  professional IDE features in your browser.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </main>

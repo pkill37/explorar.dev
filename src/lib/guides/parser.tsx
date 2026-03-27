@@ -366,22 +366,39 @@ export function parseGuideMarkdown(
       // Parse section frontmatter
       const sectionMeta = parseSimpleYAML(section.frontmatter);
 
-      // Validate required fields
+      // If id/title are missing, the "frontmatter" is likely markdown content
+      // (e.g., when --- is used as a horizontal rule, not a YAML delimiter).
+      // Auto-generate id/title from the first ## heading found.
+      let sectionContent = section.content;
       if (!sectionMeta.id || !sectionMeta.title) {
-        console.warn(
-          `Section at index ${index} is missing required fields (id or title). Frontmatter:`,
-          section.frontmatter
-        );
-        return null;
+        // Combine frontmatter and content since frontmatter is actually markdown
+        const fullContent = section.frontmatter + '\n\n' + section.content;
+        const headingMatch = fullContent.match(/^##\s+(.+)/m);
+        if (headingMatch) {
+          const headingText = headingMatch[1].trim();
+          sectionMeta.title = headingText;
+          sectionMeta.id =
+            sectionMeta.id ||
+            headingText
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '');
+          sectionContent = fullContent;
+        } else {
+          console.warn(
+            `Section at index ${index} is missing required fields (id or title) and no ## heading found.`
+          );
+          return null;
+        }
       }
 
       // Convert markdown to HTML (only if content exists)
       let reactContent: React.ReactNode = null;
-      if (section.content && section.content.trim().length > 0) {
+      if (sectionContent && sectionContent.trim().length > 0) {
         const renderer = createMarkdownRenderer(sectionMeta.id || `section-${index}`);
         marked.setOptions({ renderer });
         // marked can return string or Promise<string>, but with sync renderer it's always string
-        const htmlContent = marked(section.content) as string;
+        const htmlContent = marked(sectionContent) as string;
 
         // Convert HTML to React (handling mermaid diagrams)
         reactContent = htmlToReact(htmlContent, sectionMeta.id || `section-${index}`);

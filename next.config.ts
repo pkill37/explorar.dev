@@ -10,11 +10,6 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
 
-  env: {
-    // Production Cloudflare Worker API URL
-    NEXT_PUBLIC_WORKER_API_URL: 'https://shared-data-store-api.fabiu-maia.workers.dev',
-  },
-
   webpack: (config) => {
     config.module.rules.push({
       test: /\.md$/,

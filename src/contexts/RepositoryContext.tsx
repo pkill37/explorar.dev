@@ -24,7 +24,8 @@ import {
   BranchDownloadStatus,
 } from '@/lib/github-archive';
 import { getTrustedVersion, filterUnstableBranches } from '@/lib/github-api';
-import { isCuratedRepo } from '@/lib/repo-static';
+import { isCuratedRepo, getRepositoryMode as getRepoMode } from '@/lib/repo-static';
+import { downloadFullTreeMetadata } from '@/lib/github-archive';
 
 export interface RepositoryState {
   // Current repository
@@ -63,9 +64,11 @@ export interface RepositoryActions {
 
   // GitHub-specific actions
   downloadBranchIfNeeded: (branch: string) => Promise<void>;
+  fetchFullTreeMetadata: (owner: string, repo: string, branch: string) => Promise<void>;
 
   // Utility
   getRepoInfo: () => { owner?: string; repo?: string; repoId?: string } | null;
+  getRepositoryMode: () => 'curated' | 'arbitrary' | 'workspace' | null;
 }
 
 interface RepositoryContextValue extends RepositoryState, RepositoryActions {}
@@ -375,6 +378,62 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
     }
   }, [state.source, state.identifier]);
 
+  // Fetch full tree metadata for arbitrary repositories
+  const fetchFullTreeMetadata = useCallback(
+    async (owner: string, repo: string, branch: string): Promise<void> => {
+      try {
+        setState((prev) => ({
+          ...prev,
+          isLoading: true,
+          downloadProgress: {
+            phase: 'downloading',
+            progress: 0,
+            message: 'Fetching repository tree structure...',
+          },
+        }));
+
+        await downloadFullTreeMetadata(owner, repo, branch, (progress) => {
+          setState((prev) => ({
+            ...prev,
+            downloadProgress: progress,
+          }));
+        });
+
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          downloadProgress: null,
+        }));
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to fetch tree metadata';
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+          downloadProgress: null,
+        }));
+        throw error;
+      }
+    },
+    []
+  );
+
+  // Get repository mode
+  const getRepositoryMode = useCallback((): 'curated' | 'arbitrary' | 'workspace' | null => {
+    if (!state.source || !state.identifier) {
+      return null;
+    }
+
+    if (state.source === 'github') {
+      const { owner, repo } = parseGitHubRepoIdentifier(state.identifier);
+      return getRepoMode(owner, repo);
+    }
+
+    // For uploaded repos, treat as arbitrary
+    return 'arbitrary';
+  }, [state.source, state.identifier]);
+
   // Initialize setup status on mount
   useEffect(() => {
     checkSetupStatus();
@@ -388,7 +447,9 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
     switchBranch,
     refreshBranches,
     downloadBranchIfNeeded,
+    fetchFullTreeMetadata,
     getRepoInfo,
+    getRepositoryMode,
   };
 
   return <RepositoryContext.Provider value={contextValue}>{children}</RepositoryContext.Provider>;

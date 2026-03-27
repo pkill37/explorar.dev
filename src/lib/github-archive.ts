@@ -600,3 +600,66 @@ export async function getBranchDownloadStatus(
     isAvailable,
   };
 }
+
+/**
+ * Ensure file is in storage, fetching from GitHub API if needed (lazy loading)
+ * Used when user explicitly tries to load a file in arbitrary repo mode
+ */
+export async function ensureFileInStorage(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string
+): Promise<string> {
+  const identifier = getGitHubRepoIdentifier(owner, repo);
+
+  // Check if file already exists in storage
+  const { isFileAvailable, readFileFromStorage } = await import('./repo-storage');
+  const exists = await isFileAvailable('github', identifier, branch, filePath);
+
+  if (exists) {
+    return await readFileFromStorage('github', identifier, branch, filePath);
+  }
+
+  // File not in storage, fetch from GitHub API
+  return await downloadFileFromGitHub(owner, repo, branch, filePath);
+}
+
+/**
+ * Download full tree metadata for arbitrary repositories
+ * Fetches complete tree structure via GitHub API and stores in IndexedDB
+ */
+export async function downloadFullTreeMetadata(
+  owner: string,
+  repo: string,
+  branch: string,
+  onProgress?: (progress: DownloadProgress) => void
+): Promise<FileNode[]> {
+  onProgress?.({
+    phase: 'downloading',
+    progress: 0,
+    message: 'Fetching full tree metadata...',
+  });
+
+  try {
+    // Use the fetchFullTreeMetadata function from github-api
+    const { fetchFullTreeMetadata } = await import('./github-api');
+    const tree = await fetchFullTreeMetadata(owner, repo, branch);
+
+    onProgress?.({
+      phase: 'completed',
+      progress: 100,
+      message: `Tree metadata downloaded (${tree.length} items)`,
+    });
+
+    return tree;
+  } catch (error) {
+    onProgress?.({
+      phase: 'error',
+      progress: 0,
+      message: error instanceof Error ? error.message : 'Failed to download tree metadata',
+    });
+
+    throw error;
+  }
+}
