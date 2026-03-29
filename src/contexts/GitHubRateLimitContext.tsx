@@ -83,6 +83,7 @@ export function GitHubRateLimitProvider({ children }: { children: ReactNode }) {
       if (now >= resetTime) {
         // Rate limit has expired, clear it
         clearRateLimit();
+        return;
       } else {
         // Set up a timer to clear when it expires
         const timeUntilReset = resetTime.getTime() - now.getTime();
@@ -93,6 +94,7 @@ export function GitHubRateLimitProvider({ children }: { children: ReactNode }) {
         return () => clearTimeout(timer);
       }
     }
+    return;
   }, [rateLimitState.isRateLimited, rateLimitState.resetTime, clearRateLimit]);
 
   return (

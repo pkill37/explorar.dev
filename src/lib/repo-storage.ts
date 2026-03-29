@@ -317,92 +317,6 @@ export async function readFileFromStorage(
 }
 
 /**
- * List directory contents from storage
- * Uses directory metadata for lazy loading (shows all files even if not downloaded)
- */
-export async function listDirectoryFromStorage(
-  source: 'github' | 'uploaded',
-  identifier: string,
-  branch: string,
-  path: string = ''
-): Promise<FileEntry[]> {
-  try {
-    // First, try to get directory metadata (for lazy loading)
-    // This shows all files in the directory even if they're not downloaded yet
-    const directoryMetadata = await getDirectoryMetadata(source, identifier, branch, path);
-    if (directoryMetadata) {
-      return directoryMetadata;
-    }
-
-    // Fallback: list from actual files (for backward compatibility)
-    const database = await ensureDB();
-    const basePrefix = `repos/${source}/${identifier}/${branch}/`;
-    const dirPrefix = path ? `${basePrefix}${path}/` : basePrefix;
-    const transaction = database.transaction([FILES_STORE], 'readonly');
-    const store = transaction.objectStore(FILES_STORE);
-
-    const entries = new Map<string, FileEntry>();
-
-    return new Promise<FileEntry[]>((resolve, reject) => {
-      const request = store.openCursor();
-
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-        if (cursor) {
-          const record = cursor.value;
-          const key = record.key as string;
-
-          // Check if this file belongs to the requested directory
-          if (key.startsWith(dirPrefix)) {
-            const relativePath = key.substring(dirPrefix.length);
-            const pathParts = relativePath.split('/').filter(Boolean);
-
-            if (pathParts.length > 0) {
-              const firstPart = pathParts[0];
-              const entryPath = path ? `${path}/${firstPart}` : firstPart;
-
-              // If it's a direct child (only one path segment), it's a file
-              if (pathParts.length === 1) {
-                entries.set(firstPart, {
-                  name: firstPart,
-                  path: entryPath,
-                  type: 'file',
-                  size: record.size || 0,
-                });
-              } else {
-                // Otherwise, it's a subdirectory
-                entries.set(firstPart, {
-                  name: firstPart,
-                  path: entryPath,
-                  type: 'directory',
-                });
-              }
-            }
-          }
-          cursor.continue();
-        } else {
-          // Sort: directories first, then files, both alphabetically
-          const sortedEntries = Array.from(entries.values()).sort((a, b) => {
-            if (a.type === b.type) {
-              return a.name.localeCompare(b.name);
-            }
-            return a.type === 'directory' ? -1 : 1;
-          });
-          resolve(sortedEntries);
-        }
-      };
-
-      request.onerror = () => {
-        reject(new Error(`Failed to list directory: ${path}`));
-      };
-    });
-  } catch (error) {
-    console.error('Failed to list directory from storage:', error);
-    throw new Error(`Failed to list directory: ${path}`);
-  }
-}
-
-/**
  * Store directory metadata (file listings) for lazy loading
  */
 export async function storeDirectoryMetadata(
@@ -948,19 +862,6 @@ export async function repositoryExists(
     });
     return false;
   }
-}
-
-/**
- * Format bytes to human readable string
- */
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 /**

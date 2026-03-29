@@ -18,7 +18,6 @@ import {
 } from '@/lib/github-api';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
-import LoadingScreen from '@/components/LoadingScreen';
 import { useRepository } from '@/contexts/RepositoryContext';
 import {
   repositoryExists,
@@ -67,15 +66,26 @@ interface KernelExplorerProps {
   owner?: string;
   repo?: string;
   branch?: string;
+  initialFile?: string | null;
+  onBackToGraph?: () => void;
+  /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
+  hideGuidePanel?: boolean;
 }
 
-export default function KernelExplorer({ owner, repo, branch }: KernelExplorerProps) {
+export default function KernelExplorer({
+  owner,
+  repo,
+  branch,
+  initialFile,
+  onBackToGraph,
+  hideGuidePanel = false,
+}: KernelExplorerProps) {
   const router = useRouter();
   const {
     setRepository,
     switchBranch,
     currentBranch,
-    isLoading: repoLoading,
+    isLoading: _repoLoading,
     error: repoError,
     downloadProgress,
     identifier: repoIdentifier,
@@ -131,13 +141,13 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   // Mobile view state: 'explorer' | 'editor' | 'guide'
   const [mobileView, setMobileView] = useState<'explorer' | 'editor' | 'guide'>('editor');
 
-  // Initial loading state
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   // Tree structure readiness state
   const [isTreeStructureReady, setIsTreeStructureReady] = useState<boolean>(false);
   // Refs for cleanup
   const treeCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const treeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track which initialFile has already been opened so we don't re-open on re-renders
+  const lastOpenedInitialFileRef = useRef<string | null>(null);
 
   // Check if mobile on mount and resize
   // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
@@ -170,15 +180,8 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
       window.addEventListener('resize', checkViewport);
       return () => window.removeEventListener('resize', checkViewport);
     }
+    return;
   }, [mobileView]);
-
-  // Initial loading animation - 2 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsInitialLoading(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Check repository setup and tree structure readiness
   useEffect(() => {
@@ -465,6 +468,7 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
         document.body.style.cursor = '';
       };
     }
+    return;
   }, [isResizing, handleMouseMove, handleMouseUp]);
 
   // Tabs helpers
@@ -662,43 +666,42 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
   }, [projectConfig, owner, repo, openFileInTab]);
 
-  // Command palette commands
-  // Loading screen
-  if (isInitialLoading) {
-    return <LoadingScreen />;
-  }
+  // Open initialFile once the editor is ready (tree loaded + loading screen gone)
+  useEffect(() => {
+    if (initialFile && initialFile !== lastOpenedInitialFileRef.current && isTreeStructureReady) {
+      lastOpenedInitialFileRef.current = initialFile;
+      // Defer to avoid synchronous setState-in-effect warning
+      setTimeout(() => {
+        openFileInTab(initialFile);
+      }, 0);
+    }
+  }, [initialFile, isTreeStructureReady, openFileInTab]);
 
-  // Repository loading, download progress (only for non-curated repos), or tree structure not ready
-  // For curated repos, skip download progress check since they're already available
+  // Show download progress for non-curated repos being fetched on-demand
   const isCurated = owner && repo ? isCuratedRepo(owner, repo) : false;
   const showDownloadProgress = downloadProgress && !isCurated;
-  if (repoLoading || showDownloadProgress || !isTreeStructureReady) {
-    if (showDownloadProgress) {
-      return (
-        <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="text-lg mb-4">Downloading Repository Structure</div>
-            <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
-              <div
-                className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
-                style={{ width: `${downloadProgress.progress}%` }}
-              />
-            </div>
-            <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
-            {downloadProgress.phase === 'downloading' &&
-              downloadProgress.filesProcessed &&
-              downloadProgress.totalFiles && (
-                <div className="text-xs opacity-50">
-                  Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles} items
-                </div>
-              )}
+  if (showDownloadProgress) {
+    return (
+      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-lg mb-4">Downloading Repository Structure</div>
+          <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
+            <div
+              className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
+              style={{ width: `${downloadProgress.progress}%` }}
+            />
           </div>
+          <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
+          {downloadProgress.phase === 'downloading' &&
+            downloadProgress.filesProcessed &&
+            downloadProgress.totalFiles && (
+              <div className="text-xs opacity-50">
+                Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles} items
+              </div>
+            )}
         </div>
-      );
-    }
-
-    // Use the standard loading UI
-    return <LoadingScreen />;
+      </div>
+    );
   }
 
   // Repository error
@@ -708,7 +711,32 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
   }
 
   return (
-    <div className="vscode-container">
+    <div className="vscode-container" style={{ position: 'relative' }}>
+      {onBackToGraph && (
+        <button
+          onClick={onBackToGraph}
+          title="Back to graph map"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 12,
+            zIndex: 200,
+            background: 'rgba(37,37,38,0.9)',
+            border: '1px solid #3c3c3c',
+            borderRadius: 5,
+            padding: '4px 10px',
+            color: '#aaa',
+            fontSize: 11,
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          ◈ Graph Map
+        </button>
+      )}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
         <div
           className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
@@ -818,7 +846,6 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
                 filePath={activeTab.path}
                 onContentLoad={onEditorContentLoad}
                 fetchFile={fetchFileContent}
-                repoLabel={repoLabel}
                 scrollToLine={activeTab.scrollToLine}
                 searchPattern={activeTab.searchPattern}
                 onCursorChange={(line, column) => {
@@ -835,88 +862,92 @@ export default function KernelExplorer({ owner, repo, branch }: KernelExplorerPr
           )}
         </div>
 
-        <div
-          className="resize-handle"
-          onMouseDown={() => handleMouseDown('rightPanel')}
-          suppressHydrationWarning
-          style={{
-            width: '4px',
-            backgroundColor:
-              isResizing === 'rightPanel' ? 'var(--vscode-text-accent)' : 'transparent',
-            cursor: 'col-resize',
-            borderLeft: '1px solid var(--vscode-border)',
-          }}
-        />
-
-        <div
-          className={`vscode-panel ${isRightPanelOpen && (isMobile ? mobileView === 'guide' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'guide' ? 'mobile-hidden' : ''}`}
-          suppressHydrationWarning
-          style={{
-            width: `${rightPanelWidth}px`,
-            minWidth: '200px',
-            maxWidth: '40vw',
-            height: '100%',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}
-        >
-          {/* Right Panel Header */}
-          {!isMobile && (
-            <div className="right-panel-tabs">
-              <span className="right-panel-tab active">Guide</span>
-            </div>
-          )}
-          {isMobile && (
-            <div
-              style={{
-                padding: '12px',
-                borderBottom: '1px solid var(--vscode-border)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Guide</h3>
-              <button
-                onClick={() => setMobileView('editor')}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--vscode-text-primary)',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  fontSize: '18px',
-                }}
-                aria-label="Close panel"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+        {!hideGuidePanel && (
           <div
+            className="resize-handle"
+            onMouseDown={() => handleMouseDown('rightPanel')}
+            suppressHydrationWarning
             style={{
-              flex: '1 1 0%',
-              minHeight: 0,
+              width: '4px',
+              backgroundColor:
+                isResizing === 'rightPanel' ? 'var(--vscode-text-accent)' : 'transparent',
+              cursor: 'col-resize',
+              borderLeft: '1px solid var(--vscode-border)',
+            }}
+          />
+        )}
+
+        {!hideGuidePanel && (
+          <div
+            className={`vscode-panel ${isRightPanelOpen && (isMobile ? mobileView === 'guide' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'guide' ? 'mobile-hidden' : ''}`}
+            suppressHydrationWarning
+            style={{
+              width: `${rightPanelWidth}px`,
+              minWidth: '200px',
+              maxWidth: '40vw',
               height: '100%',
+              minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              flexShrink: 0,
             }}
           >
-            {(!isMobile || mobileView === 'guide') && (
-              <GuidePanel
-                sections={guideSections}
-                defaultOpenIds={
-                  projectConfig?.guides?.[0]?.defaultOpenIds ||
-                  (guideSections.length > 0 ? [guideSections[0].id] : [])
-                }
-              />
+            {/* Right Panel Header */}
+            {!isMobile && (
+              <div className="right-panel-tabs">
+                <span className="right-panel-tab active">Guide</span>
+              </div>
             )}
+            {isMobile && (
+              <div
+                style={{
+                  padding: '12px',
+                  borderBottom: '1px solid var(--vscode-border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Guide</h3>
+                <button
+                  onClick={() => setMobileView('editor')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--vscode-text-primary)',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    fontSize: '18px',
+                  }}
+                  aria-label="Close panel"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            <div
+              style={{
+                flex: '1 1 0%',
+                minHeight: 0,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              {(!isMobile || mobileView === 'guide') && (
+                <GuidePanel
+                  sections={guideSections}
+                  defaultOpenIds={
+                    projectConfig?.guides?.[0]?.defaultOpenIds ||
+                    (guideSections.length > 0 ? [guideSections[0].id] : [])
+                  }
+                />
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Mobile Navigation Bar */}

@@ -29,12 +29,12 @@ Opens at http://localhost:3000. The `predev` script automatically downloads the 
 
 ### Environment Files
 
-| File               | Purpose                                         | Committed to Git   |
-| ------------------ | ----------------------------------------------- | ------------------ |
-| `.env.development` | Development defaults (`NODE_ENV=development`)   | ✅ Yes             |
-| `.env.production`  | Production defaults (`NODE_ENV=production`)     | ✅ Yes             |
-| `.env.local`       | Personal overrides (highest priority)           | ❌ No (gitignored) |
-| `.env.example`     | Template showing all available variables        | ✅ Yes             |
+| File               | Purpose                                       | Committed to Git   |
+| ------------------ | --------------------------------------------- | ------------------ |
+| `.env.development` | Development defaults (`NODE_ENV=development`) | ✅ Yes             |
+| `.env.production`  | Production defaults (`NODE_ENV=production`)   | ✅ Yes             |
+| `.env.local`       | Personal overrides (highest priority)         | ❌ No (gitignored) |
+| `.env.example`     | Template showing all available variables      | ✅ Yes             |
 
 ### Environment Variable Reference
 
@@ -149,6 +149,7 @@ npm run dev
 ```
 
 **Available curated repositories:**
+
 - `torvalds/linux` — Linux Kernel (v6.1)
 - `python/cpython` — Python (v3.12.0)
 - `bminor/glibc` — GNU C Library (glibc-2.39)

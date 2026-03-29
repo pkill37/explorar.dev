@@ -24,10 +24,3 @@ export function loadGuideFromMarkdown(
 
   return parseGuideMarkdown(guideDoc.content, openFileInTab);
 }
-
-/**
- * Get list of available guide IDs
- */
-export function getAvailableGuides(): string[] {
-  return getAvailableGuideIds();
-}

@@ -1,0 +1,119 @@
+/**
+ * Validates that all docs/*.md guide files have correct section frontmatter.
+ *
+ * Checks:
+ * - Doc-level frontmatter has owner, repo, defaultOpenIds
+ * - Every section has id and title
+ * - Every id in defaultOpenIds has a matching section id
+ */
+import fs from 'fs';
+import path from 'path';
+import matter from 'gray-matter';
+
+const DOCS_DIR = path.join(process.cwd(), 'docs');
+// Files without a repo config (shared references, not guide files)
+const SKIP_FILES = new Set(['common.md']);
+
+interface SectionMeta {
+  id?: string;
+  title?: string;
+}
+
+/** Split content into sections by --- delimiter pairs, returning frontmatter strings */
+function parseSectionIds(content: string): SectionMeta[] {
+  const sections: SectionMeta[] = [];
+  const lines = content.split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i].trim() !== '---') {
+      i++;
+      continue;
+    }
+    i++; // skip opening ---
+    while (i < lines.length && lines[i].trim() === '') i++;
+
+    const fmLines: string[] = [];
+    while (i < lines.length && lines[i].trim() !== '---') {
+      fmLines.push(lines[i]);
+      i++;
+    }
+    if (i < lines.length) i++; // skip closing ---
+
+    const fm = fmLines.join('\n').trim();
+    if (!fm) continue;
+
+    // Minimal id/title extraction — match `id: value` and `title: value`
+    const idMatch = fm.match(/^id:\s*(.+)$/m);
+    const titleMatch = fm.match(/^title:\s*(.+)$/m);
+    if (idMatch || titleMatch) {
+      sections.push({
+        id: idMatch?.[1].trim(),
+        title: titleMatch?.[1].trim(),
+      });
+    }
+  }
+
+  return sections;
+}
+
+let errors = 0;
+
+const files = fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith('.md') && !SKIP_FILES.has(f));
+
+for (const file of files) {
+  const filepath = path.join(DOCS_DIR, file);
+  const raw = fs.readFileSync(filepath, 'utf-8');
+  const { data: frontmatter, content } = matter(raw);
+
+  const fileErrors: string[] = [];
+
+  // 1. Doc-level frontmatter checks
+  if (!frontmatter.owner) fileErrors.push('missing doc frontmatter: owner');
+  if (!frontmatter.repo) fileErrors.push('missing doc frontmatter: repo');
+  if (!Array.isArray(frontmatter.defaultOpenIds) || frontmatter.defaultOpenIds.length === 0) {
+    fileErrors.push('missing or empty doc frontmatter: defaultOpenIds');
+  }
+
+  // 2. Section frontmatter checks
+  const sections = parseSectionIds(content);
+
+  if (sections.length === 0) {
+    fileErrors.push('no section frontmatter found — chapters will not open correctly');
+  }
+
+  for (const section of sections) {
+    if (!section.id) fileErrors.push(`section missing id (title: "${section.title}")`);
+    if (!section.title) fileErrors.push(`section missing title (id: "${section.id}")`);
+  }
+
+  // 3. defaultOpenIds coverage check
+  if (Array.isArray(frontmatter.defaultOpenIds)) {
+    const sectionIds = new Set(sections.map((s) => s.id));
+    for (const openId of frontmatter.defaultOpenIds) {
+      if (!sectionIds.has(openId)) {
+        fileErrors.push(
+          `defaultOpenIds contains "${openId}" but no section has that id — chapter will never auto-open`
+        );
+      }
+    }
+  }
+
+  if (fileErrors.length > 0) {
+    console.error(`\n❌ ${file}:`);
+    for (const err of fileErrors) {
+      console.error(`   • ${err}`);
+    }
+    errors += fileErrors.length;
+  } else {
+    const chapterCount = sections.filter((s) => s.id !== 'learning-path').length;
+    console.log(`✓ ${file} (${chapterCount} chapters)`);
+  }
+}
+
+if (errors > 0) {
+  console.error(`\n${errors} guide validation error(s) found.`);
+  process.exit(1);
+} else {
+  console.log(`\nAll ${files.length} guide files valid.`);
+}

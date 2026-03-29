@@ -18,6 +18,8 @@ export interface GuideSection {
     source?: FileRecommendation[];
   };
   quiz?: QuizQuestion[];
+  /** Mermaid diagram describing the pedagogical graph for this chapter */
+  graph?: string;
 }
 
 export interface ProjectGuide {

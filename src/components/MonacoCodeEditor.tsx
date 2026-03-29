@@ -25,7 +25,6 @@ interface MonacoCodeEditorProps {
   filePath: string;
   content: string;
   isLoading: boolean;
-  repoLabel?: string;
   scrollToLine?: number;
   searchPattern?: string;
   onCursorChange?: (line: number, column: number) => void;

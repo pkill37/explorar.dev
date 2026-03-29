@@ -1,0 +1,410 @@
+/**
+ * Static code analysis: symbol extraction + cross-file relationship detection.
+ * All analysis is heuristic / regex-based — no AST required.
+ */
+
+export type RelationshipType = 'includes' | 'imports' | 'calls' | 'defines';
+
+export interface FileSymbols {
+  filePath: string;
+  language: string;
+  functions: string[]; // defined function / method names
+  types: string[]; // struct / class / interface / type names
+  defines: string[]; // #define macros / constants
+  globals: string[]; // global / module-level variables
+  rawIncludes: string[]; // verbatim #include paths
+  rawImports: string[]; // verbatim import paths
+}
+
+export interface CodeRelationship {
+  source: string;
+  target: string;
+  type: RelationshipType;
+  symbols: string[]; // which symbols triggered this edge
+}
+
+export const RELATIONSHIP_COLORS: Record<RelationshipType, string> = {
+  includes: '#38bdf8', // sky blue
+  imports: '#4ade80', // green
+  calls: '#fb923c', // orange
+  defines: '#c084fc', // purple
+};
+
+export const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
+  includes: '#include',
+  imports: 'import',
+  calls: 'calls',
+  defines: 'uses #def',
+};
+
+// ─── Language-specific extractors ──────────────────────────────────────────
+
+const C_KEYWORDS = new Set([
+  'if',
+  'else',
+  'while',
+  'for',
+  'switch',
+  'case',
+  'return',
+  'break',
+  'continue',
+  'goto',
+  'sizeof',
+  'typeof',
+  'do',
+  'default',
+  'static',
+  'inline',
+  'extern',
+  'const',
+  'volatile',
+  'unsigned',
+  'signed',
+  'void',
+  'int',
+  'char',
+  'long',
+  'short',
+  'float',
+  'double',
+  'struct',
+  'union',
+  'enum',
+  'typedef',
+]);
+
+function extractC(
+  lines: string[]
+): Pick<FileSymbols, 'functions' | 'types' | 'defines' | 'globals' | 'rawIncludes'> {
+  const functions: string[] = [];
+  const types: string[] = [];
+  const defines: string[] = [];
+  const globals: string[] = [];
+  const rawIncludes: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (set: string[], val: string) => {
+    if (val && !seen.has(val)) {
+      seen.add(val);
+      set.push(val);
+    }
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+
+    // #include
+    const inc = t.match(/^#include\s+["<]([^">]+)[">]/);
+    if (inc) {
+      rawIncludes.push(inc[1]);
+      continue;
+    }
+
+    // #define MACRO_NAME (only uppercase macros, ≥3 chars)
+    const def = t.match(/^#define\s+([A-Z_][A-Z0-9_]{2,})\b/);
+    if (def) {
+      add(defines, def[1]);
+      continue;
+    }
+
+    // typedef struct Foo { ... } Foo;  OR  struct Foo {
+    const ts = t.match(/^(?:typedef\s+)?struct\s+([A-Za-z_]\w+)/);
+    if (ts && ts[1] !== '{') {
+      add(types, ts[1]);
+    }
+
+    // typedef void (*fn_t)(...)
+    const tdef = t.match(/^typedef\s+\w[\w\s*]+\(\s*\*\s*(\w+)\s*\)/);
+    if (tdef) {
+      add(types, tdef[1]);
+    }
+
+    // enum Foo {
+    const en = t.match(/^(?:typedef\s+)?enum\s+([A-Za-z_]\w+)/);
+    if (en) {
+      add(types, en[1]);
+    }
+
+    // Function definition heuristic: return_type name(
+    // Must start the line (not indented), not be a keyword/macro
+    if (
+      !t.startsWith(' ') &&
+      !t.startsWith('\t') &&
+      !t.startsWith('#') &&
+      !t.startsWith('/') &&
+      !t.startsWith('*')
+    ) {
+      const fn = t.match(
+        /^(?:(?:static|inline|extern|const|volatile|struct|enum|unsigned|signed)\s+)*(?:\w+[\w\s*]*\s+)+\**\s*(\w{3,})\s*\(/
+      );
+      if (fn && !C_KEYWORDS.has(fn[1]) && !/^[A-Z_][A-Z0-9_]+$/.test(fn[1])) {
+        add(functions, fn[1]);
+      }
+      // extern TYPE varname;
+      const gl = t.match(/^(?:extern\s+)(?:\w+\s+)+\**(\w+)\s*;/);
+      if (gl && !C_KEYWORDS.has(gl[1])) {
+        add(globals, gl[1]);
+      }
+    }
+  }
+
+  return {
+    functions: functions.slice(0, 20),
+    types: types.slice(0, 12),
+    defines: defines.slice(0, 18),
+    globals: globals.slice(0, 10),
+    rawIncludes,
+  };
+}
+
+function extractPython(
+  lines: string[]
+): Pick<FileSymbols, 'functions' | 'types' | 'defines' | 'globals' | 'rawImports'> {
+  const functions: string[] = [];
+  const types: string[] = [];
+  const defines: string[] = [];
+  const globals: string[] = [];
+  const rawImports: string[] = [];
+  const seen = new Set<string>();
+  const add = (set: string[], val: string) => {
+    if (val && !seen.has(val)) {
+      seen.add(val);
+      set.push(val);
+    }
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.match(/^import\s+([\w.]+)/)) {
+      rawImports.push(RegExp.$1);
+      continue;
+    }
+    if (t.match(/^from\s+([\w./]+)\s+import/)) {
+      rawImports.push(RegExp.$1);
+      continue;
+    }
+    const defn = t.match(/^(?:async\s+)?def\s+([a-z_]\w+)\s*\(/);
+    if (defn) {
+      add(functions, defn[1]);
+      continue;
+    }
+    const cls = t.match(/^class\s+(\w+)/);
+    if (cls) {
+      add(types, cls[1]);
+      continue;
+    }
+    // module-level: uppercase = constant, lowercase = global
+    if (!t.startsWith(' ') && !t.startsWith('\t') && !t.startsWith('#') && !t.startsWith('"')) {
+      const uc = t.match(/^([A-Z_][A-Z0-9_]{2,})\s*=/);
+      if (uc) {
+        add(defines, uc[1]);
+        continue;
+      }
+      const lc = t.match(/^([a-z_]\w+)\s*=[^=]/);
+      if (lc && lc[1] !== '_') {
+        add(globals, lc[1]);
+      }
+    }
+  }
+
+  return {
+    functions: functions.slice(0, 20),
+    types: types.slice(0, 12),
+    defines: defines.slice(0, 18),
+    globals: globals.slice(0, 10),
+    rawImports,
+  };
+}
+
+function extractTS(
+  lines: string[]
+): Pick<FileSymbols, 'functions' | 'types' | 'defines' | 'globals' | 'rawImports'> {
+  const functions: string[] = [];
+  const types: string[] = [];
+  const defines: string[] = [];
+  const globals: string[] = [];
+  const rawImports: string[] = [];
+  const seen = new Set<string>();
+  const add = (set: string[], val: string) => {
+    if (val && !seen.has(val)) {
+      seen.add(val);
+      set.push(val);
+    }
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+    const imp = t.match(/^import\s+.*from\s+['"]([^'"]+)['"]/);
+    if (imp) {
+      rawImports.push(imp[1]);
+      continue;
+    }
+    const fn = t.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w+)/);
+    if (fn) {
+      add(functions, fn[1]);
+      continue;
+    }
+    const arrowFn = t.match(/^(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\(/);
+    if (arrowFn) {
+      add(functions, arrowFn[1]);
+      continue;
+    }
+    const CONST = t.match(/^(?:export\s+)?(?:const|let)\s+([A-Z_][A-Z0-9_]{2,})\s*=/);
+    if (CONST) {
+      add(defines, CONST[1]);
+      continue;
+    }
+    const tp = t.match(/^(?:export\s+)?(?:interface|type|class|enum)\s+(\w+)/);
+    if (tp) {
+      add(types, tp[1]);
+      continue;
+    }
+    const gl = t.match(/^(?:export\s+)?(?:const|let|var)\s+([a-z_]\w+)\s*=/);
+    if (gl) {
+      add(globals, gl[1]);
+      continue;
+    }
+  }
+
+  return {
+    functions: functions.slice(0, 20),
+    types: types.slice(0, 12),
+    defines: defines.slice(0, 18),
+    globals: globals.slice(0, 10),
+    rawImports,
+  };
+}
+
+// ─── Main parse entry point ─────────────────────────────────────────────────
+
+export function parseSymbols(filePath: string, content: string): FileSymbols {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  const langMap: Record<string, string> = {
+    c: 'c',
+    h: 'c',
+    cc: 'cpp',
+    cpp: 'cpp',
+    cxx: 'cpp',
+    py: 'python',
+    rs: 'rust',
+    ts: 'typescript',
+    tsx: 'typescript',
+    js: 'javascript',
+    jsx: 'javascript',
+  };
+  const language = langMap[ext] ?? 'text';
+
+  // Cap at 700 lines for perf — includes/#define/#import are always near the top
+  const lines = content.split('\n').slice(0, 700);
+
+  if (language === 'c' || language === 'cpp') {
+    const r = extractC(lines);
+    return { filePath, language, rawImports: [], ...r };
+  }
+  if (language === 'python') {
+    const r = extractPython(lines);
+    return { filePath, language, rawIncludes: [], ...r };
+  }
+  if (language === 'typescript' || language === 'javascript') {
+    const r = extractTS(lines);
+    return { filePath, language, rawIncludes: [], ...r };
+  }
+  return {
+    filePath,
+    language,
+    functions: [],
+    types: [],
+    defines: [],
+    globals: [],
+    rawIncludes: [],
+    rawImports: [],
+  };
+}
+
+// ─── Cross-file relationship detection ──────────────────────────────────────
+
+export function findRelationships(
+  symbolsMap: Map<string, FileSymbols>,
+  allFilePaths: string[],
+  contentsMap: Map<string, string>
+): CodeRelationship[] {
+  const rels: CodeRelationship[] = [];
+  const seen = new Set<string>();
+
+  function add(r: CodeRelationship) {
+    if (r.source === r.target) return;
+    const key = `${r.source}→${r.target}:${r.type}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      rels.push(r);
+    }
+  }
+
+  // Index: basename (with/without ext) → file paths
+  const byBasename = new Map<string, string[]>();
+  for (const p of allFilePaths) {
+    const bn = p.split('/').pop() ?? p;
+    const bnNoExt = bn.replace(/\.[^.]+$/, '');
+    for (const k of [bn, bnNoExt]) {
+      if (!byBasename.has(k)) byBasename.set(k, []);
+      byBasename.get(k)!.push(p);
+    }
+  }
+
+  // Index: defined function name → file that defines it
+  const funcFile = new Map<string, string>();
+  const defineFile = new Map<string, string>();
+  for (const [fp, sym] of symbolsMap) {
+    for (const fn of sym.functions) if (!funcFile.has(fn)) funcFile.set(fn, fp);
+    for (const d of sym.defines) if (!defineFile.has(d)) defineFile.set(d, fp);
+  }
+
+  for (const [srcPath, sym] of symbolsMap) {
+    const content = contentsMap.get(srcPath) ?? '';
+
+    // ── 1. Include / import edges ──────────────────────────────────────────
+    for (const rawPath of [...sym.rawIncludes, ...sym.rawImports]) {
+      const isInclude = sym.rawIncludes.includes(rawPath);
+      const relType: RelationshipType = isInclude ? 'includes' : 'imports';
+
+      // Try exact suffix match first, then basename
+      const bn = rawPath.split('/').pop()?.split('.')[0] ?? '';
+      const candidates = new Set<string>([
+        ...allFilePaths.filter(
+          (p) =>
+            p.endsWith(rawPath) ||
+            p.endsWith(rawPath + '.h') ||
+            p.endsWith(rawPath + '.py') ||
+            p.endsWith(rawPath + '.ts')
+        ),
+        ...(byBasename.get(rawPath.split('/').pop() ?? '') ?? []),
+        ...(byBasename.get(bn) ?? []),
+      ]);
+      for (const target of candidates) {
+        add({ source: srcPath, target, type: relType, symbols: [rawPath] });
+      }
+    }
+
+    // ── 2. Function call edges ─────────────────────────────────────────────
+    // Only check functions with ≥4 chars to reduce noise
+    for (const [fn, defFile] of funcFile) {
+      if (defFile === srcPath || fn.length < 4) continue;
+      // Quick check before expensive regex
+      if (!content.includes(fn)) continue;
+      if (new RegExp(`\\b${fn}\\s*\\(`, 'g').test(content)) {
+        add({ source: srcPath, target: defFile, type: 'calls', symbols: [fn] });
+      }
+    }
+
+    // ── 3. #define usage edges ─────────────────────────────────────────────
+    for (const [defName, defFile] of defineFile) {
+      if (defFile === srcPath) continue;
+      if (content.includes(defName)) {
+        add({ source: srcPath, target: defFile, type: 'defines', symbols: [defName] });
+      }
+    }
+  }
+
+  return rels;
+}

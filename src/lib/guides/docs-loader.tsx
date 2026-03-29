@@ -146,20 +146,3 @@ export function getAvailableGuideIds(): string[] {
   const guides = getAllGuideDocuments();
   return Array.from(guides.keys());
 }
-
-/**
- * Get list of all supported repositories
- */
-export function getSupportedRepositories(): Array<{ owner: string; repo: string }> {
-  const guides = getAllGuideDocuments();
-  const repos: Array<{ owner: string; repo: string }> = [];
-
-  for (const doc of guides.values()) {
-    repos.push({
-      owner: doc.metadata.owner,
-      repo: doc.metadata.repo,
-    });
-  }
-
-  return repos;
-}

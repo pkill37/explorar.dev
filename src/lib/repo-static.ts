@@ -150,22 +150,3 @@ export async function getTreeStructureFromStatic(
   // Return null silently - missing manifests are expected for branches that weren't downloaded
   return null;
 }
-
-/**
- * Check if a file exists in static storage
- */
-export async function isFileAvailableInStatic(
-  owner: string,
-  repo: string,
-  branch: string,
-  filePath: string
-): Promise<boolean> {
-  const url = getStaticFilePath(owner, repo, branch, filePath);
-
-  try {
-    const response = await fetch(url, { method: 'HEAD' });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}

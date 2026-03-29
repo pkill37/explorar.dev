@@ -1,18 +1,8 @@
 // GitHub API utilities for fetching source code from GitHub repositories
 
 import { GitHubApiResponse, FileNode, GITHUB_CONFIG } from '@/types';
-import {
-  getGitHubRepoIdentifier,
-  FileEntry,
-  isFileAvailable,
-  getTreeStructure,
-} from './repo-storage';
-import {
-  readFileFromStatic,
-  listDirectoryFromStatic,
-  getTreeStructureFromStatic,
-  getRepositoryMode,
-} from './repo-static';
+import { getGitHubRepoIdentifier, isFileAvailable, getTreeStructure } from './repo-storage';
+import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } from './repo-static';
 import { getHttpClient, isWebPlatform } from './platform';
 import { storeTreeStructure } from './repo-storage';
 
@@ -134,54 +124,6 @@ export class GitHubApiError extends Error {
 }
 
 /**
- * Convert FileEntry to GitHubApiResponse format
- */
-function convertFileEntryToGitHubResponse(
-  entry: FileEntry,
-  basePath: string = ''
-): GitHubApiResponse {
-  const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
-
-  return {
-    name: entry.name,
-    path: fullPath,
-    sha: '', // Not available in local storage
-    size: entry.size || 0,
-    url: '', // Not applicable for local storage
-    html_url: '', // Not applicable for local storage
-    git_url: '', // Not applicable for local storage
-    download_url: null, // Not applicable for local storage
-    type: entry.type === 'directory' ? 'dir' : 'file',
-    content: undefined, // Will be loaded separately if needed
-    encoding: undefined,
-  };
-}
-
-/**
- * Try to fetch directory contents from static files (local filesystem served over HTTP)
- * Always uses static files - no fallback to GitHub API
- */
-async function tryFetchFromStorage(
-  owner: string,
-  repo: string,
-  branch: string,
-  path: string
-): Promise<GitHubApiResponse[] | null> {
-  try {
-    // Always try static files first (served from out/repos/ via HTTP)
-    const staticEntries = await listDirectoryFromStatic(owner, repo, branch, path);
-    if (staticEntries.length > 0) {
-      return staticEntries.map((entry) => convertFileEntryToGitHubResponse(entry, path));
-    }
-    // If static files don't have it, return null
-    return null;
-  } catch (error) {
-    console.error('Error fetching from storage:', error);
-    return null;
-  }
-}
-
-/**
  * Try to fetch file content from static files (local filesystem served over HTTP)
  * Always uses static files - no fallback to GitHub API
  */
@@ -204,44 +146,6 @@ async function tryFetchFileFromStorage(
     console.error('Error fetching file from storage:', error);
     return null;
   }
-}
-
-/**
- * Fetch directory contents from local storage first, then GitHub API as fallback
- */
-export async function fetchDirectoryContents(path: string = ''): Promise<GitHubApiResponse[]> {
-  // Validate configuration
-  if (!currentConfig.owner || !currentConfig.repo) {
-    const error = new GitHubApiError(
-      `Repository not configured. Please set owner and repo before fetching directory contents.`,
-      400
-    );
-    throw error;
-  }
-
-  // Validate branch is the trusted version
-  const trusted = getTrustedVersion(currentConfig.owner, currentConfig.repo);
-  if (trusted && trusted !== currentConfig.branch) {
-    const error = new GitHubApiError(
-      `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted version is allowed: ${trusted}`,
-      400
-    );
-    throw error;
-  }
-
-  // Always try static files first (served from out/repos/ via HTTP)
-  const storageResult = await tryFetchFromStorage(
-    currentConfig.owner,
-    currentConfig.repo,
-    currentConfig.branch,
-    path
-  );
-  if (storageResult) {
-    return storageResult;
-  }
-
-  // If static files don't have it, it doesn't exist - throw error instead of falling back to GitHub API
-  throw new GitHubApiError(`Directory not found in static storage: ${path}`, 404);
 }
 
 /**
@@ -477,20 +381,6 @@ export async function fetchFileContent(path: string): Promise<string> {
       500
     );
   }
-}
-
-/**
- * Convert GitHub API response to FileNode structure
- */
-export function convertToFileNode(item: GitHubApiResponse): FileNode {
-  return {
-    name: item.name,
-    path: item.path,
-    type: item.type === 'dir' ? 'directory' : 'file',
-    size: item.size,
-    isExpanded: false,
-    isLoaded: false,
-  };
 }
 
 /**

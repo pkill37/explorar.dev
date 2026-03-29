@@ -14,14 +14,19 @@ interface Guide {
 }
 
 interface GuidePanelProps {
-  title?: string;
   sections?: Section[]; // For backward compatibility
   guides?: Guide[]; // New: support multiple guides
   defaultOpenIds?: string[];
-  onNavigateFile?: (path: string) => void;
+  /** Called with the section id whenever a section is expanded, null when collapsed */
+  onActiveChapterChange?: (id: string | null) => void;
 }
 
-export default function GuidePanel({ sections, guides, defaultOpenIds = [] }: GuidePanelProps) {
+export default function GuidePanel({
+  sections,
+  guides,
+  defaultOpenIds = [],
+  onActiveChapterChange,
+}: GuidePanelProps) {
   // Support both old (sections) and new (guides) API
   const guideList: Guide[] =
     guides || (sections ? [{ id: 'default', name: 'Kernel In The Mind', sections }] : []);
@@ -30,29 +35,41 @@ export default function GuidePanel({ sections, guides, defaultOpenIds = [] }: Gu
   const currentSections = useMemo(() => currentGuide?.sections || [], [currentGuide?.sections]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load persisted open state from localStorage
-  const loadOpenState = (): Record<string, boolean> => {
-    if (typeof window === 'undefined') {
-      return Object.fromEntries(currentSections.map((s) => [s.id, defaultOpenIds.includes(s.id)]));
-    }
+  // Initialize open state with SSR-safe defaults (no localStorage on server)
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(currentSections.map((s) => [s.id, defaultOpenIds.includes(s.id)]))
+  );
+
+  // After hydration, merge with any persisted localStorage state and notify graph
+  useEffect(() => {
+    let activeId: string | null = null;
     try {
       const saved = localStorage.getItem('guide-panel-open-state');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Merge with current sections, preserving saved state where available
-        const merged: Record<string, boolean> = {};
-        currentSections.forEach((s) => {
-          merged[s.id] = parsed[s.id] ?? defaultOpenIds.includes(s.id);
+        setOpen((prev) => {
+          const merged: Record<string, boolean> = { ...prev };
+          currentSections.forEach((s) => {
+            if (s.id in parsed) merged[s.id] = parsed[s.id];
+          });
+          // Notify graph with the last open section
+          const lastOpen = currentSections.filter((s) => merged[s.id]).pop();
+          activeId = lastOpen?.id ?? null;
+          return merged;
         });
-        return merged;
+      } else {
+        // No saved state — use defaultOpenIds
+        const lastOpen = currentSections.filter((s) => defaultOpenIds.includes(s.id)).pop();
+        activeId = lastOpen?.id ?? null;
       }
-    } catch (error) {
-      console.warn('Failed to load guide panel open state:', error);
+    } catch {
+      const lastOpen = currentSections.filter((s) => defaultOpenIds.includes(s.id)).pop();
+      activeId = lastOpen?.id ?? null;
     }
-    return Object.fromEntries(currentSections.map((s) => [s.id, defaultOpenIds.includes(s.id)]));
-  };
-
-  const [open, setOpen] = useState<Record<string, boolean>>(loadOpenState);
+    if (activeId) onActiveChapterChange?.(activeId);
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save open state to localStorage whenever it changes
   useEffect(() => {
@@ -115,7 +132,20 @@ export default function GuidePanel({ sections, guides, defaultOpenIds = [] }: Gu
     }
   };
 
-  const toggle = (id: string) => setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggle = (id: string) => {
+    setOpen((prev) => {
+      const opening = !prev[id];
+      return { ...prev, [id]: opening };
+    });
+    // Notify outside the updater to avoid setState-during-render
+    const opening = !open[id];
+    if (opening) {
+      onActiveChapterChange?.(id);
+    } else {
+      const anyOpen = Object.entries(open).some(([k, v]) => k !== id && v);
+      if (!anyOpen) onActiveChapterChange?.(null);
+    }
+  };
 
   const [showShareMenu, setShowShareMenu] = useState(false);
 

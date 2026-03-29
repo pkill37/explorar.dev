@@ -2,71 +2,21 @@
 import React from 'react';
 import matter from 'gray-matter';
 import { marked } from 'marked';
-import mermaid from 'mermaid';
 import { GuideSection, FileRecommendation } from '@/lib/project-guides';
 import { QuizQuestion } from '@/components/ChapterQuiz';
 import ChapterQuiz from '@/components/ChapterQuiz';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
+import MermaidDiagram from '@/components/MermaidDiagram';
 
-// Initialize mermaid
-if (typeof window !== 'undefined') {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'dark',
-    themeVariables: {
-      darkMode: true,
-    },
-  });
-}
-
-// Mermaid diagram component
-function MermaidDiagram({ chart, id }: { chart: string; id: string }) {
-  const [svg, setSvg] = React.useState<string>('');
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    const renderDiagram = async () => {
-      try {
-        if (typeof window === 'undefined') return;
-
-        const uniqueId = `mermaid-${id}-${Date.now()}`;
-        const { svg: renderedSvg } = await mermaid.render(uniqueId, chart);
-        setSvg(renderedSvg);
-      } catch (err) {
-        console.error('Mermaid rendering error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to render diagram');
-      }
-    };
-
-    renderDiagram();
-  }, [chart, id]);
-
-  if (error) {
-    return (
-      <div
-        style={{
-          padding: '16px',
-          background: 'var(--vscode-inputValidation-errorBackground)',
-          border: '1px solid var(--vscode-inputValidation-errorBorder)',
-          borderRadius: '4px',
-          color: 'var(--vscode-inputValidation-errorForeground)',
-          fontSize: '12px',
-        }}
-      >
-        <strong>Mermaid Error:</strong> {error}
-      </div>
-    );
-  }
-
-  if (!svg) {
-    return (
-      <div style={{ padding: '16px', color: 'var(--vscode-descriptionForeground)' }}>
-        Rendering diagram...
-      </div>
-    );
-  }
-
-  return <div dangerouslySetInnerHTML={{ __html: svg }} />;
+/** Extract and strip a ```chapter-graph block from section content. */
+function extractChapterGraph(content: string): { graph: string | undefined; cleanContent: string } {
+  const re = /```chapter-graph\n([\s\S]*?)```/;
+  const match = content.match(re);
+  if (!match) return { graph: undefined, cleanContent: content };
+  return {
+    graph: match[1].trim(),
+    cleanContent: content.replace(re, '').trim(),
+  };
 }
 
 // Custom renderer for marked to handle mermaid blocks
@@ -87,41 +37,36 @@ function createMarkdownRenderer(sectionId: string) {
   return renderer;
 }
 
-// Convert HTML with mermaid placeholders to React elements
+// Convert HTML with mermaid placeholders to React elements.
+// Uses regex string splitting (no DOM API) so output is identical on server and client.
 function htmlToReact(html: string, sectionId: string): React.ReactNode {
-  // Parse the HTML and replace mermaid placeholders with React components
+  const placeholderRe =
+    /<div class="mermaid-placeholder" data-chart="([^"]*)" data-id="([^"]*)"><\/div>/g;
+
   const parts: React.ReactNode[] = [];
-  const div = typeof window !== 'undefined' ? document.createElement('div') : null;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let index = 0;
 
-  if (!div) {
-    // Server-side: just return the HTML
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
-  }
-
-  div.innerHTML = html;
-  const placeholders = div.querySelectorAll('.mermaid-placeholder');
-
-  if (placeholders.length === 0) {
-    // No mermaid diagrams, return simple HTML
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
-  }
-
-  // Replace placeholders with React components
-  let currentHTML = html;
-  placeholders.forEach((placeholder, index) => {
-    const chart = decodeURIComponent(placeholder.getAttribute('data-chart') || '');
-    const id = placeholder.getAttribute('data-id') || `${sectionId}-${index}`;
-    const placeholderHTML = placeholder.outerHTML;
-
-    const [before, after] = currentHTML.split(placeholderHTML);
-    parts.push(<div key={`html-${index}`} dangerouslySetInnerHTML={{ __html: before }} />);
+  while ((match = placeholderRe.exec(html)) !== null) {
+    const before = html.slice(lastIndex, match.index);
+    if (before) {
+      parts.push(<div key={`html-${index}`} dangerouslySetInnerHTML={{ __html: before }} />);
+    }
+    const chart = decodeURIComponent(match[1]);
+    const id = match[2] || `${sectionId}-${index}`;
     parts.push(<MermaidDiagram key={`mermaid-${index}`} chart={chart} id={id} />);
-    currentHTML = after;
-  });
+    lastIndex = match.index + match[0].length;
+    index++;
+  }
 
-  // Add remaining HTML
-  if (currentHTML) {
-    parts.push(<div key="html-final" dangerouslySetInnerHTML={{ __html: currentHTML }} />);
+  if (parts.length === 0) {
+    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+
+  const remaining = html.slice(lastIndex);
+  if (remaining) {
+    parts.push(<div key="html-final" dangerouslySetInnerHTML={{ __html: remaining }} />);
   }
 
   return <>{parts}</>;
@@ -136,25 +81,6 @@ interface SectionFrontmatter {
     source?: FileRecommendation[];
   };
   quiz?: QuizQuestion[];
-}
-
-// Parse document frontmatter
-interface DocumentFrontmatter {
-  guideId?: string;
-  name?: string;
-  description?: string;
-  defaultOpenIds?: string[];
-  dataStructures?: Array<{
-    name: string;
-    category: string;
-    description: string;
-    location: string;
-    filePath?: string;
-    lineNumber?: number;
-    introduction?: string;
-    usage?: string[];
-    examples?: string[];
-  }>;
 }
 
 // Split markdown into sections by "---" delimiters with frontmatter
@@ -222,121 +148,13 @@ function splitIntoSections(content: string): Array<{ frontmatter: string; conten
   return sections;
 }
 
-// Parse YAML-like frontmatter manually (simplified for our use case)
-function parseSimpleYAML(yaml: string): SectionFrontmatter {
-  const lines = yaml.split('\n');
-  const result: Record<string, unknown> = {};
-  let currentKey: string | null = null;
-  let currentArray: unknown[] = [];
-  let currentObject: Record<string, unknown> | null = null;
-  let currentNestedArray: unknown[] | null = null;
-  let currentNestedArrayKey: string | null = null;
-  let indentLevel = 0;
-  let nestedIndentLevel = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    const indent = line.match(/^\s*/)?.[0].length || 0;
-
-    // Top-level key-value
-    if (indent === 0 && line.includes(':')) {
-      if (currentKey && currentArray.length > 0) {
-        result[currentKey] = currentArray;
-        currentArray = [];
-      }
-
-      const [key, ...valueParts] = line.split(':');
-      const value = valueParts.join(':').trim();
-      currentKey = key.trim();
-
-      if (value) {
-        // Simple value
-        if (value.startsWith('[') && value.endsWith(']')) {
-          // Inline array
-          result[currentKey] = JSON.parse(value);
-        } else {
-          result[currentKey] = value.replace(/^['"]|['"]$/g, '');
-        }
-        currentKey = null;
-      } else {
-        // Object or array follows
-        result[currentKey] = null;
-      }
-    }
-    // Array item
-    else if (trimmed.startsWith('-')) {
-      const value = trimmed.substring(1).trim();
-
-      // Check if this is a nested array item (indented more than the object level)
-      if (currentNestedArray && indent > nestedIndentLevel) {
-        currentNestedArray.push(value.replace(/^['"]|['"]$/g, ''));
-        continue;
-      }
-
-      if (value.includes(':')) {
-        // Object in array
-        const obj: Record<string, unknown> = {};
-        const [objKey, ...objValueParts] = value.split(':');
-        const objValue = objValueParts.join(':').trim();
-        obj[objKey.trim()] = objValue.replace(/^['"]|['"]$/g, '');
-        currentObject = obj;
-        currentArray.push(obj);
-        indentLevel = indent;
-        currentNestedArray = null;
-        currentNestedArrayKey = null;
-      } else {
-        // Simple array item
-        currentArray.push(value.replace(/^['"]|['"]$/g, ''));
-      }
-    }
-    // Nested object property
-    else if (indent > indentLevel && currentObject) {
-      const [key, ...valueParts] = line.split(':');
-      const value = valueParts.join(':').trim();
-      const cleanKey = key.trim();
-
-      // Check if next line starts with '-' (indicating an array follows)
-      const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
-      const nextIndent = nextLine.match(/^\s*/)?.[0].length || 0;
-      const nextTrimmed = nextLine.trim();
-
-      if (!value && nextTrimmed.startsWith('-') && nextIndent > indent) {
-        // This is an array property (like options:)
-        currentNestedArray = [];
-        currentNestedArrayKey = cleanKey;
-        nestedIndentLevel = nextIndent;
-        // Process the first array item on the next iteration
-        continue;
-      } else if (value.startsWith('[') && value.endsWith(']')) {
-        // Inline array
-        currentObject[cleanKey] = JSON.parse(value);
-      } else if (value) {
-        currentObject[cleanKey] = value.replace(/^['"]|['"]$/g, '');
-      }
-
-      // If we have a nested array that was being built, finalize it
-      if (currentNestedArray && currentNestedArrayKey && indent <= nestedIndentLevel) {
-        currentObject[currentNestedArrayKey] = currentNestedArray;
-        currentNestedArray = null;
-        currentNestedArrayKey = null;
-      }
-    }
+// Parse section frontmatter using gray-matter (js-yaml) for correct nested YAML support
+function parseSectionFrontmatter(yaml: string): SectionFrontmatter {
+  try {
+    return matter('---\n' + yaml + '\n---\n').data as SectionFrontmatter;
+  } catch {
+    return { id: '', title: '' };
   }
-
-  // Finalize nested array if still open
-  if (currentNestedArray && currentNestedArrayKey && currentObject) {
-    currentObject[currentNestedArrayKey] = currentNestedArray;
-  }
-
-  // Finalize last array
-  if (currentKey && currentArray.length > 0) {
-    result[currentKey] = currentArray;
-  }
-
-  return result as unknown as SectionFrontmatter;
 }
 
 /**
@@ -364,7 +182,7 @@ export function parseGuideMarkdown(
   const guideSections: GuideSection[] = sections
     .map((section, index): GuideSection | null => {
       // Parse section frontmatter
-      const sectionMeta = parseSimpleYAML(section.frontmatter);
+      const sectionMeta = parseSectionFrontmatter(section.frontmatter);
 
       // If id/title are missing, the "frontmatter" is likely markdown content
       // (e.g., when --- is used as a horizontal rule, not a YAML delimiter).
@@ -391,6 +209,10 @@ export function parseGuideMarkdown(
           return null;
         }
       }
+
+      // Extract chapter-graph block (strip it from rendered content)
+      const { graph, cleanContent: contentWithoutGraph } = extractChapterGraph(sectionContent);
+      sectionContent = contentWithoutGraph;
 
       // Convert markdown to HTML (only if content exists)
       let reactContent: React.ReactNode = null;
@@ -427,6 +249,7 @@ export function parseGuideMarkdown(
         body,
         fileRecommendations: sectionMeta.fileRecommendations,
         quiz: sectionMeta.quiz,
+        graph,
       };
 
       return guideSection;
@@ -434,27 +257,4 @@ export function parseGuideMarkdown(
     .filter((section): section is GuideSection => section !== null);
 
   return guideSections;
-}
-
-/**
- * Extract data structures from guide markdown
- */
-export function extractDataStructures(markdown: string) {
-  const { data } = matter(markdown);
-  const docMeta = data as DocumentFrontmatter;
-  return docMeta.dataStructures || [];
-}
-
-/**
- * Extract guide metadata from markdown
- */
-export function extractGuideMetadata(markdown: string) {
-  const { data } = matter(markdown);
-  const docMeta = data as DocumentFrontmatter;
-  return {
-    guideId: docMeta.guideId,
-    name: docMeta.name,
-    description: docMeta.description,
-    defaultOpenIds: docMeta.defaultOpenIds || [],
-  };
 }

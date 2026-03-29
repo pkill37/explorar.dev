@@ -421,7 +421,6 @@ const DataStructureItem: React.FC<DataStructureItemProps> = ({ ds, onFileOpen })
 };
 
 interface DataStructuresViewProps {
-  onStructSelect?: (ds: DataStructure) => void;
   onFileOpen?: (filePath: string, structName: string, lineNumber?: number) => void;
 }
 

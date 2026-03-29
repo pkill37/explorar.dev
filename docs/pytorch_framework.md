@@ -21,6 +21,9 @@ Understanding PyTorch means understanding how tensors flow through computation g
 **PyTorch powers modern AI. Let's understand how it works.**
 
 ---
+id: learning-path
+title: Learning Path for PyTorch Mastery
+---
 
 ## Learning Path for PyTorch Mastery
 
@@ -83,6 +86,17 @@ print(x.grad)    # dy/dx
 3. **Contributing**: Submit PRs to PyTorch
 4. **Research**: Implement cutting-edge optimizations
 
+---
+id: ch1
+title: Chapter 1 — PyTorch Architecture and Core Concepts
+fileRecommendations:
+  source:
+    - path: aten/src/ATen/core/Tensor.h
+      description: Tensor class definition — the core data structure
+    - path: torch/csrc/autograd/variable.h
+      description: Variable/Tensor with gradient tracking
+    - path: torch/_tensor.py
+      description: Python Tensor class — high-level tensor operations
 ---
 
 ## Chapter 1 — PyTorch Architecture and Core Concepts
@@ -298,6 +312,17 @@ cpu_result = z.cpu()
 ```
 
 ---
+id: ch2
+title: Chapter 2 — Building Neural Networks
+fileRecommendations:
+  source:
+    - path: torch/nn/modules/module.py
+      description: nn.Module base class — the foundation of all models
+    - path: torch/nn/functional.py
+      description: Stateless neural network functions (relu, conv, etc.)
+    - path: torch/nn/modules/
+      description: All built-in layers: Linear, Conv2d, BatchNorm, etc.
+---
 
 ## Chapter 2 — Building Neural Networks
 
@@ -480,6 +505,17 @@ class FocalLoss(nn.Module):
 ```
 
 ---
+id: ch3
+title: Chapter 3 — Autograd Engine Deep Dive
+fileRecommendations:
+  source:
+    - path: torch/csrc/autograd/engine.cpp
+      description: The autograd engine — backward pass execution
+    - path: torch/csrc/autograd/function.h
+      description: Function node interface — how ops register their backward
+    - path: torch/autograd/__init__.py
+      description: Python autograd API — backward(), grad()
+---
 
 ## Chapter 3 — Autograd Engine Deep Dive
 
@@ -596,6 +632,17 @@ y.sum().backward()
 print(x.grad.shape)  # (4, 4) - gradient accumulated on original
 ```
 
+---
+id: ch4
+title: Chapter 4 — Optimization and Training
+fileRecommendations:
+  source:
+    - path: torch/optim/optimizer.py
+      description: Base Optimizer class — step(), zero_grad()
+    - path: torch/optim/adam.py
+      description: Adam optimizer implementation
+    - path: torch/optim/sgd.py
+      description: SGD with momentum implementation
 ---
 
 ## Chapter 4 — Optimization and Training
@@ -715,6 +762,17 @@ for epoch in range(num_epochs):
     scheduler.step()  # Update learning rate
 ```
 
+---
+id: ch5
+title: Chapter 5 — Advanced Features
+fileRecommendations:
+  source:
+    - path: torch/jit/__init__.py
+      description: TorchScript JIT — torch.jit.script() entry point
+    - path: torch/csrc/jit/frontend/ir_emitter.cpp
+      description: TorchScript IR emitter — Python AST to IR
+    - path: torch/quantization/
+      description: Quantization APIs for model compression
 ---
 
 ## Chapter 5 — Advanced Features
@@ -846,6 +904,17 @@ result = custom_op.add(a, b)
 ```
 
 ---
+id: ch6
+title: Chapter 6 — PyTorch Internals
+fileRecommendations:
+  source:
+    - path: aten/src/ATen/native/
+      description: ATen native op implementations (CPU and CUDA)
+    - path: torch/csrc/autograd/generated/
+      description: Auto-generated autograd functions for all ops
+    - path: c10/core/DispatchKey.h
+      description: Dispatcher key system — how ops are routed to backends
+---
 
 ## Chapter 6 — PyTorch Internals
 
@@ -933,6 +1002,17 @@ pytorch/
 2. `aten/src/ATen/native/Linear.cpp` - Linear algebra ops
 3. `aten/src/ATen/native/cuda/Normalization.cu` - CUDA batchnorm
 
+---
+id: ch7
+title: Chapter 7 — Production Deployment
+fileRecommendations:
+  source:
+    - path: torch/hub.py
+      description: PyTorch Hub — loading pretrained models
+    - path: torch/onnx/
+      description: ONNX export for cross-framework deployment
+    - path: benchmarks/
+      description: Performance benchmarks for PyTorch operations
 ---
 
 ## Chapter 7 — Production Deployment

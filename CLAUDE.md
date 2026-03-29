@@ -43,8 +43,10 @@ npm run prebuild         # Downloads repositories based on --depth flag
 npm run clean            # Remove all generated artifacts
 
 # Code Quality
-npm run lint             # Type check + ESLint + dependency check
-npm run fix              # Auto-fix ESLint, format with Prettier, fix vulnerabilities
+npm run lint   # Full gate: guide validation → tsc → eslint (cached) → prettier check → depcheck
+npm run fix    # Auto-fix: eslint --fix + prettier write + npm audit fix + tsc verify
+               # NOTE: fix is best-effort. Always run lint afterward to confirm clean state.
+               # Pre-commit hook runs lint-staged (eslint + prettier) on changed files automatically.
 
 # Testing
 npm test                 # Run all Playwright tests

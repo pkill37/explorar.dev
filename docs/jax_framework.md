@@ -21,6 +21,9 @@ Understanding JAX means understanding how pure functions enable powerful optimiz
 **JAX makes numerical computing composable. Let's understand how it works.**
 
 ---
+id: learning-path
+title: Learning Path for JAX Mastery
+---
 
 ## Learning Path for JAX Mastery
 
@@ -87,6 +90,17 @@ result = fast_f(jnp.array([1.0, 2.0, 3.0]))
 3. **Compiler Optimization**: XLA optimization strategies
 4. **Research**: Novel transformation compositions
 
+---
+id: ch1
+title: Chapter 1 — JAX Philosophy and Architecture
+fileRecommendations:
+  source:
+    - path: jax/_src/api.py
+      description: Core JAX API — jit, grad, vmap, pmap entry points
+    - path: jax/_src/core.py
+      description: JAX core — Jaxpr IR, tracing, eval_jaxpr
+    - path: jax/numpy/
+      description: JAX NumPy compatibility layer
 ---
 
 ## Chapter 1 — JAX Philosophy and Architecture
@@ -240,6 +254,17 @@ Google's domain-specific compiler:
 - **Ahead-of-time**: Compiles before execution
 
 ---
+id: ch2
+title: Chapter 2 — Automatic Differentiation with grad
+fileRecommendations:
+  source:
+    - path: jax/_src/interpreters/ad.py
+      description: Automatic differentiation — JVP and VJP rules
+    - path: jax/_src/api.py
+      description: grad(), value_and_grad(), jacobian() implementations
+    - path: jax/_src/lax/lax.py
+      description: Primitive operations with their gradient rules
+---
 
 ## Chapter 2 — Automatic Differentiation with grad
 
@@ -351,6 +376,17 @@ f.defvjp(f_fwd, f_bwd)
 ```
 
 ---
+id: ch3
+title: Chapter 3 — JIT Compilation with jax.jit
+fileRecommendations:
+  source:
+    - path: jax/_src/interpreters/mlir.py
+      description: MLIR lowering — Jaxpr to XLA HLO compilation
+    - path: jax/_src/api.py
+      description: jit() implementation — tracing and caching logic
+    - path: jax/_src/interpreters/xla.py
+      description: XLA backend integration
+---
 
 ## Chapter 3 — JIT Compilation with jax.jit
 
@@ -431,6 +467,15 @@ def update(x, delta):
 # Memory efficient for large arrays
 ```
 
+---
+id: ch4
+title: Chapter 4 — Automatic Vectorization with vmap
+fileRecommendations:
+  source:
+    - path: jax/_src/interpreters/batching.py
+      description: Batching interpreter — how vmap transforms primitives
+    - path: jax/_src/api.py
+      description: vmap() entry point and axis specification
 ---
 
 ## Chapter 4 — Automatic Vectorization with vmap
@@ -519,6 +564,15 @@ def batch_apply(params, x):
 ```
 
 ---
+id: ch5
+title: Chapter 5 — Parallel Computation with pmap
+fileRecommendations:
+  source:
+    - path: jax/_src/interpreters/pxla.py
+      description: Parallel execution — pmap and sharding
+    - path: jax/_src/api.py
+      description: pmap() entry point and device specification
+---
 
 ## Chapter 5 — Parallel Computation with pmap
 
@@ -575,6 +629,15 @@ def allgather(x):
 ```
 
 ---
+id: ch6
+title: Chapter 6 — Random Number Generation
+fileRecommendations:
+  source:
+    - path: jax/_src/prng.py
+      description: Functional PRNG — threefry, key splitting
+    - path: jax/random.py
+      description: Public random API — key(), normal(), uniform()
+---
 
 ## Chapter 6 — Random Number Generation
 
@@ -616,6 +679,15 @@ def prng_internal(key):
     return threefry_hash(counter, seed)
 ```
 
+---
+id: ch7
+title: Chapter 7 — PyTrees and Nested Structures
+fileRecommendations:
+  source:
+    - path: jax/_src/tree_util.py
+      description: PyTree registry — flatten/unflatten for nested structures
+    - path: jax/tree_util.py
+      description: Public PyTree API
 ---
 
 ## Chapter 7 — PyTrees and Nested Structures
@@ -688,6 +760,15 @@ model = Model(jnp.array([1, 2]), jnp.array([3]))
 grads = jax.grad(loss_fn)(model)
 ```
 
+---
+id: ch8
+title: Chapter 8 — Building Neural Networks
+fileRecommendations:
+  source:
+    - path: jax/example_libraries/stax.py
+      description: Stax — functional neural network building blocks
+    - path: jax/example_libraries/optimizers.py
+      description: Functional optimizers for JAX
 ---
 
 ## Chapter 8 — Building Neural Networks
@@ -766,6 +847,17 @@ for epoch in range(num_epochs):
         params, opt_state, loss = train_step(params, opt_state, x_batch, y_batch)
 ```
 
+---
+id: ch9
+title: Chapter 9 — JAX Internals
+fileRecommendations:
+  source:
+    - path: jax/_src/core.py
+      description: Tracer system, Jaxpr IR, evaluation engine
+    - path: jax/_src/interpreters/
+      description: All transformation interpreters (ad, batching, mlir, xla)
+    - path: jax/_src/dispatch.py
+      description: JAX dispatch — how computations are sent to devices
 ---
 
 ## Chapter 9 — JAX Internals

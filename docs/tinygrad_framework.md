@@ -21,6 +21,9 @@ Understanding TinyGrad means understanding automatic differentiation, lazy evalu
 **TinyGrad makes deep learning transparent. Let's understand how it works.**
 
 ---
+id: learning-path
+title: Learning Path for TinyGrad Mastery
+---
 
 ## Learning Path for TinyGrad Mastery
 
@@ -85,6 +88,17 @@ print(x.grad)  # Gradient of z w.r.t. x
 3. **Research**: Implement novel optimizations
 4. **Teaching**: Explain TinyGrad to others
 
+---
+id: ch1
+title: Chapter 1 — TinyGrad Architecture
+fileRecommendations:
+  source:
+    - path: tinygrad/tensor.py
+      description: Tensor class — the entire user-facing API
+    - path: tinygrad/lazy.py
+      description: LazyBuffer — deferred computation graph nodes
+    - path: tinygrad/ops.py
+      description: Operation enums — BinaryOps, UnaryOps, ReduceOps, LoadOps
 ---
 
 ## Chapter 1 — TinyGrad Architecture
@@ -291,6 +305,17 @@ def backward(self):
 ```
 
 ---
+id: ch2
+title: Chapter 2 — The LazyBuffer: TinyGrad's Secret Weapon
+fileRecommendations:
+  source:
+    - path: tinygrad/lazy.py
+      description: LazyBuffer implementation — deferred execution logic
+    - path: tinygrad/shape/shapetracker.py
+      description: ShapeTracker — zero-copy reshape and stride manipulation
+    - path: tinygrad/realize.py
+      description: realize() — when and how lazy ops become actual computations
+---
 
 ## Chapter 2 — The LazyBuffer: TinyGrad's Secret Weapon
 
@@ -370,6 +395,17 @@ w = z.sum()         # reduce
 #     acc += temp
 ```
 
+---
+id: ch3
+title: Chapter 3 — Operations and the Computational Graph
+fileRecommendations:
+  source:
+    - path: tinygrad/ops.py
+      description: Op definitions — the complete set of primitive operations
+    - path: tinygrad/tensor.py
+      description: Tensor methods — how Python ops map to lazy graph nodes
+    - path: tinygrad/mlops.py
+      description: ML-specific operations with forward and backward passes
 ---
 
 ## Chapter 3 — Operations and the Computational Graph
@@ -477,6 +513,17 @@ print(x.grad)  # [3.0]
 ```
 
 ---
+id: ch4
+title: Chapter 4 — Hardware Acceleration
+fileRecommendations:
+  source:
+    - path: tinygrad/runtime/ops_gpu.py
+      description: OpenCL GPU backend
+    - path: tinygrad/runtime/ops_cuda.py
+      description: CUDA backend — PTX compilation and execution
+    - path: tinygrad/runtime/ops_metal.py
+      description: Apple Metal backend for macOS/iOS
+---
 
 ## Chapter 4 — Hardware Acceleration
 
@@ -574,6 +621,17 @@ class METAL:
 ```
 
 ---
+id: ch5
+title: Chapter 5 — Building Neural Networks in TinyGrad
+fileRecommendations:
+  source:
+    - path: tinygrad/nn/
+      description: Neural network layers: Linear, Conv2d, BatchNorm
+    - path: examples/mnist.py
+      description: MNIST training example — end-to-end model in TinyGrad
+    - path: examples/train_resnet.py
+      description: ResNet training — production-scale model
+---
 
 ## Chapter 5 — Building Neural Networks in TinyGrad
 
@@ -670,6 +728,17 @@ class SGD:
 ```
 
 ---
+id: ch6
+title: Chapter 6 — Advanced Features
+fileRecommendations:
+  source:
+    - path: tinygrad/codegen/linearizer.py
+      description: Kernel linearizer — converting graph to GPU code
+    - path: tinygrad/jit.py
+      description: TinyJIT — compilation cache for repeated operations
+    - path: tinygrad/codegen/
+      description: Code generation pipeline for all backends
+---
 
 ## Chapter 6 — Advanced Features
 
@@ -738,6 +807,15 @@ def my_custom_op(x):
 ```
 
 ---
+id: ch7
+title: Chapter 7 — Reading the Source Code
+fileRecommendations:
+  source:
+    - path: tinygrad/tensor.py
+      description: Start here — ~800 lines covering the full API
+    - path: tinygrad/lazy.py
+      description: Second stop — lazy evaluation and graph construction
+---
 
 ## Chapter 7 — Reading the Source Code
 
@@ -793,6 +871,15 @@ def my_custom_op(x):
 3. See how operations compile to kernels
 
 ---
+id: ch8
+title: Chapter 8 — Philosophy and Design Principles
+fileRecommendations:
+  source:
+    - path: README.md
+      description: TinyGrad's design philosophy and goals
+    - path: tinygrad/
+      description: The entire framework — read it all (~3000 lines total)
+---
 
 ## Chapter 8 — Philosophy and Design Principles
 
@@ -841,6 +928,15 @@ TinyGrad chooses simplicity: one unified backend interface, multiple implementat
 
 Only essential operations; everything else built from basics.
 
+---
+id: ch9
+title: Chapter 9 — Practical Projects
+fileRecommendations:
+  source:
+    - path: examples/
+      description: All example projects: MNIST, GPT, ResNet, stable diffusion
+    - path: extra/
+      description: Extra experiments and research implementations
 ---
 
 ## Chapter 9 — Practical Projects

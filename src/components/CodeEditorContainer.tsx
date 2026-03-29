@@ -9,7 +9,6 @@ interface CodeEditorContainerProps {
   filePath: string;
   onContentLoad?: (content: string) => void;
   fetchFile?: (path: string) => Promise<string>;
-  repoLabel?: string;
   scrollToLine?: number;
   searchPattern?: string;
   onCursorChange?: (line: number, column: number) => void;
@@ -19,7 +18,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   filePath,
   onContentLoad,
   fetchFile,
-  repoLabel,
   scrollToLine,
   searchPattern,
   onCursorChange,
@@ -109,7 +107,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       filePath={filePath}
       content={content}
       isLoading={isLoading}
-      repoLabel={repoLabel}
       scrollToLine={scrollToLine}
       searchPattern={searchPattern}
       onCursorChange={onCursorChange}

@@ -21,6 +21,9 @@ Understanding Frida means understanding how processes execute, how memory is org
 **Frida makes the invisible visible. Let's understand how it works.**
 
 ---
+id: learning-path
+title: Learning Path for Frida Mastery
+---
 
 ## Learning Path for Frida Mastery
 
@@ -82,6 +85,17 @@ Interceptor.attach(Module.findExportByName(null, 'open'), {
 3. **Custom Gadgets**: Build standalone instrumentation
 4. **Research**: Discover and exploit vulnerabilities
 
+---
+id: ch1
+title: Chapter 1 — Frida Architecture and Core Concepts
+fileRecommendations:
+  source:
+    - path: gum/guminterceptor.c
+      description: Frida Gum interceptor — the core hooking engine
+    - path: gum/gum.c
+      description: Gum library initialization and core setup
+    - path: gum/gummemory.c
+      description: Memory operations — scanning, protection, allocation
 ---
 
 ## Chapter 1 — Frida Architecture and Core Concepts
@@ -284,6 +298,15 @@ class ArtMethod {
 };
 ```
 
+---
+id: ch2
+title: Chapter 2 — Android Java Hooking
+fileRecommendations:
+  source:
+    - path: bindings/gumjs/gumjscore.c
+      description: JavaScript core bindings — Java.perform(), Java.use()
+    - path: bindings/gumjs/runtime/java.js
+      description: Java bridge runtime — method hooking JavaScript API
 ---
 
 ## Chapter 2 — Android Java Hooking
@@ -490,6 +513,15 @@ Java.perform(function () {
 ```
 
 ---
+id: ch3
+title: Chapter 3 — Native (JNI) Hooking on Android
+fileRecommendations:
+  source:
+    - path: gum/guminterceptor.c
+      description: Native function interceptor implementation
+    - path: gum/guminterceptor.h
+      description: Interceptor API — Interceptor.attach() contract
+---
 
 ## Chapter 3 — Native (JNI) Hooking on Android
 
@@ -655,6 +687,17 @@ function hookJNIEnv() {
 ```
 
 ---
+id: ch4
+title: Chapter 4 — Native Code Hooking (ARM/ARM64)
+fileRecommendations:
+  source:
+    - path: gum/arch-arm64/gumarm64writer.c
+      description: ARM64 code writer — patching instructions at runtime
+    - path: gum/arch-arm/gumarmwriter.c
+      description: ARM (32-bit) code writer for trampoline creation
+    - path: gum/arch-arm64/gumarm64relocator.c
+      description: ARM64 instruction relocator for safe hook patching
+---
 
 ## Chapter 4 — Native Code Hooking (ARM/ARM64)
 
@@ -765,6 +808,15 @@ Interceptor.attach(targetFunc, {
 });
 ```
 
+---
+id: ch5
+title: Chapter 5 — Anti-Frida and Evasion
+fileRecommendations:
+  source:
+    - path: gum/guminterceptor.c
+      description: How Frida injects — understanding what apps detect
+    - path: lib/selinux/android/
+      description: SELinux integration affecting Frida injection on Android
 ---
 
 ## Chapter 5 — Anti-Frida and Evasion
@@ -886,6 +938,15 @@ Java.perform(bypassFridaDetection);
 ```
 
 ---
+id: ch6
+title: Chapter 6 — Practical Examples
+fileRecommendations:
+  source:
+    - path: bindings/gumjs/runtime/
+      description: JavaScript runtime with SSL, Java, ObjC bindings
+    - path: examples/
+      description: Official Frida examples and code samples
+---
 
 ## Chapter 6 — Practical Examples
 
@@ -995,6 +1056,13 @@ Java.perform(function () {
 ```
 
 ---
+id: ch7
+title: Chapter 7 — Frida Tools and Ecosystem
+fileRecommendations:
+  source:
+    - path: tools/
+      description: Frida CLI tools (frida-ps, frida-trace, etc.)
+---
 
 ## Chapter 7 — Frida Tools and Ecosystem
 
@@ -1050,6 +1118,15 @@ frida-compile agent.js -o compiled.js
 frida-gadget --version
 ```
 
+---
+id: ch8
+title: Chapter 8 — Building Reusable Frida Modules
+fileRecommendations:
+  source:
+    - path: bindings/gumjs/runtime/entrypoint.js
+      description: Agent entrypoint — how Frida modules are bootstrapped
+    - path: bindings/gumjs/gumscriptbackend.h
+      description: Script backend interface — rpc.exports contract
 ---
 
 ## Chapter 8 — Building Reusable Frida Modules

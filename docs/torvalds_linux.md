@@ -23,6 +23,9 @@ Each post began as a self-contained reflection. Taken together, they offer a con
 **The kernel runs everything. Let's understand how it runs.**
 
 ---
+id: learning-path
+title: Learning Path for Linux Kernel Exploration
+---
 
 ## Learning Path for Linux Kernel Exploration
 
@@ -56,6 +59,17 @@ This guide follows a structured learning path designed to build deep understandi
 3. **Complex Features**: Study eBPF, io_uring, or KVM internals
 4. **Original Research**: Propose and implement kernel improvements
 
+---
+id: ch1
+title: Chapter 1 — Understanding Linux Kernel Before Code
+fileRecommendations:
+  source:
+    - path: init/main.c
+      description: Kernel entry point and initialization sequence
+    - path: include/linux/sched.h
+      description: Task structure — every process/thread is a task_struct
+    - path: kernel/fork.c
+      description: Process creation — how fork() and clone() work
 ---
 
 ## Chapter 1 — Understanding Linux Kernel Before Code
@@ -141,6 +155,17 @@ The Linux kernel is not just a set of subsystems—it is a layered system that e
 - [Documentation/memory-management/](Documentation/memory-management/) - Memory mapping and isolation
 - [Documentation/admin-guide/mm/](Documentation/admin-guide/mm/) - Memory management administration
 
+---
+id: ch2
+title: Chapter 2 — System Foundations
+fileRecommendations:
+  source:
+    - path: arch/x86/entry/entry_64.S
+      description: Low-level x86_64 entry points and syscall dispatch
+    - path: include/linux/types.h
+      description: Fundamental kernel type definitions
+    - path: include/linux/kernel.h
+      description: Core kernel macros and utilities
 ---
 
 ## Chapter 2 — System Foundations
@@ -389,6 +414,17 @@ The Linux kernel is built from a single codebase, yet it runs across an extraord
 - [Documentation/admin-guide/kernel-parameters.rst](Documentation/admin-guide/kernel-parameters.rst) - Kernel parameters
 
 ---
+id: ch3
+title: Chapter 3 — Memory, Isolation, and Enforcement
+fileRecommendations:
+  source:
+    - path: mm/mmap.c
+      description: Virtual memory area management — mmap() implementation
+    - path: mm/page_alloc.c
+      description: Physical page allocator — buddy system
+    - path: include/linux/mm_types.h
+      description: Memory management structures (vm_area_struct, mm_struct)
+---
 
 ## Chapter 3 — Memory, Isolation, and Enforcement
 
@@ -448,6 +484,17 @@ The Linux kernel goes beyond executing code; it enforces strict control over act
 - [Documentation/security/](Documentation/security/) - Security framework
 
 ---
+id: ch4
+title: Chapter 4 — Boot, Init, and the Kernel's Entry
+fileRecommendations:
+  source:
+    - path: init/main.c
+      description: start_kernel() — the first C function to run
+    - path: arch/x86/boot/main.c
+      description: Early x86 boot code before protected mode
+    - path: init/init_task.c
+      description: The init process (PID 1) setup
+---
 
 ## Chapter 4 — Boot, Init, and the Kernel's Entry
 
@@ -489,6 +536,17 @@ In Linux, a process is represented by the `task_struct`, a data structure the ke
 - [Documentation/core-api/](Documentation/core-api/) - Process creation APIs
 
 ---
+id: ch5
+title: Chapter 5 — Entering the Kernel
+fileRecommendations:
+  source:
+    - path: arch/x86/entry/entry_64.S
+      description: SYSCALL entry — where user space crosses into kernel
+    - path: kernel/sys.c
+      description: Generic system call implementations
+    - path: include/uapi/asm-generic/unistd.h
+      description: System call number table
+---
 
 ## Chapter 5 — Entering the Kernel
 
@@ -520,6 +578,17 @@ Understanding where system calls are handled in the Linux kernel is essential fo
 - [Documentation/core-api/](Documentation/core-api/) - System call interface
 - [Documentation/userspace-api/](Documentation/userspace-api/) - User space API documentation
 
+---
+id: ch6
+title: Chapter 6 — Execution and Contexts
+fileRecommendations:
+  source:
+    - path: kernel/fork.c
+      description: do_fork() — the complete process creation path
+    - path: kernel/exit.c
+      description: do_exit() — process termination and cleanup
+    - path: fs/exec.c
+      description: execve() — loading and starting a new program
 ---
 
 ## Chapter 6 — Execution and Contexts
@@ -608,6 +677,17 @@ Understanding kernel threads is essential for grasping how the kernel manages sy
 - [Documentation/scheduler/](Documentation/scheduler/) - Thread scheduling
 
 ---
+id: ch7
+title: Chapter 7 — Communication and Cooperation
+fileRecommendations:
+  source:
+    - path: ipc/signal.c
+      description: Signal delivery and handling implementation
+    - path: kernel/futex/core.c
+      description: Fast userspace mutex — kernel-side implementation
+    - path: kernel/sched/wait.c
+      description: Wait queues — sleeping until an event occurs
+---
 
 ## Chapter 7 — Communication and Cooperation
 
@@ -665,6 +745,17 @@ Control flows from user space to the Linux kernel through a series of well-defin
 
 Over the past decade, Linux has kept pace with rapid hardware change—adapting to multicore CPUs, persistent memory, zoned storage, and high-speed, programmable networks. Its development has been driven not by trends, but by practical needs in real systems.
 
+---
+id: ch8
+title: Chapter 8 — Scheduling, I/O, and Virtualization
+fileRecommendations:
+  source:
+    - path: kernel/sched/core.c
+      description: Scheduler core — schedule(), context_switch()
+    - path: kernel/sched/fair.c
+      description: Completely Fair Scheduler (CFS) implementation
+    - path: block/blk-core.c
+      description: Block I/O core — generic_make_request()
 ---
 
 ## Chapter 8 — Scheduling, I/O, and Virtualization
@@ -758,6 +849,15 @@ Modern virtual machines no longer rely on simulating physical hardware to provid
 - [Documentation/virtual/virtio/](Documentation/virtual/virtio/) - VirtIO drivers
 - [Documentation/virtual/virtio-net.rst](Documentation/virtual/virtio-net.rst) - VirtIO networking
 
+---
+id: ch9
+title: Chapter 9 — Concluding Insights
+fileRecommendations:
+  source:
+    - path: Documentation/process/howto.rst
+      description: How to contribute to the Linux kernel
+    - path: Documentation/admin-guide/
+      description: Linux kernel administration documentation
 ---
 
 ## Chapter 9 — Concluding Insights

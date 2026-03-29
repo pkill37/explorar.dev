@@ -21,6 +21,9 @@ Every time you call `printf()`, `malloc()`, `pthread_create()`, or even `main()`
 **glibc powers every Linux program. Let's understand how it works.**
 
 ---
+id: learning-path
+title: Learning Path for glibc Exploration
+---
 
 ## Learning Path for glibc Exploration
 
@@ -78,6 +81,24 @@ strace -e brk,mmap ./malloc_test
 3. **Port to New Architecture**: Understand porting requirements
 4. **Security Research**: Study security mechanisms and vulnerabilities
 
+---
+id: ch1
+title: Chapter 1 — Introduction to glibc
+fileRecommendations:
+  docs:
+    - path: manual/
+      description: glibc manual source
+    - path: INSTALL
+      description: Build and installation instructions
+  source:
+    - path: csu/crt1.c
+      description: Program startup — first code that runs
+    - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
+      description: x86-64 syscall assembly wrapper
+    - path: stdio-common/vfprintf.c
+      description: Core printf formatting (~2,000 lines)
+    - path: elf/rtld.c
+      description: Dynamic linker / runtime loader (~3,000 lines)
 ---
 
 ## Chapter 1 — Introduction to glibc
@@ -284,6 +305,21 @@ printf("Test\n");      // Immediately writes (no buffer)
 3. `malloc/malloc.h` - Internal structures (chunk format)
 4. Study malloc implementation in detail (see Chapter 3)
 
+---
+id: ch2
+title: Chapter 2 — System Call Interface
+fileRecommendations:
+  source:
+    - path: sysdeps/unix/sysv/linux/syscalls.list
+      description: List of all Linux syscall wrappers
+    - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
+      description: x86-64 syscall assembly implementation
+    - path: sysdeps/unix/syscall-template.S
+      description: Template for generated syscall wrappers
+    - path: sysdeps/unix/sysv/linux/read.c
+      description: Example: read() syscall wrapper
+---
+
 ## Chapter 2 — System Call Interface
 
 glibc provides the interface between user programs and the Linux kernel through system calls.
@@ -299,6 +335,21 @@ glibc provides the interface between user programs and the Linux kernel through 
 - `sysdeps/unix/sysv/linux/syscall.S` - System call assembly wrappers
 - `sysdeps/unix/syscall-template.S` - System call template
 - `sysdeps/unix/sysv/linux/x86_64/` - x86-64 specific syscalls
+
+---
+id: ch3
+title: Chapter 3 — Memory Management Deep Dive
+fileRecommendations:
+  source:
+    - path: malloc/malloc.c
+      description: Main allocator (~6,000 lines) — the whole implementation
+    - path: malloc/arena.c
+      description: Per-thread arena management
+    - path: malloc/malloc-internal.h
+      description: Internal macros, chunk structure, bin definitions
+    - path: malloc/hooks.c
+      description: malloc hooks for debugging and instrumentation
+---
 
 ## Chapter 3 — Memory Management Deep Dive
 
@@ -663,17 +714,166 @@ gdb ./program
 (gdb) x/40x chunk  # Examine chunk memory
 ```
 
+---
+id: ch4
+title: Chapter 4 — String and Memory Functions
+fileRecommendations:
+  source:
+    - path: string/strlen.c
+      description: Generic (portable) strlen implementation
+    - path: sysdeps/x86_64/multiarch/strlen-avx2.S
+      description: AVX2-optimized strlen — processes 32 bytes per cycle
+    - path: sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+      description: AVX memcpy for unaligned buffers
+    - path: sysdeps/x86_64/multiarch/ifunc-impl-list.c
+      description: IFUNC dispatch table — maps CPU features to implementations
+    - path: sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
+      description: AVX2 memset using ERMS (Enhanced REP MOVSB)
+---
+
 ## Chapter 4 — String and Memory Functions
 
-glibc provides optimized implementations of standard C string and memory functions.
+glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships multiple variants selected at runtime based on the CPU's capabilities.
 
-### Optimized Implementations
+```mermaid
+graph TD
+    CALL[User calls strlen] --> PLT[PLT / IFUNC resolver]
+    PLT --> CHECK[Check CPU features\nAVX2? SSE4.2? SSE2?]
+    CHECK -->|AVX2| AVX2[strlen-avx2.S\n32 bytes/iteration]
+    CHECK -->|SSE4.2| SSE42[strlen-sse42.S\n16 bytes/iteration]
+    CHECK -->|baseline| GENERIC[strlen.c\nbyte-by-byte fallback]
+    AVX2 --> RESULT[return length]
+    SSE42 --> RESULT
+    GENERIC --> RESULT
+```
 
-- **Architecture-specific**: Optimized for different CPU architectures
-- **SIMD**: Using vector instructions where available
-- **Fallbacks**: Generic implementations for compatibility
+```chapter-graph
+sysdeps/x86_64/multiarch/ifunc-impl-list.c -> sysdeps/x86_64/multiarch/strlen-avx2.S : IFUNC selects AVX2 impl
+sysdeps/x86_64/multiarch/ifunc-impl-list.c -> string/strlen.c : IFUNC selects generic fallback
+sysdeps/x86_64/multiarch/strlen-avx2.S -> sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S : same vectorization strategy
+string/strlen.c -> string/strcpy.c : generic pattern shared across string functions
+```
 
-### Study Files
+### The IFUNC Dispatch Mechanism
 
-- `string/` - String function implementations
-- `sysdeps/x86_64/multiarch/` - x86-64 optimized versions
+glibc uses GNU IFUNC (Indirect Function) to select the best implementation at program startup. The linker sets up an indirect function that the dynamic linker resolves to the optimal variant after checking `cpuid`.
+
+```c
+// sysdeps/x86_64/multiarch/ifunc-impl-list.c (simplified)
+// This table maps CPU feature flags to implementations:
+IFUNC_IMPL (array, caller, strlen,
+    IFUNC_IMPL_ADD (array, i, strlen,
+                    CPU_FEATURE_USABLE (AVX2),
+                    __strlen_avx2)
+    IFUNC_IMPL_ADD (array, i, strlen,
+                    CPU_FEATURE_USABLE (SSE4_2),
+                    __strlen_sse42)
+    IFUNC_IMPL_ADD (array, i, strlen, 1,
+                    __strlen_sse2)  // baseline, always available
+)
+```
+
+At program startup (before `main()`), the resolver runs once and patches the GOT to point directly to the best implementation. All subsequent calls go directly to the selected function — zero overhead after the first call.
+
+### Deep Dive: strlen Implementations
+
+**Generic (`string/strlen.c`) — portable baseline:**
+
+```c
+// Naive byte-by-byte (conceptual)
+size_t strlen(const char *str) {
+    const char *s;
+    for (s = str; *s; ++s);
+    return s - str;
+}
+```
+
+In practice, [string/strlen.c](string/strlen.c) uses word-at-a-time tricks to check 8 bytes simultaneously without SIMD.
+
+**AVX2 (`sysdeps/x86_64/multiarch/strlen-avx2.S`) — 32 bytes per iteration:**
+
+```nasm
+; Core loop in strlen-avx2.S
+; ymm0 = 32 zero bytes for comparison
+vpxor       %ymm0, %ymm0, %ymm0
+
+.loop:
+    vmovdqu     (%rdi), %ymm1          ; load 32 bytes
+    vpcmpeqb    %ymm1, %ymm0, %ymm2   ; compare each byte to 0
+    vpmovmskb   %ymm2, %eax            ; bitmask of zero bytes
+    test        %eax, %eax
+    jnz         .found_null            ; null byte found
+    add         $32, %rdi
+    jmp         .loop
+```
+
+This processes 32 bytes per iteration vs. 1 for the naive version — a ~32x throughput improvement for long strings.
+
+### Deep Dive: memcpy Implementations
+
+memcpy has even more variants because its optimal strategy depends on size:
+
+- **Small copies** (< 16 bytes): Avoid loop overhead, use direct register moves
+- **Medium copies** (16–256 bytes): SSE2/AVX registers
+- **Large copies** (> 256 bytes): Non-temporal stores to bypass cache (`movntdq`)
+
+```nasm
+; Excerpt from memcpy-avx-unaligned.S — large copy path
+; Uses NT stores to avoid cache pollution for large buffers
+vmovdqu     (%rsi), %ymm0          ; load 32 bytes from src
+vmovntdq    %ymm0, (%rdi)          ; non-temporal store to dst
+vmovdqu     32(%rsi), %ymm1
+vmovntdq    %ymm1, 32(%rdi)
+; ... unrolled 4x = 128 bytes per iteration
+```
+
+Key files:
+- [sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S](sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S) — AVX unaligned memcpy
+- [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — memmove with overlap handling
+
+### The multiarch/ Directory Structure
+
+```
+sysdeps/x86_64/multiarch/
+├── ifunc-impl-list.c      # IFUNC dispatch table (start here)
+├── strlen-avx2.S          # AVX2 strlen
+├── strlen-avx512.S        # AVX-512 strlen (Skylake+)
+├── strlen-sse42.S         # SSE4.2 strlen
+├── strlen-sse2.S          # SSE2 strlen (baseline x86-64)
+├── memcpy-avx-unaligned.S # AVX memcpy
+├── memset-avx2-unaligned-erms.S  # AVX2 memset + ERMS
+├── strchr-avx2.S          # AVX2 strchr
+├── strcmp-avx2.S          # AVX2 strcmp
+└── strncmp-avx2.S         # AVX2 strncmp
+```
+
+### ERMS: Enhanced REP MOVSB/STOSB
+
+Modern x86 CPUs (since Ivy Bridge) have hardware-accelerated `rep movsb` / `rep stosb` that can outperform even AVX2 for certain sizes. glibc uses this in the ERMS variants:
+
+```nasm
+; From memset-avx2-unaligned-erms.S — ERMS path
+; For medium sizes, rep stosb is often fastest
+mov     %rdi, %rcx       ; count
+mov     %rdx, %rdi       ; destination
+mov     %rsi, %rax       ; fill byte (broadcast)
+rep stosb                 ; hardware-optimized fill
+```
+
+### Study Order
+
+1. Start with [sysdeps/x86_64/multiarch/ifunc-impl-list.c](sysdeps/x86_64/multiarch/ifunc-impl-list.c) — understand the dispatch table
+2. Read [string/strlen.c](string/strlen.c) — the portable baseline
+3. Study [sysdeps/x86_64/multiarch/strlen-avx2.S](sysdeps/x86_64/multiarch/strlen-avx2.S) — the AVX2 fast path
+4. Then apply the same pattern to memcpy, memset, strcmp
+
+**Practical exercise:**
+
+```bash
+# Compare performance yourself
+gcc -O2 -march=native test_strlen.c -o test
+perf stat ./test
+
+# Verify which implementation is selected at runtime
+objdump -d ./test | grep strlen  # follow PLT entry
+```

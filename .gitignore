@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# eslint cache
+.eslintcache
+
 # repos
 /public/repos
 /public/monaco-editor
