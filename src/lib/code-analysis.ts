@@ -3,7 +3,7 @@
  * All analysis is heuristic / regex-based — no AST required.
  */
 
-export type RelationshipType = 'includes' | 'imports' | 'calls' | 'defines';
+export type RelationshipType = 'includes' | 'imports' | 'calls';
 
 export interface FileSymbols {
   filePath: string;
@@ -27,14 +27,12 @@ export const RELATIONSHIP_COLORS: Record<RelationshipType, string> = {
   includes: '#38bdf8', // sky blue
   imports: '#4ade80', // green
   calls: '#fb923c', // orange
-  defines: '#c084fc', // purple
 };
 
 export const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
   includes: '#include',
   imports: 'import',
   calls: 'calls',
-  defines: 'uses #def',
 };
 
 // ─── Language-specific extractors ──────────────────────────────────────────
@@ -135,11 +133,24 @@ function extractC(
       !t.startsWith('/') &&
       !t.startsWith('*')
     ) {
-      const fn = t.match(
-        /^(?:(?:static|inline|extern|const|volatile|struct|enum|unsigned|signed)\s+)*(?:\w+[\w\s*]*\s+)+\**\s*(\w{3,})\s*\(/
-      );
-      if (fn && !C_KEYWORDS.has(fn[1]) && !/^[A-Z_][A-Z0-9_]+$/.test(fn[1])) {
-        add(functions, fn[1]);
+      // Extract the identifier immediately before the first '(' — avoids
+      // nested-quantifier catastrophic backtracking on long declaration lines.
+      const parenIdx = t.indexOf('(');
+      if (parenIdx > 2) {
+        const before = t.slice(0, parenIdx).trimEnd();
+        // Must have at least one space (return type token) before the name
+        const spaceIdx = before.lastIndexOf(' ');
+        if (spaceIdx >= 0) {
+          const candidate = before.slice(spaceIdx + 1).replace(/^\*+/, '');
+          if (
+            candidate.length >= 3 &&
+            /^\w+$/.test(candidate) &&
+            !C_KEYWORDS.has(candidate) &&
+            !/^[A-Z_][A-Z0-9_]+$/.test(candidate)
+          ) {
+            add(functions, candidate);
+          }
+        }
       }
       // extern TYPE varname;
       const gl = t.match(/^(?:extern\s+)(?:\w+\s+)+\**(\w+)\s*;/);
@@ -324,11 +335,15 @@ export function parseSymbols(filePath: string, content: string): FileSymbols {
 
 // ─── Cross-file relationship detection ──────────────────────────────────────
 
+// Module-level cache so compiled regexes survive across analysis runs
+const callRegexCache = new Map<string, RegExp>();
+
 export function findRelationships(
   symbolsMap: Map<string, FileSymbols>,
   allFilePaths: string[],
   contentsMap: Map<string, string>
 ): CodeRelationship[] {
+  console.time('[code-analysis] findRelationships');
   const rels: CodeRelationship[] = [];
   const seen = new Set<string>();
 
@@ -354,11 +369,13 @@ export function findRelationships(
 
   // Index: defined function name → file that defines it
   const funcFile = new Map<string, string>();
-  const defineFile = new Map<string, string>();
   for (const [fp, sym] of symbolsMap) {
     for (const fn of sym.functions) if (!funcFile.has(fn)) funcFile.set(fn, fp);
-    for (const d of sym.defines) if (!defineFile.has(d)) defineFile.set(d, fp);
   }
+
+  console.log(
+    `[code-analysis] findRelationships: ${symbolsMap.size} files, ${funcFile.size} unique functions, ${allFilePaths.length} paths`
+  );
 
   for (const [srcPath, sym] of symbolsMap) {
     const content = contentsMap.get(srcPath) ?? '';
@@ -392,19 +409,21 @@ export function findRelationships(
       if (defFile === srcPath || fn.length < 4) continue;
       // Quick check before expensive regex
       if (!content.includes(fn)) continue;
-      if (new RegExp(`\\b${fn}\\s*\\(`, 'g').test(content)) {
-        add({ source: srcPath, target: defFile, type: 'calls', symbols: [fn] });
+      // Reuse compiled regex — no `g` flag so lastIndex is irrelevant
+      let re = callRegexCache.get(fn);
+      if (!re) {
+        re = new RegExp(`\\b${fn}\\s*\\(`);
+        callRegexCache.set(fn, re);
       }
-    }
-
-    // ── 3. #define usage edges ─────────────────────────────────────────────
-    for (const [defName, defFile] of defineFile) {
-      if (defFile === srcPath) continue;
-      if (content.includes(defName)) {
-        add({ source: srcPath, target: defFile, type: 'defines', symbols: [defName] });
+      if (re.test(content)) {
+        add({ source: srcPath, target: defFile, type: 'calls', symbols: [fn] });
       }
     }
   }
 
+  console.log(
+    `[code-analysis] findRelationships → ${rels.length} relationships (${callRegexCache.size} cached regexes)`
+  );
+  console.timeEnd('[code-analysis] findRelationships');
   return rels;
 }

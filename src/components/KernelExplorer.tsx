@@ -66,7 +66,7 @@ interface KernelExplorerProps {
   owner?: string;
   repo?: string;
   branch?: string;
-  initialFile?: string | null;
+  initialFile?: string | string[] | null;
   onBackToGraph?: () => void;
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
@@ -668,13 +668,17 @@ export default function KernelExplorer({
 
   // Open initialFile once the editor is ready (tree loaded + loading screen gone)
   useEffect(() => {
-    if (initialFile && initialFile !== lastOpenedInitialFileRef.current && isTreeStructureReady) {
-      lastOpenedInitialFileRef.current = initialFile;
-      // Defer to avoid synchronous setState-in-effect warning
-      setTimeout(() => {
-        openFileInTab(initialFile);
-      }, 0);
-    }
+    if (!initialFile || !isTreeStructureReady) return;
+    const paths = Array.isArray(initialFile) ? initialFile : [initialFile];
+    const key = paths.join('|||');
+    if (key === lastOpenedInitialFileRef.current) return;
+    lastOpenedInitialFileRef.current = key;
+    // Defer to avoid synchronous setState-in-effect warning.
+    // Open header first so the primary (.c) ends up as the active tab.
+    setTimeout(() => {
+      for (let i = 0; i < paths.length - 1; i++) openFileInTab(paths[i]);
+      openFileInTab(paths[paths.length - 1]);
+    }, 0);
   }, [initialFile, isTreeStructureReady, openFileInTab]);
 
   // Show download progress for non-curated repos being fetched on-demand

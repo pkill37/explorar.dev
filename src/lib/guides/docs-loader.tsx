@@ -10,6 +10,7 @@ import fridaFrameworkMd from '../../../docs/frida_framework.md?raw';
 import jaxFrameworkMd from '../../../docs/jax_framework.md?raw';
 import pytorchFrameworkMd from '../../../docs/pytorch_framework.md?raw';
 import tinygradFrameworkMd from '../../../docs/tinygrad_framework.md?raw';
+import golangGoMd from '../../../docs/golang_go.md?raw';
 
 /**
  * Guide metadata extracted from frontmatter
@@ -51,6 +52,7 @@ const DOCS_MARKDOWN: Record<string, string> = {
   'jax_framework.md': jaxFrameworkMd,
   'pytorch_framework.md': pytorchFrameworkMd,
   'tinygrad_framework.md': tinygradFrameworkMd,
+  'golang_go.md': golangGoMd,
 };
 
 /**

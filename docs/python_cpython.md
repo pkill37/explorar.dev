@@ -5,7 +5,7 @@ defaultBranch: v3.12.0
 guideId: cpython-guide
 name: CPython In The Mind
 description: Understanding CPython Before Code
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5']
+defaultOpenIds: ['ch1']
 ---
 
 # CPython In The Mind
@@ -19,69 +19,6 @@ CPython is the reference implementation of Python, written in C. It compiles Pyt
 This guide is for anyone who wants to build a mental model of how CPython works—before diving deep into the source code. Whether you're exploring Python internals for the first time or returning with new questions, the focus here is on **behavior, not syntax**.
 
 **CPython runs Python. Let's understand how it runs.**
-
----
-id: learning-path
-title: Learning Path for CPython Exploration
----
-
-## Learning Path for CPython Exploration
-
-This guide follows a structured learning path designed to master Python internals:
-
-### Beginner Path (Months 1-3)
-
-1. **Python Basics**: Solid understanding of Python language features
-2. **C Programming**: Comfortable reading C code
-3. **Bytecode Exploration**: Use `dis` module to see bytecode
-4. **Simple Tracing**: Trace Python execution with sys.settrace
-
-**Practical Start:**
-
-```python
-import dis
-
-def factorial(n):
-    if n <= 1:
-        return 1
-    return n * factorial(n - 1)
-
-# See the bytecode
-dis.dis(factorial)
-```
-
-### Intermediate Path (Months 4-6)
-
-1. **Object Model**: Study PyObject and type system
-2. **Memory Management**: Understand reference counting and GC
-3. **Built-in Types**: Deep dive into list, dict, str implementations
-4. **Extension Modules**: Write C extensions for Python
-
-**Key Projects:**
-
-- Write a simple C extension module
-- Implement a custom Python type in C
-- Study how built-in functions work
-
-### Advanced Path (Months 7-12)
-
-1. **Evaluation Loop**: Master ceval.c and bytecode execution
-2. **Compiler Pipeline**: Study compilation from AST to bytecode
-3. **GIL Internals**: Understand GIL acquisition and release
-4. **Advanced Features**: Generators, coroutines, metaclasses
-
-**Advanced Projects:**
-
-- Modify CPython to add a custom bytecode
-- Implement a tracing JIT for specific operations
-- Profile and optimize CPython performance
-
-### Expert Path (Year 2+)
-
-1. **CPython Contribution**: Submit patches to CPython
-2. **Performance Optimization**: Profile and optimize critical paths
-3. **Alternative Implementations**: Study PyPy, Cython
-4. **Research**: Implement PEPs or research papers
 
 ---
 id: ch1
@@ -186,74 +123,12 @@ Parser/parser.c -> Python/ast.c : parse tree → AST
 Python/ast.c -> Python/compile.c : AST → bytecode
 Python/compile.c -> Python/ceval.c : bytecode → execution
 Python/ceval.c -> Include/opcode.h : dispatch opcodes
-Python/frameobject.c -> Python/ceval.c : execution context
+Python/frame.c -> Python/ceval.c : execution context
 ```
 
 ### A Walk Through the CPython Source: Understanding Its Organization
 
-The CPython source code is organized into clear directories, each serving a specific purpose. Understanding this structure provides a roadmap for exploring the interpreter's internals.
-
-**Detailed Directory Structure:**
-
-```
-cpython/
-├── Python/                    # Core interpreter (~100k lines)
-│   ├── ceval.c               # Main evaluation loop (~6,000 lines!)
-│   ├── compile.c             # Bytecode compiler (~6,000 lines)
-│   ├── ast.c                 # AST manipulation
-│   ├── import.c              # Import system
-│   ├── bltinmodule.c         # Built-in functions
-│   ├── pystate.c             # Interpreter state
-│   └── frame.c               # Frame objects
-├── Objects/                   # Object implementations (~150k lines)
-│   ├── object.c              # Base PyObject
-│   ├── typeobject.c          # Type system (~8,000 lines)
-│   ├── longobject.c          # Integer implementation (~5,000 lines)
-│   ├── unicodeobject.c       # String implementation (~15,000 lines!)
-│   ├── listobject.c          # List implementation (~3,000 lines)
-│   ├── dictobject.c          # Dictionary (~6,000 lines)
-│   ├── setobject.c           # Set implementation
-│   ├── funcobject.c          # Function objects
-│   ├── classobject.c         # Class/method objects
-│   ├── genobject.c           # Generator objects
-│   └── descrobject.c         # Descriptors (properties, etc.)
-├── Include/                   # Header files
-│   ├── Python.h              # Main header (includes everything)
-│   ├── object.h              # PyObject definition
-│   ├── cpython/              # CPython-specific (not stable API)
-│   │   ├── object.h          # Internal object details
-│   │   └── pystate.h         # Interpreter state internals
-│   ├── internal/             # Internal CPython APIs
-│   │   ├── pycore_*.h        # Core internal headers
-│   │   └── pycore_gc.h       # GC internals
-│   ├── methodobject.h        # Method objects
-│   ├── funcobject.h          # Function objects
-│   └── code.h                # Code objects
-├── Parser/                    # Parsing (~30k lines)
-│   ├── tokenizer.c           # Lexical analysis
-│   ├── parser.c              # PEG parser (new in 3.9)
-│   ├── pegen/                # PEG parser generator
-│   └── token.c               # Token definitions
-├── Modules/                   # C extension modules
-│   ├── _abc.c                # ABC (abstract base classes)
-│   ├── gcmodule.c            # Garbage collector (~2,000 lines)
-│   ├── _threadmodule.c       # Threading primitives
-│   ├── _io/                  # I/O implementation
-│   ├── _json.c               # JSON parser
-│   └── mathmodule.c          # Math functions
-├── Lib/                       # Pure Python stdlib
-│   ├── collections/          # Collections module
-│   ├── asyncio/              # Async I/O
-│   ├── importlib/            # Import implementation
-│   ├── dis.py                # Bytecode disassembler
-│   └── ast.py                # AST utilities
-├── Programs/                  # Main programs
-│   └── python.c              # Python executable entry point
-└── Doc/                       # Documentation source
-    ├── c-api/                # C API documentation
-    ├── library/              # Standard library docs
-    └── reference/            # Language reference
-```
+The CPython source code is organized into clear directories, each serving a specific purpose. The main areas are: `Python/` (core interpreter), `Objects/` (object implementations), `Include/` (headers), `Parser/` (lexing and parsing), `Modules/` (C extension modules), and `Lib/` (pure Python stdlib).
 
 **Key File Statistics:**
 
@@ -276,7 +151,7 @@ Key files in the pipeline:
 
 CPython executes bytecode using a stack-based virtual machine. The main evaluation loop ([Python/ceval.c](Python/ceval.c)) interprets bytecode instructions, manipulating a value stack and maintaining execution frames. Understanding this model reveals how Python's dynamic features—like dynamic attribute access and method resolution—are implemented at runtime.
 
-See [Include/opcode.h](Include/opcode.h) for bytecode instruction definitions and [Python/frameobject.c](Python/frameobject.c) for frame management.
+See [Include/opcode.h](Include/opcode.h) for bytecode instruction definitions and [Python/frame.c](Python/frame.c) for frame management.
 
 ---
 id: ch3
@@ -459,7 +334,7 @@ fileRecommendations:
       description: Main evaluation loop — the heart of CPython
     - path: Include/opcode.h
       description: Bytecode opcode definitions
-    - path: Python/frameobject.c
+    - path: Python/frame.c
       description: Execution frame management
     - path: Include/frameobject.h
       description: Frame object structure
@@ -485,9 +360,9 @@ graph TD
 ```chapter-graph
 Include/opcode.h -> Python/ceval.c : opcode table drives the switch
 Python/compile.c -> Include/opcode.h : emits opcodes during compilation
-Python/ceval.c -> Python/frameobject.c : creates frame per call
-Include/frameobject.h -> Python/frameobject.c : frame struct definition
-Python/frameobject.c -> Python/compile.c : reads f_code (PyCodeObject)
+Python/ceval.c -> Python/frame.c : creates frame per call
+Include/frameobject.h -> Python/frame.c : frame struct definition
+Python/frame.c -> Python/compile.c : reads f_code (PyCodeObject)
 Include/opcode.h -> Lib/dis.py : Python disassembler decodes same table
 ```
 
@@ -504,7 +379,7 @@ Key files:
 Each function call creates a new execution frame that contains local variables, the value stack, and execution state. Frames are linked together to form a call stack, enabling function calls, returns, and exception propagation. Understanding frames reveals how Python manages execution context and enables features like generators and coroutines.
 
 Key files:
-- [Python/frameobject.c](Python/frameobject.c) — Frame object implementation
+- [Python/frame.c](Python/frame.c) — Frame object implementation
 - [Include/frameobject.h](Include/frameobject.h) — Frame object definitions
 
 ### Bytecode Instructions: The Language of the VM
@@ -654,7 +529,7 @@ fileRecommendations:
   source:
     - path: Objects/genobject.c
       description: Generator and coroutine implementation
-    - path: Include/genobject.h
+    - path: Include/cpython/genobject.h
       description: Generator object definitions
     - path: Objects/descrobject.c
       description: Descriptor protocol implementation
@@ -676,9 +551,9 @@ graph TD
 ```
 
 ```chapter-graph
-Include/genobject.h -> Objects/genobject.c : generator struct → impl
+Include/cpython/genobject.h -> Objects/genobject.c : generator struct → impl
 Objects/genobject.c -> Python/ceval.c : resumes suspended frame via _PyEval_EvalFrameDefault
-Objects/genobject.c -> Python/frameobject.c : saves / restores frame state on yield
+Objects/genobject.c -> Python/frame.c : saves / restores frame state on yield
 Include/descrobject.h -> Objects/descrobject.c : descriptor protocol → impl
 Objects/descrobject.c -> Objects/typeobject.c : __get__/__set__ registered as type slots
 Include/Python.h -> Include/object.h : master header pulls in PyObject for C API users
@@ -699,7 +574,7 @@ Python generators and coroutines enable pausable execution through the use of sp
 
 Key files:
 - [Objects/genobject.c](Objects/genobject.c) — Generator and coroutine implementation
-- [Include/genobject.h](Include/genobject.h) — Generator definitions
+- [Include/cpython/genobject.h](Include/cpython/genobject.h) — Generator definitions
 
 ### The C API: Extending Python
 

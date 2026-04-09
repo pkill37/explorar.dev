@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { notFound } from 'next/navigation';
 import KernelExplorer from '@/components/KernelExplorer';
 import { GraphExplorer } from '@/components/graph/GraphExplorer';
+import { EntityView } from '@/components/EntityView';
 import GuidePanel from '@/components/GuidePanel';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
@@ -22,13 +23,15 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const projectConfig = getProjectConfig(owner, repo);
   if (!projectConfig) notFound();
 
-  const [mode, setMode] = useState<'graph' | 'editor'>('graph');
-  const [initialFile, setInitialFile] = useState<string | null>(null);
+  const [mode, setMode] = useState<'graph' | 'editor' | 'entities'>('graph');
+  const [initialFile, setInitialFile] = useState<string | string[] | null>(null);
   // Keep KernelExplorer mounted once it has been rendered to preserve tab state
   const [editorMounted, setEditorMounted] = useState(false);
 
-  const handleEnterFile = useCallback((filePath: string) => {
-    setInitialFile(filePath);
+  const handleEnterFile = useCallback((fileId: string) => {
+    // Paired nodes encode both paths as "primary|||header"
+    const paths = fileId.includes('|||') ? fileId.split('|||') : null;
+    setInitialFile(paths ?? fileId);
     setEditorMounted(true);
     setMode('editor');
   }, []);
@@ -76,6 +79,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const isResizingGuide = useRef(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
+  const pendingClientX = useRef(0);
+  const resizeRaf = useRef<number | null>(null);
 
   const handleGuideResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -90,15 +95,25 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isResizingGuide.current) return;
-      const delta = resizeStartX.current - e.clientX;
-      const next = Math.min(
-        GUIDE_MAX_WIDTH,
-        Math.max(GUIDE_MIN_WIDTH, resizeStartWidth.current + delta)
-      );
-      setGuideWidth(next);
+      // Capture latest X but only schedule one RAF per frame
+      pendingClientX.current = e.clientX;
+      if (resizeRaf.current !== null) return;
+      resizeRaf.current = requestAnimationFrame(() => {
+        resizeRaf.current = null;
+        const delta = resizeStartX.current - pendingClientX.current;
+        const next = Math.min(
+          GUIDE_MAX_WIDTH,
+          Math.max(GUIDE_MIN_WIDTH, resizeStartWidth.current + delta)
+        );
+        setGuideWidth(next);
+      });
     };
     const onUp = () => {
       isResizingGuide.current = false;
+      if (resizeRaf.current !== null) {
+        cancelAnimationFrame(resizeRaf.current);
+        resizeRaf.current = null;
+      }
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -161,6 +176,22 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               onBackToGraph={handleBackToGraph}
               hideGuidePanel
             />
+          )}
+        </div>
+
+        {/* Entities view */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            opacity: mode === 'entities' ? 1 : 0,
+            pointerEvents: mode === 'entities' ? 'auto' : 'none',
+            transition: 'opacity 0.35s ease',
+            zIndex: mode === 'entities' ? 1 : 0,
+          }}
+        >
+          {mode === 'entities' && (
+            <EntityView owner={owner} repo={repo} onOpenFile={handleEnterFile} />
           )}
         </div>
       </div>
@@ -246,6 +277,24 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             }}
           >
             {'</>'} Editor
+          </button>
+          <button
+            onClick={() => setMode('entities')}
+            title="Entity diagram"
+            style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              padding: '3px 8px',
+              borderRadius: 3,
+              border: 'none',
+              cursor: 'pointer',
+              background:
+                mode === 'entities' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
+              color: mode === 'entities' ? '#fff' : 'var(--vscode-text-muted, #666)',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            ⬡ Entities
           </button>
         </div>
 

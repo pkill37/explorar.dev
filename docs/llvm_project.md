@@ -21,66 +21,6 @@ Understanding LLVM means understanding the architecture of modern compilation: h
 **LLVM powers the future of compilation. Let's understand how it works.**
 
 ---
-id: learning-path
-title: Learning Path for LLVM Exploration
----
-
-## Learning Path for LLVM Exploration
-
-This guide follows a structured learning path designed to build compiler expertise progressively:
-
-### Beginner Path (Months 1-3)
-
-1. **LLVM IR Basics**: Learn to read and write simple LLVM IR
-2. **Simple Frontend**: Write a toy language frontend that generates IR
-3. **Tool Usage**: Master `clang`, `opt`, `llc`, `lli`
-4. **IR Study**: Read IR generated from simple C programs
-
-**Practical Start:**
-
-```bash
-# Compile C to LLVM IR
-clang -S -emit-llvm hello.c -o hello.ll
-# Optimize IR
-opt -O2 hello.ll -S -o hello_opt.ll
-# Generate assembly
-llc hello_opt.ll -o hello.s
-```
-
-### Intermediate Path (Months 4-6)
-
-1. **Pass Development**: Write custom optimization passes
-2. **Frontend Deep Dive**: Study Clang's AST and code generation
-3. **Analysis Passes**: Implement control flow and data flow analysis
-4. **Type System**: Understand LLVM's type system deeply
-
-**Key Projects:**
-
-- Write a dead code elimination pass
-- Implement constant propagation
-- Build a simple static analyzer
-
-### Advanced Path (Months 7-12)
-
-1. **Backend Study**: Understand instruction selection and register allocation
-2. **Target Description**: Learn TableGen and target description files
-3. **Advanced Optimizations**: Study loop optimizations, vectorization
-4. **JIT Compilation**: Explore LLVM's ORC JIT infrastructure
-
-**Advanced Projects:**
-
-- Add a custom backend for a simple architecture
-- Implement a new optimization pass
-- Build a JIT-compiled language
-
-### Expert Path (Year 2+)
-
-1. **LLVM Contribution**: Contribute patches to LLVM
-2. **Compiler Research**: Implement research papers
-3. **Production Tools**: Build production compiler infrastructure
-4. **Architecture Design**: Design new compiler features
-
----
 id: ch1
 title: Chapter 1 — Introduction to LLVM
 fileRecommendations:
@@ -206,43 +146,6 @@ Backend phases:
 - **Code Emission**: Generate object file
 
 ### Study Files and Architecture
-
-**Core LLVM Directory Structure:**
-
-```
-llvm/
-├── include/llvm/          # Public headers
-│   ├── IR/               # IR data structures
-│   ├── Analysis/         # Analysis passes
-│   ├── Transforms/       # Transformation passes
-│   ├── CodeGen/          # Code generation
-│   └── Target/           # Target-specific interfaces
-├── lib/                   # Implementations
-│   ├── IR/               # IR implementation (~50k lines)
-│   ├── Analysis/         # Analysis passes (~100k lines)
-│   ├── Transforms/       # Optimizations (~300k lines)
-│   ├── CodeGen/          # Backend framework (~200k lines)
-│   └── Target/           # Target implementations
-│       ├── X86/          # x86 backend (~150k lines)
-│       ├── ARM/          # ARM backend
-│       └── AArch64/      # 64-bit ARM
-├── tools/                 # Command-line tools
-│   ├── opt/              # Optimizer driver
-│   ├── llc/              # Static compiler
-│   └── lli/              # Interpreter/JIT
-└── unittests/            # Unit tests
-
-clang/
-├── include/clang/        # Clang headers
-│   ├── AST/              # Abstract Syntax Tree
-│   ├── Parse/            # Parser
-│   ├── Sema/             # Semantic analysis
-│   └── CodeGen/          # IR generation
-└── lib/                  # Implementations
-    ├── Parse/            # Parser (~30k lines)
-    ├── Sema/             # Semantic analysis (~100k lines)
-    └── CodeGen/          # CodeGen (~80k lines)
-```
 
 **Essential Files to Study (In Order):**
 

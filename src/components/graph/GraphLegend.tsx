@@ -10,7 +10,6 @@ const EDGE_STYLES: Record<RelationshipType, { dash: string }> = {
   includes: { dash: 'none' },
   imports: { dash: 'none' },
   calls: { dash: '5 3' },
-  defines: { dash: '2 3' },
 };
 
 const ENTRIES = (Object.keys(RELATIONSHIP_COLORS) as RelationshipType[]).map((type) => ({

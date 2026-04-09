@@ -17,6 +17,7 @@ import {
 
 import { FileNode } from './FileNode';
 import { FolderNode } from './FolderNode';
+import { PairedNode } from './PairedNode';
 import { GraphControls } from './GraphControls';
 import { ZoomWatcher } from './ZoomWatcher';
 import { GraphLegend } from './GraphLegend';
@@ -24,6 +25,7 @@ import {
   buildGraphData,
   buildCwdView,
   buildChapterView,
+  projectEdgesForCwd,
   FOLDER_NODE_WIDTH,
   FOLDER_NODE_HEIGHT,
   type FileNodeData,
@@ -43,13 +45,13 @@ import { GraphContext } from '@/contexts/GraphContext';
 const nodeTypes: NodeTypes = {
   fileNode: FileNode as NodeTypes['fileNode'],
   folderNode: FolderNode as NodeTypes['folderNode'],
+  pairedNode: PairedNode as NodeTypes['pairedNode'],
 };
 
 const EDGE_DASH: Record<string, string | undefined> = {
   includes: undefined,
   imports: undefined,
   calls: '5 3',
-  defines: '2 3',
 };
 
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
@@ -199,6 +201,7 @@ function GraphFlow({
 
   useEffect(() => {
     if (prevChapterRef.current === activeChapterId) return;
+    console.log(`[GraphFlow] chapter changed: "${prevChapterRef.current}" → "${activeChapterId}"`);
     prevChapterRef.current = activeChapterId;
 
     setSelectedFilePath(null);
@@ -233,6 +236,7 @@ function GraphFlow({
   // ── Navigate to a new cwd (only valid outside chapter view) ──────────────
   const navigateToCwd = useCallback(
     (newCwd: string) => {
+      console.log(`[GraphFlow] navigateToCwd → "${newCwd || 'root'}"`);
       setCwd(newCwd);
       const { nodes: n, edges: e } = buildCwdView(allFileNodes, fileEdgesRef.current, newCwd);
       setNodes(n as Node[]);
@@ -253,33 +257,74 @@ function GraphFlow({
     const allFilePaths = allFileNodes.map((n) => n.id);
 
     async function runAnalysis() {
+      console.log(`[GraphFlow] runAnalysis start: ${allFilePaths.length} files to fetch`);
+      console.time('[GraphFlow] runAnalysis total');
       setAnalysisLoading(true);
 
       const contentsMap = new Map<string, string>();
       const newSymbolsMap = new Map<string, FileSymbols>();
 
+      // Yield to the browser between batches so the UI stays responsive.
+      const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
+
+      // Declarations (#include, function signatures) are always near the top of a file.
+      // Truncating to 60 KB gives complete symbol coverage while cutting fetch + regex time
+      // dramatically for large files like unicodeobject.c (500 KB) or typeobject.c (250 KB).
+      const ANALYSIS_MAX_BYTES = 60 * 1024;
+
       const BATCH = 12;
+      console.time('[GraphFlow] fetch all batches');
       for (let i = 0; i < allFilePaths.length; i += BATCH) {
         const batch = allFilePaths.slice(i, i + BATCH);
+        const batchLabel = `[GraphFlow] fetch batch ${Math.floor(i / BATCH) + 1}/${Math.ceil(allFilePaths.length / BATCH)} (files ${i}–${Math.min(i + BATCH, allFilePaths.length) - 1})`;
+        console.time(batchLabel);
         await Promise.all(
           batch.map(async (filePath) => {
             try {
               const url = `/repos/${owner}/${repo}/${branch}/${filePath}`;
               const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-              if (!res.ok) return;
-              const text = await res.text();
+              if (!res.ok) {
+                console.warn(`[GraphFlow] fetch failed (${res.status}): ${filePath}`);
+                return;
+              }
+              const fullText = await res.text();
+              const text =
+                fullText.length > ANALYSIS_MAX_BYTES
+                  ? fullText.slice(0, ANALYSIS_MAX_BYTES)
+                  : fullText;
+              if (fullText.length > ANALYSIS_MAX_BYTES) {
+                console.log(
+                  `[GraphFlow] truncated ${filePath}: ${Math.round(fullText.length / 1024)}KB → 60KB`
+                );
+              }
               contentsMap.set(filePath, text);
               newSymbolsMap.set(filePath, parseSymbols(filePath, text));
-            } catch {
-              // skip files that fail to fetch
+            } catch (err) {
+              console.warn(`[GraphFlow] fetch error: ${filePath}`, err);
             }
           })
         );
+        console.timeEnd(batchLabel);
+        // Yield after each batch so React can process events / paint between fetches
+        await yieldToMain();
       }
+      console.timeEnd('[GraphFlow] fetch all batches');
+      console.log(
+        `[GraphFlow] fetched ${contentsMap.size}/${allFilePaths.length} files, parsed ${newSymbolsMap.size} symbol maps`
+      );
       // Single state update after all batches — avoids per-batch re-renders
       setSymbolsMap(new Map(newSymbolsMap));
 
+      // Yield before the O(n×m) relationship pass so the symbolsMap update can render
+      await yieldToMain();
+
+      console.time('[GraphFlow] findRelationships');
       const relationships = findRelationships(newSymbolsMap, allFilePaths, contentsMap);
+      console.timeEnd('[GraphFlow] findRelationships');
+      console.log(`[GraphFlow] found ${relationships.length} relationships`);
+
+      // Yield again after the heavy synchronous computation before touching React state
+      await yieldToMain();
 
       const analysisEdges: Edge[] = relationships.map((rel, idx) => ({
         id: `analysis-${idx}-${rel.type}-${rel.source}-${rel.target}`,
@@ -309,24 +354,21 @@ function GraphFlow({
       ];
       fileEdgesRef.current = newFileEdges;
 
-      // Rebuild whatever view is currently active
-      if (prevChapterRef.current) {
-        const entry = chapterMapEntries?.find((c) => c.id === prevChapterRef.current);
-        const { nodes: n, edges: e } = buildChapterView(
-          allFileNodes,
-          newFileEdges,
-          entry?.files ?? [],
-          entry?.graph
+      // Update edges only — nodes already have correct positions from initial Dagre layout.
+      // This avoids a full rebuild (including another Dagre pass) after analysis completes.
+      if (!prevChapterRef.current) {
+        console.time('[GraphFlow] projectEdgesForCwd');
+        const projectedEdges = projectEdgesForCwd(allFileNodes, newFileEdges, cwdRef.current);
+        console.timeEnd('[GraphFlow] projectEdgesForCwd');
+        console.log(
+          `[GraphFlow] projected ${projectedEdges.length} edges for cwd="${cwdRef.current || 'root'}"`
         );
-        setNodes(n as Node[]);
-        setEdges(e);
-      } else {
-        const { nodes: n, edges: e } = buildCwdView(allFileNodes, newFileEdges, cwdRef.current);
-        setNodes(n as Node[]);
-        setEdges(e);
+        setEdges(projectedEdges);
       }
+      // Chapter view: curated edges are static and don't need updating after analysis.
 
       setAnalysisLoading(false);
+      console.timeEnd('[GraphFlow] runAnalysis total');
     }
 
     runAnalysis();
@@ -355,7 +397,7 @@ function GraphFlow({
 
   const handleNodeDoubleClick: NodeMouseHandler = useCallback(
     (_, node) => {
-      if (node.type === 'fileNode') onEnterFile(node.id);
+      if (node.type === 'fileNode' || node.type === 'pairedNode') onEnterFile(node.id);
     },
     [onEnterFile]
   );
@@ -432,8 +474,11 @@ export function GraphExplorer({
 
   const { nodes: allFileNodes, edges: allFileEdges } = useMemo(() => {
     if (!guideDoc) return { nodes: [] as Node<FileNodeData>[], edges: [] as Edge[] };
-    return buildGraphData(guideDoc.content);
-  }, [guideDoc]);
+    console.log(`[GraphExplorer] building graph for ${owner}/${repo}`);
+    const result = buildGraphData(guideDoc.content);
+    console.log(`[GraphExplorer] graph built: ${result.nodes.length} nodes`);
+    return result;
+  }, [guideDoc, owner, repo]);
 
   if (allFileNodes.length === 0) {
     return (

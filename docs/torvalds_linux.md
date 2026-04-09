@@ -23,43 +23,6 @@ Each post began as a self-contained reflection. Taken together, they offer a con
 **The kernel runs everything. Let's understand how it runs.**
 
 ---
-id: learning-path
-title: Learning Path for Linux Kernel Exploration
----
-
-## Learning Path for Linux Kernel Exploration
-
-This guide follows a structured learning path designed to build deep understanding progressively:
-
-### Beginner Path (Months 1-3)
-
-1. **Foundation**: Start with Chapter 1 to build mental models
-2. **Architecture**: Study Chapter 2 to understand overall structure
-3. **Simple Exploration**: Read `kernel/` directory basics
-4. **First Dive**: Examine simple system calls in `kernel/sys.c`
-
-### Intermediate Path (Months 4-6)
-
-1. **Memory Deep Dive**: Study Chapter 3 thoroughly
-2. **Process Management**: Explore `kernel/fork.c` and `kernel/exit.c`
-3. **Scheduling**: Read Chapter 6 and examine `kernel/sched/`
-4. **Build Experience**: Configure and build a minimal kernel
-
-### Advanced Path (Months 7-12)
-
-1. **Concurrency**: Master Chapter 6's synchronization concepts
-2. **I/O Subsystems**: Study Chapter 8 in detail
-3. **Driver Development**: Write simple character device drivers
-4. **Performance**: Use tracing tools (ftrace, perf) to analyze kernel behavior
-
-### Expert Path (Year 2+)
-
-1. **Subsystem Mastery**: Choose a subsystem (networking, filesystems, etc.)
-2. **Contributing**: Read patches on LKML, understand review process
-3. **Complex Features**: Study eBPF, io_uring, or KVM internals
-4. **Original Research**: Propose and implement kernel improvements
-
----
 id: ch1
 title: Chapter 1 — Understanding Linux Kernel Before Code
 fileRecommendations:

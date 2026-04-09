@@ -229,7 +229,24 @@ export function parseGuideMarkdown(
       // Build section body with content, file recommendations, and quiz
       const body: React.ReactNode = (
         <div>
-          {reactContent}
+          <div
+            onClick={(e: React.MouseEvent) => {
+              const anchor = (e.target as HTMLElement).closest('a');
+              if (!anchor) return;
+              const href = anchor.getAttribute('href');
+              if (
+                !href ||
+                href.startsWith('http://') ||
+                href.startsWith('https://') ||
+                href.startsWith('#')
+              )
+                return;
+              e.preventDefault();
+              openFileInTab(href);
+            }}
+          >
+            {reactContent}
+          </div>
           {sectionMeta.fileRecommendations &&
             (sectionMeta.fileRecommendations.docs || sectionMeta.fileRecommendations.source) &&
             createFileRecommendationsComponent(

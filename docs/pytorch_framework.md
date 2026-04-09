@@ -21,72 +21,6 @@ Understanding PyTorch means understanding how tensors flow through computation g
 **PyTorch powers modern AI. Let's understand how it works.**
 
 ---
-id: learning-path
-title: Learning Path for PyTorch Mastery
----
-
-## Learning Path for PyTorch Mastery
-
-This guide follows a structured learning path designed to build deep learning systems expertise:
-
-### Beginner Path (Weeks 1-4)
-
-1. **Tensor Fundamentals**: Understand PyTorch tensors and operations
-2. **Autograd Basics**: Learn automatic differentiation
-3. **Simple Models**: Build basic neural networks with nn.Module
-4. **Training Loops**: Implement forward pass, loss, backward, optimization
-
-**Practical Start:**
-
-```python
-import torch
-
-# Create tensors
-x = torch.randn(3, 4, requires_grad=True)
-y = x ** 2 + 2 * x + 1
-
-# Automatic differentiation
-loss = y.sum()
-loss.backward()  # Compute gradients
-print(x.grad)    # dy/dx
-```
-
-### Intermediate Path (Months 2-3)
-
-1. **Advanced Autograd**: Understand computation graphs deeply
-2. **Custom Operations**: Write custom autograd Functions
-3. **GPU Programming**: Master CUDA tensors and operations
-4. **Model Optimization**: Learn about JIT compilation, quantization
-
-**Key Projects:**
-
-- Implement custom layer with backward pass
-- Profile and optimize model performance
-- Deploy model with TorchScript
-- Build efficient data pipeline
-
-### Advanced Path (Months 4-6)
-
-1. **Distributed Training**: Multi-GPU and multi-node training
-2. **C++ Extensions**: Write CUDA kernels for PyTorch
-3. **Internal Architecture**: Understand ATen, dispatcher, autograd engine
-4. **Production Deployment**: TorchServe, ONNX export, mobile deployment
-
-**Advanced Projects:**
-
-- Write custom CUDA operation
-- Implement distributed data parallel training
-- Build production inference server
-- Optimize model for edge devices
-
-### Expert Path (Months 7+)
-
-1. **PyTorch Internals**: Deep dive into autograd engine, dispatcher
-2. **Compiler Integration**: Study TorchDynamo, AOTAutograd
-3. **Contributing**: Submit PRs to PyTorch
-4. **Research**: Implement cutting-edge optimizations
-
----
 id: ch1
 title: Chapter 1 — PyTorch Architecture and Core Concepts
 fileRecommendations:
@@ -959,28 +893,6 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
 ```
 
 ### Key Source Files
-
-**Directory Structure:**
-
-```
-pytorch/
-├── torch/                  # Python frontend
-│   ├── nn/                # Neural network modules
-│   ├── optim/             # Optimizers
-│   ├── autograd/          # Autograd Python API
-│   └── jit/               # TorchScript
-├── aten/                   # C++ tensor library
-│   ├── src/
-│   │   ├── ATen/          # Tensor operations
-│   │   └── THC/           # CUDA kernels
-├── c10/                    # Core library
-│   ├── core/              # Tensor, Device, etc.
-│   └── util/              # Utilities
-├── torch/csrc/            # Python-C++ bindings
-│   ├── autograd/          # Autograd engine
-│   └── jit/               # JIT compiler
-└── caffe2/                # Caffe2 backend (legacy)
-```
 
 **Essential Files to Study:**
 

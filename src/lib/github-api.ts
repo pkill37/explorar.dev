@@ -36,6 +36,7 @@ const TRUSTED_VERSIONS: Record<string, string> = {
   'llvm/llvm-project': 'llvmorg-18.1.0',
   'bminor/glibc': 'glibc-2.39',
   'python/cpython': 'v3.12.0',
+  'golang/go': 'go1.22.0',
 } as const;
 
 /**

@@ -3,30 +3,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useViewport } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
-import type { FileNodeData } from '@/lib/graph-data';
-import type { FileSymbols } from '@/lib/code-analysis';
+import type { PairedNodeData } from '@/lib/graph-data';
 import { useGraphContext } from '@/contexts/GraphContext';
 import { ENTRY_ZOOM_THRESHOLD, ENTRY_APPROACH_START } from './ZoomWatcher';
 
-export type FileNodeType = Node<FileNodeData, 'fileNode'>;
+export type PairedNodeType = Node<PairedNodeData, 'pairedNode'>;
 
-const LANG_BADGE: Record<string, string> = {
-  c: 'C',
-  cpp: 'C++',
-  python: 'Py',
-  rust: 'Rs',
-  javascript: 'JS',
-  typescript: 'TS',
-  tsx: 'TSX',
-  go: 'Go',
-  asm: 'Asm',
-  rst: 'RST',
-  markdown: 'MD',
-  bash: 'sh',
-  text: '?',
-};
-
-// Fetch the first N lines of a file from the public static directory
 async function fetchPreviewLines(
   owner: string,
   repo: string,
@@ -35,8 +17,9 @@ async function fetchPreviewLines(
   maxLines = 28
 ): Promise<string | null> {
   try {
-    const url = `/repos/${owner}/${repo}/${branch}/${filePath}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`/repos/${owner}/${repo}/${branch}/${filePath}`, {
+      signal: AbortSignal.timeout(5000),
+    });
     if (!res.ok) return null;
     const text = await res.text();
     return text.split('\n').slice(0, maxLines).join('\n');
@@ -45,62 +28,62 @@ async function fetchPreviewLines(
   }
 }
 
-// Deterministic fake skeleton bars for when real code isn't loaded yet.
-// Results are cached at module level — same filePath always yields same bars.
+// Shared module-level cache — same seed always yields same skeleton
 const skeletonCache = new Map<string, Array<{ width: number; color: string; indent: number }>>();
 
-function getSkeletonLines(
-  filePath: string
-): Array<{ width: number; color: string; indent: number }> {
-  if (skeletonCache.has(filePath)) return skeletonCache.get(filePath)!;
-  const hash = filePath.split('').reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0);
+function getSkeletonLines(seed: string): Array<{ width: number; color: string; indent: number }> {
+  if (skeletonCache.has(seed)) return skeletonCache.get(seed)!;
+  const hash = seed.split('').reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) | 0, 0);
   const abs = Math.abs(hash);
-  const comment = '#6a9955';
-  const keyword = '#569cd6';
-  const def = '#d4d4d4';
-  const string = '#ce9178';
-  const number = '#b5cea8';
-  const type = '#4ec9b0';
-
+  const comment = '#6a9955',
+    keyword = '#569cd6',
+    def = '#d4d4d4',
+    string = '#ce9178',
+    number = '#b5cea8',
+    type = '#4ec9b0';
   const lines = Array.from({ length: 14 }, (_, i) => {
-    const seed = Math.abs((abs + i * 37) % 100);
-    let color = def;
-    let indent = 0;
-    if (seed < 8) color = comment;
-    else if (seed < 18) color = keyword;
-    else if (seed < 30) color = type;
-    else if (seed < 50) indent = 1;
-    else if (seed < 65) {
+    const s = Math.abs((abs + i * 37) % 100);
+    let color = def,
+      indent = 0;
+    if (s < 8) color = comment;
+    else if (s < 18) color = keyword;
+    else if (s < 30) color = type;
+    else if (s < 50) indent = 1;
+    else if (s < 65) {
       indent = 2;
       color = string;
-    } else if (seed < 78) {
+    } else if (s < 78) {
       indent = 1;
       color = number;
-    } else indent = seed % 3;
-    const w = 25 + Math.abs((abs + i * 19) % 55);
-    return { width: w, color, indent };
+    } else indent = s % 3;
+    return { width: 25 + Math.abs((abs + i * 19) % 55), color, indent };
   });
-  skeletonCache.set(filePath, lines);
+  skeletonCache.set(seed, lines);
   return lines;
 }
 
-// — LOD 1: Tiny dot (very low zoom) —
-function NodeTiny({ data }: { data: FileNodeData }) {
+// — LOD 1: tiny dot with a split stripe for .c / .h —
+function PairedNodeTiny({ data }: { data: PairedNodeData }) {
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        background: `${data.color}1a`,
-        border: `2px solid ${data.color}`,
+        display: 'flex',
         borderRadius: 6,
+        overflow: 'hidden',
+        border: `2px solid ${data.color}`,
       }}
-    />
+    >
+      <div style={{ flex: 1, background: `${data.color}1a` }} />
+      <div style={{ width: 1, background: `${data.color}55` }} />
+      <div style={{ flex: 1, background: `${data.color}0d` }} />
+    </div>
   );
 }
 
-// — LOD 2: Compact card (medium zoom) —
-function NodeCompact({ data }: { data: FileNodeData }) {
+// — LOD 2: compact card with both filenames —
+function PairedNodeCompact({ data }: { data: PairedNodeData }) {
   return (
     <div
       style={{
@@ -117,152 +100,69 @@ function NodeCompact({ data }: { data: FileNodeData }) {
         flexDirection: 'column',
         justifyContent: 'center',
         padding: '0 10px',
-        gap: 4,
+        gap: 5,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span
-          style={{
-            fontSize: 9,
-            background: `${data.color}2a`,
-            color: data.color,
-            padding: '1px 4px',
-            borderRadius: 3,
-            fontFamily: 'monospace',
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          {LANG_BADGE[data.language] ?? '?'}
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            color: '#d4d4d4',
-            fontFamily: 'monospace',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {data.fileName}
-        </span>
-      </div>
-      <span
-        style={{
-          fontSize: 8,
-          color: `${data.color}aa`,
-          fontFamily: 'monospace',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {data.sectionLabel}
-      </span>
-    </div>
-  );
-}
-
-// ─── Outline strip: symbols extracted from file ──────────────────────────────
-
-interface SymbolCategory {
-  icon: string;
-  color: string;
-  items: string[];
-}
-
-function OutlineStripInner({ symbols }: { symbols: FileSymbols }) {
-  const cats: SymbolCategory[] = useMemo(
-    () =>
-      [
-        { icon: 'ƒ', color: '#dcdcaa', items: symbols.functions.slice(0, 6) },
-        { icon: 'T', color: '#4ec9b0', items: symbols.types.slice(0, 4) },
-        { icon: '#', color: '#c084fc', items: symbols.defines.slice(0, 4) },
-        { icon: '$', color: '#9cdcfe', items: symbols.globals.slice(0, 3) },
-      ].filter((c) => c.items.length > 0),
-    [symbols]
-  );
-
-  if (cats.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        width: 58,
-        background: '#1a1a1c',
-        borderRight: '1px solid #2d2d2d',
-        flexShrink: 0,
-        padding: '4px 0',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 0,
-      }}
-    >
-      {cats.map((cat) => (
-        <div key={cat.icon} style={{ marginBottom: 3 }}>
-          <div
+      {(
+        [
+          [data.primaryName, 'C'],
+          [data.headerName, 'H'],
+        ] as [string, string][]
+      ).map(([name, badge]) => (
+        <div key={badge} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span
             style={{
-              fontSize: 5.5,
-              color: '#444',
-              fontFamily: 'monospace',
+              fontSize: 9,
+              background: `${data.color}2a`,
+              color: data.color,
               padding: '1px 4px',
-              letterSpacing: '0.05em',
+              borderRadius: 3,
+              fontFamily: 'monospace',
+              fontWeight: 700,
+              flexShrink: 0,
             }}
           >
-            {cat.icon}
-          </div>
-          {cat.items.map((name) => (
-            <div
-              key={name}
-              style={{
-                fontSize: 5.5,
-                color: cat.color,
-                fontFamily: 'monospace',
-                padding: '0.5px 4px 0.5px 7px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                opacity: 0.85,
-              }}
-            >
-              {name}
-            </div>
-          ))}
+            {badge}
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              color: '#d4d4d4',
+              fontFamily: 'monospace',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {name}
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-const OutlineStrip = memo(OutlineStripInner);
-
-// — LOD 3: Full VS Code–style card with real or skeleton code —
-function NodeFull({
+// — LOD 3: VS Code card with two tabs (.c active, .h passive) —
+function PairedNodeFull({
   data,
-  selected,
+  isSelected,
   preview,
   entryGlow,
-  symbols,
 }: {
-  data: FileNodeData;
-  selected: boolean;
+  data: PairedNodeData;
+  isSelected: boolean;
   preview: string | null;
-  entryGlow: number; // 0-1
-  symbols: FileSymbols | null;
+  entryGlow: number;
 }) {
-  // getSkeletonLines is cached at module level, but avoid the Map lookup on every render
-  // when preview is already available — only compute when actually needed.
   const skeletonLines = useMemo(
-    () => (preview ? null : getSkeletonLines(data.filePath)),
-    [preview, data.filePath]
+    () => (preview ? null : getSkeletonLines(data.primaryPath)),
+    [preview, data.primaryPath]
   );
-  const dir = data.filePath.split('/').slice(0, -1).join('/');
   const glowAlpha = Math.round(entryGlow * 180)
     .toString(16)
     .padStart(2, '0');
   const glowSize = 4 + entryGlow * 20;
+  const dir = data.primaryPath.split('/').slice(0, -1).join('/');
 
   return (
     <div
@@ -271,9 +171,9 @@ function NodeFull({
         height: '100%',
         background: '#1e1e1e',
         borderTop: `3px solid ${data.color}`,
-        borderRight: `1px solid ${selected || entryGlow > 0 ? data.color : data.color + '44'}`,
-        borderBottom: `1px solid ${selected || entryGlow > 0 ? data.color : data.color + '44'}`,
-        borderLeft: `1px solid ${selected || entryGlow > 0 ? data.color : data.color + '44'}`,
+        borderRight: `1px solid ${isSelected || entryGlow > 0 ? data.color : data.color + '44'}`,
+        borderBottom: `1px solid ${isSelected || entryGlow > 0 ? data.color : data.color + '44'}`,
+        borderLeft: `1px solid ${isSelected || entryGlow > 0 ? data.color : data.color + '44'}`,
         borderRadius: 5,
         overflow: 'hidden',
         display: 'flex',
@@ -285,7 +185,7 @@ function NodeFull({
               )
                 .toString(16)
                 .padStart(2, '0')}`
-            : selected
+            : isSelected
               ? `0 0 0 1px ${data.color}66`
               : 'none',
         transition: 'box-shadow 0.15s, border-color 0.15s',
@@ -323,11 +223,11 @@ function NodeFull({
             whiteSpace: 'nowrap',
           }}
         >
-          {data.filePath}
+          {dir}
         </span>
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar — two tabs */}
       <div
         style={{
           background: '#2d2d2d',
@@ -337,8 +237,10 @@ function NodeFull({
           alignItems: 'center',
           flexShrink: 0,
           height: 20,
+          gap: 1,
         }}
       >
+        {/* .c tab — active */}
         <div
           style={{
             background: '#1e1e1e',
@@ -350,43 +252,53 @@ function NodeFull({
           }}
         >
           <span style={{ fontSize: 8, color: '#ffffffcc', fontFamily: 'monospace' }}>
-            {data.fileName}
+            {data.primaryName}
+          </span>
+        </div>
+        {/* .h tab — inactive */}
+        <div
+          style={{
+            background: 'transparent',
+            borderTop: '2px solid transparent',
+            padding: '0 8px',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          <span style={{ fontSize: 8, color: '#ffffff55', fontFamily: 'monospace' }}>
+            {data.headerName}
           </span>
         </div>
       </div>
 
       {/* Editor body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Outline / symbols strip */}
-        {symbols ? (
-          <OutlineStrip symbols={symbols} />
-        ) : (
-          /* Fallback: mini file tree skeleton */
-          <div
-            style={{
-              width: 20,
-              background: '#252526',
-              borderRight: '1px solid #3c3c3c',
-              flexShrink: 0,
-              padding: '6px 4px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 5,
-            }}
-          >
-            {[55, 38, 70, 28, 48].map((w, i) => (
-              <div
-                key={i}
-                style={{
-                  height: 2,
-                  width: `${w}%`,
-                  background: i === 2 ? data.color + '99' : '#484848',
-                  borderRadius: 1,
-                }}
-              />
-            ))}
-          </div>
-        )}
+        {/* Mini sidebar */}
+        <div
+          style={{
+            width: 20,
+            background: '#252526',
+            borderRight: '1px solid #3c3c3c',
+            flexShrink: 0,
+            padding: '6px 4px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+          }}
+        >
+          {[55, 38, 70, 28, 48].map((w, i) => (
+            <div
+              key={i}
+              style={{
+                height: 2,
+                width: `${w}%`,
+                background: i === 2 ? data.color + '99' : '#484848',
+                borderRadius: 1,
+              }}
+            />
+          ))}
+        </div>
 
         {/* Code area */}
         <div style={{ flex: 1, display: 'flex', background: '#1e1e1e', overflow: 'hidden' }}>
@@ -420,15 +332,8 @@ function NodeFull({
           </div>
 
           {/* Code content */}
-          <div
-            style={{
-              flex: 1,
-              padding: '5px 6px',
-              overflow: 'hidden',
-            }}
-          >
+          <div style={{ flex: 1, padding: '5px 6px', overflow: 'hidden' }}>
             {preview ? (
-              // Real code as plain text
               <pre
                 style={{
                   margin: 0,
@@ -444,14 +349,7 @@ function NodeFull({
                 {preview}
               </pre>
             ) : (
-              // Skeleton bars
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 3,
-                }}
-              >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {skeletonLines!.map((line, i) => (
                   <div key={i} style={{ display: 'flex', paddingLeft: line.indent * 10 }}>
                     <div
@@ -484,7 +382,7 @@ function NodeFull({
         }}
       >
         <span style={{ fontSize: 7, color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-          {LANG_BADGE[data.language] ?? data.language.toUpperCase()}
+          C⊞H
           {entryGlow > 0.1 && (
             <span style={{ opacity: 0.85, marginLeft: 6 }}>
               {entryGlow >= 1
@@ -503,53 +401,47 @@ function NodeFull({
             whiteSpace: 'nowrap',
           }}
         >
-          {dir || data.sectionLabel}
+          {data.sectionLabel}
         </span>
       </div>
     </div>
   );
 }
 
-function FileNodeInner({ data, selected }: NodeProps<FileNodeType>) {
+function PairedNodeInner({ data }: NodeProps<PairedNodeType>) {
   const { zoom } = useViewport();
-  const { owner, repo, branch, selectedFilePath, symbolsMap } = useGraphContext();
-  const isSelected = data.filePath === selectedFilePath;
-  // Compute glow locally from zoom — avoids context churn on every scroll event
+  const { owner, repo, branch, selectedFilePath } = useGraphContext();
+
+  const nodeId = `${data.primaryPath}|||${data.headerPath}`;
+  const isSelected = nodeId === selectedFilePath;
+
   const glow = isSelected
     ? Math.min(
         1,
         Math.max(0, (zoom - ENTRY_APPROACH_START) / (ENTRY_ZOOM_THRESHOLD - ENTRY_APPROACH_START))
       )
     : 0;
-  const symbols = symbolsMap.get(data.filePath) ?? null;
 
-  // Lazy-load real code preview when zoomed in enough
   const [preview, setPreview] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (zoom >= 1.0 && !fetchedRef.current && owner && repo && branch) {
       fetchedRef.current = true;
-      fetchPreviewLines(owner, repo, branch, data.filePath).then((text) => {
+      fetchPreviewLines(owner, repo, branch, data.primaryPath).then((text) => {
         if (text) setPreview(text);
       });
     }
-  }, [zoom, owner, repo, branch, data.filePath]);
+  }, [zoom, owner, repo, branch, data.primaryPath]);
 
   let inner: React.ReactNode;
   if (zoom < 0.28) {
-    inner = <NodeTiny data={data} />;
+    inner = <PairedNodeTiny data={data} />;
   } else if (zoom < 0.72) {
-    inner = <NodeCompact data={data} />;
+    inner = <PairedNodeCompact data={data} />;
   } else {
     inner = (
-      <NodeFull
-        data={data}
-        selected={selected}
-        preview={preview}
-        entryGlow={glow}
-        symbols={symbols}
-      />
+      <PairedNodeFull data={data} isSelected={isSelected} preview={preview} entryGlow={glow} />
     );
   }
 
@@ -570,4 +462,4 @@ function FileNodeInner({ data, selected }: NodeProps<FileNodeType>) {
   );
 }
 
-export const FileNode = memo(FileNodeInner);
+export const PairedNode = memo(PairedNodeInner);
