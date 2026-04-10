@@ -136,8 +136,8 @@ function ChapterHint({ activeChapterId }: { activeChapterId: string }) {
         gap: 6,
       }}
     >
-      <span style={{ color: '#3a3a3a' }}>chapter ·</span>
-      <span style={{ color: '#777' }}>{title}</span>
+      <span style={{ color: '#808080' }}>chapter ·</span>
+      <span style={{ color: '#999' }}>{title}</span>
     </div>
   );
 }

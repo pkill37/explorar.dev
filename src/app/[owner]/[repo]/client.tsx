@@ -27,6 +27,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const [initialFile, setInitialFile] = useState<string | string[] | null>(null);
   // Keep KernelExplorer mounted once it has been rendered to preserve tab state
   const [editorMounted, setEditorMounted] = useState(false);
+  // Keep EntityView mounted once first activated to preserve per-chapter cache
+  const [entitiesMounted, setEntitiesMounted] = useState(false);
 
   const handleEnterFile = useCallback((fileId: string) => {
     // Paired nodes encode both paths as "primary|||header"
@@ -124,7 +126,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   }, []);
 
   return (
-    <div
+    <main
       style={{
         width: '100vw',
         height: '100vh',
@@ -134,6 +136,21 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
         background: '#0d0d0d',
       }}
     >
+      <h1
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {owner}/{repo} Explorer
+      </h1>
       {/* ── Main content area (graph or editor) ── */}
       <div style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
         {/* Graph view */}
@@ -179,7 +196,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           )}
         </div>
 
-        {/* Entities view */}
+        {/* Entities view — kept mounted to preserve per-chapter cache */}
         <div
           style={{
             position: 'absolute',
@@ -190,8 +207,14 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             zIndex: mode === 'entities' ? 1 : 0,
           }}
         >
-          {mode === 'entities' && (
-            <EntityView owner={owner} repo={repo} onOpenFile={handleEnterFile} />
+          {(mode === 'entities' || entitiesMounted) && (
+            <EntityView
+              owner={owner}
+              repo={repo}
+              onOpenFile={handleEnterFile}
+              activeChapterId={activeChapterId}
+              chapterMapEntries={chapterMapEntries}
+            />
           )}
         </div>
       </div>
@@ -279,7 +302,10 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             {'</>'} Editor
           </button>
           <button
-            onClick={() => setMode('entities')}
+            onClick={() => {
+              setEntitiesMounted(true);
+              setMode('entities');
+            }}
             title="Entity diagram"
             style={{
               fontSize: 10,
@@ -315,6 +341,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           />
         </div>
       </div>
-    </div>
+    </main>
   );
 }

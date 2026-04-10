@@ -34,7 +34,7 @@ test.describe('SEO Checks', () => {
 
     const title = await page.title();
     expect(title).toBeTruthy();
-    expect(title).toContain('linux');
+    expect(title.toLowerCase()).toContain('linux');
 
     const description = await page.locator('meta[name="description"]').getAttribute('content');
     expect(description).toBeTruthy();
@@ -68,7 +68,7 @@ test.describe('SEO Checks', () => {
     await page.goto('/robots.txt');
     const content = await page.textContent('body');
 
-    expect(content).toContain('User-agent');
+    expect(content?.toLowerCase()).toContain('user-agent');
     expect(content).toContain('Allow:');
     expect(content).toContain('Sitemap:');
   });

@@ -21,7 +21,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
 const siteName = 'explorar.dev';
 const defaultTitle = 'Explore Source Code | explorar.dev';
 const defaultDescription =
-  'Explore and learn from arbitrary software source code with an intuitive VS Code-like interface. Interactive code browser with guided learning paths. Perfect for studying the Linux kernel, Python CPython, glibc, LLVM, and any GitHub repository.';
+  'Interactive source code browser with guided learning paths. Explore the Linux kernel, CPython, LLVM, glibc, and any GitHub repository.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

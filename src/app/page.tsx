@@ -489,9 +489,9 @@ export default function Home() {
                           })()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
+                          <h2 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
                             {repo.displayName}
-                          </h3>
+                          </h2>
                           <p className="text-xs font-mono text-gray-400 group-hover:text-gray-300 transition-colors truncate">
                             {repo.owner}/{repo.repo}
                           </p>
@@ -628,9 +628,9 @@ export default function Home() {
                             })()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
+                            <h2 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
                               {repo.displayName}
-                            </h3>
+                            </h2>
                             <p className="text-xs font-mono text-gray-400 group-hover:text-gray-300 transition-colors truncate">
                               {repo.owner}/{repo.repo}
                             </p>

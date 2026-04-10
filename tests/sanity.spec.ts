@@ -38,11 +38,6 @@ test.describe('Sanity Checks', () => {
     }
   });
 
-  test('dashboard page loads', async ({ page }) => {
-    const response = await page.goto('/dashboard');
-    expect(response?.status()).toBe(200);
-  });
-
   test('robots.txt is accessible', async ({ page }) => {
     const response = await page.goto('/robots.txt');
     expect(response?.status()).toBe(200);

@@ -5,8 +5,6 @@ import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
 import CodeEditorContainer from '@/components/CodeEditorContainer';
 import GuidePanel from '@/components/GuidePanel';
-import DataStructuresView from '@/components/DataStructuresView';
-import ActivityBar from '@/components/ActivityBar';
 import StatusBar from '@/components/StatusBar';
 import { EditorTab } from '@/types';
 import {
@@ -121,11 +119,6 @@ export default function KernelExplorer({
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(400);
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
-
-  // Sidebar tab state
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'explorer' | 'data-structures'>(
-    'explorer'
-  );
 
   // Editor state for status bar
   const [editorLine, setEditorLine] = useState<number>(1);
@@ -485,9 +478,6 @@ export default function KernelExplorer({
         // Continue to open the file instead of expanding directory
       } else if (filePath.endsWith('/')) {
         // For other directories, check if downloaded and download if needed, then expand
-        if (activeSidebarTab !== 'explorer') {
-          setActiveSidebarTab('explorer');
-        }
         setSelectedFile(normalizedPath);
 
         // Check if directory metadata exists, download if needed
@@ -530,10 +520,6 @@ export default function KernelExplorer({
       }
 
       // For files: expand all parent directories recursively to make the file visible
-      if (activeSidebarTab !== 'explorer') {
-        setActiveSidebarTab('explorer');
-      }
-
       // Extract the parent directory path from the file path
       const pathParts = normalizedPath.split('/');
       if (pathParts.length > 1) {
@@ -569,7 +555,7 @@ export default function KernelExplorer({
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, activeSidebarTab, owner, repo, currentBranch, branch]
+    [tabs, owner, repo, currentBranch, branch]
   );
 
   const onTabSelect = (tabId: string) => {
@@ -747,15 +733,6 @@ export default function KernelExplorer({
           suppressHydrationWarning
           style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '40vw' }}
         >
-          {!isMobile && (
-            <ActivityBar
-              activeView={activeSidebarTab}
-              onViewChange={(view) => {
-                setActiveSidebarTab(view);
-                setIsSidebarOpen(true);
-              }}
-            />
-          )}
           {isMobile && (
             <div
               style={{
@@ -784,41 +761,22 @@ export default function KernelExplorer({
             </div>
           )}
           <div className="vscode-sidebar-content">
-            {activeSidebarTab === 'explorer' && (
-              <FileTree
-                onFileSelect={(filePath: string) => {
-                  openFileInTab(filePath);
-                  // On mobile, switch to editor view when file is selected
-                  if (isMobile) {
-                    setMobileView('editor');
-                  }
-                }}
-                selectedFile={selectedFile}
-                listDirectory={buildFileTree}
-                titleLabel={repoLabel}
-                expandDirectoryRequest={directoryExpandRequest}
-                onDirectoryExpand={(path: string) => {
-                  if (activeSidebarTab !== 'explorer') {
-                    setActiveSidebarTab('explorer');
-                  }
-                  setSelectedFile(path);
-                }}
-              />
-            )}
-
-            {activeSidebarTab === 'data-structures' && (
-              <DataStructuresView
-                onFileOpen={(filePath, structName, lineNumber) => {
-                  // If we have a line number, use it for precise scrolling
-                  // Otherwise, use struct name as search pattern
-                  openFileInTab(filePath, lineNumber ? undefined : structName, lineNumber);
-                  // On mobile, switch to editor view when file is opened
-                  if (isMobile) {
-                    setMobileView('editor');
-                  }
-                }}
-              />
-            )}
+            <FileTree
+              onFileSelect={(filePath: string) => {
+                openFileInTab(filePath);
+                // On mobile, switch to editor view when file is selected
+                if (isMobile) {
+                  setMobileView('editor');
+                }
+              }}
+              selectedFile={selectedFile}
+              listDirectory={buildFileTree}
+              titleLabel={repoLabel}
+              expandDirectoryRequest={directoryExpandRequest}
+              onDirectoryExpand={(path: string) => {
+                setSelectedFile(path);
+              }}
+            />
           </div>
         </div>
 

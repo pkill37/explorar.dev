@@ -23,13 +23,6 @@ export interface GuideMetadata {
   name: string;
   description: string;
   defaultOpenIds: string[];
-  dataStructures?: Array<{
-    name: string;
-    category: string;
-    description: string;
-    filePath: string;
-    lineNumber?: number;
-  }>;
 }
 
 /**
@@ -81,7 +74,6 @@ function parseGuideDocument(markdown: string, filePath: string): GuideDocument {
         name: data.name,
         description: data.description,
         defaultOpenIds: data.defaultOpenIds || [],
-        dataStructures: data.dataStructures,
       },
       content,
     };

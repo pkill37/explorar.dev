@@ -282,68 +282,123 @@ function EntityCard({ scored, onOpenFile }: EntityCardProps) {
 
 // ─── Main view ───────────────────────────────────────────────────────────────
 
+interface ChapterEntry {
+  id: string;
+  files: string[];
+}
+
 interface EntityViewProps {
   owner: string;
   repo: string;
   onOpenFile: (path: string) => void;
+  activeChapterId?: string | null;
+  chapterMapEntries?: ChapterEntry[];
 }
 
-export function EntityView({ owner, repo, onOpenFile }: EntityViewProps) {
+const FETCH_CAP = 40;
+const BATCH_SIZE = 8;
+const BYTES_CAP = 60 * 1024;
+
+export function EntityView({
+  owner,
+  repo,
+  onOpenFile,
+  activeChapterId,
+  chapterMapEntries,
+}: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultBranch ?? 'main';
 
-  const filePaths = useMemo(() => {
+  // Per-key entity cache — key is chapterId or '__all__'
+  const cacheRef = useRef<Map<string, ScoredEntity[]>>(new Map());
+
+  const [scored, setScored] = useState<ScoredEntity[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Stable key for the current view
+  const currentKey = activeChapterId ?? '__all__';
+
+  // Files to fetch for the current key
+  const filesToFetch = useMemo(() => {
+    if (chapterMapEntries && chapterMapEntries.length > 0) {
+      if (activeChapterId) {
+        return chapterMapEntries.find((e) => e.id === activeChapterId)?.files ?? [];
+      }
+      // All chapters merged, deduped
+      const seen = new Set<string>();
+      const all: string[] = [];
+      for (const entry of chapterMapEntries) {
+        for (const f of entry.files) {
+          if (!seen.has(f)) {
+            seen.add(f);
+            all.push(f);
+          }
+        }
+      }
+      return all;
+    }
+    // Fallback: extract from guide content (no chapter map available)
     const guideDoc = getGuideByRepo(owner, repo);
     if (!guideDoc) return [] as string[];
     const { nodes } = buildGraphData(guideDoc.content);
     return nodes.map((n) => n.id);
-  }, [owner, repo]);
-
-  const [scored, setScored] = useState<ScoredEntity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const ranRef = useRef(false);
+  }, [owner, repo, activeChapterId, chapterMapEntries]);
 
   useEffect(() => {
-    if (ranRef.current || !owner || !repo || !branch || filePaths.length === 0) return;
-    ranRef.current = true;
+    let cancelled = false;
 
     async function run() {
-      setLoading(true);
-      const allEntities: CodeEntity[] = [];
-
-      try {
-        const batch = filePaths.slice(0, 80);
-        const BATCH_SIZE = 12;
-        for (let i = 0; i < batch.length; i += BATCH_SIZE) {
-          await Promise.all(
-            batch.slice(i, i + BATCH_SIZE).map(async (fp: string) => {
-              try {
-                const res = await fetch(`/repos/${owner}/${repo}/${branch}/${fp}`, {
-                  signal: AbortSignal.timeout(5000),
-                });
-                if (!res.ok) return;
-                const fullText = await res.text();
-                // Struct/class definitions are always near the top; truncate to avoid
-                // scanning 500 KB files like unicodeobject.c in their entirety.
-                const text = fullText.length > 60 * 1024 ? fullText.slice(0, 60 * 1024) : fullText;
-                allEntities.push(...extractEntities(fp, text));
-              } catch {
-                // skip
-              }
-            })
-          );
-        }
-      } catch {
-        // ignore
+      if (!branch || filesToFetch.length === 0) {
+        setScored([]);
+        setLoading(false);
+        return;
       }
 
-      setScored(allEntities.length > 0 ? scoreEntities(allEntities) : []);
+      // Cache hit — show immediately, no loading state
+      const cached = cacheRef.current.get(currentKey);
+      if (cached) {
+        setScored(cached);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      const allEntities: CodeEntity[] = [];
+      const batch = filesToFetch.slice(0, FETCH_CAP);
+
+      for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+        if (cancelled) return;
+        await Promise.all(
+          batch.slice(i, i + BATCH_SIZE).map(async (fp: string) => {
+            try {
+              const res = await fetch(`/repos/${owner}/${repo}/${branch}/${fp}`, {
+                signal: AbortSignal.timeout(5000),
+              });
+              if (!res.ok) return;
+              const fullText = await res.text();
+              const text = fullText.length > BYTES_CAP ? fullText.slice(0, BYTES_CAP) : fullText;
+              allEntities.push(...extractEntities(fp, text));
+            } catch {
+              // skip
+            }
+          })
+        );
+      }
+
+      if (cancelled) return;
+
+      const result = allEntities.length > 0 ? scoreEntities(allEntities) : [];
+      cacheRef.current.set(currentKey, result);
+      setScored(result);
       setLoading(false);
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [owner, repo, branch, filePaths.length]);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentKey, branch, owner, repo, filesToFetch]);
 
   if (loading) {
     return (
@@ -400,6 +455,11 @@ export function EntityView({ owner, repo, onOpenFile }: EntityViewProps) {
   const heroCount = scored.filter((s) => s.tier === 'hero').length;
   const majorCount = scored.filter((s) => s.tier === 'major').length;
 
+  const chapterLabel =
+    activeChapterId && chapterMapEntries
+      ? (chapterMapEntries.find((e) => e.id === activeChapterId)?.id ?? null)
+      : null;
+
   return (
     <div
       style={{
@@ -426,6 +486,21 @@ export function EntityView({ owner, repo, onOpenFile }: EntityViewProps) {
           fontSize: 10,
         }}
       >
+        {chapterLabel && (
+          <span
+            style={{
+              color: '#0078d4',
+              background: '#0078d420',
+              border: '1px solid #0078d440',
+              padding: '1px 7px',
+              borderRadius: 3,
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+            }}
+          >
+            {chapterLabel}
+          </span>
+        )}
         <span style={{ color: '#555' }}>{scored.length} entities</span>
         {heroCount > 0 && (
           <span style={{ color: '#666' }}>

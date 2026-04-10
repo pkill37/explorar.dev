@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   // Enable static site generation with export
   output: 'export',
 
+  // Trailing slash ensures python http.server serves index.html from directories
+  trailingSlash: true,
+
   // Disable image optimization for static export (or use unoptimized: true)
   images: {
     unoptimized: true,
