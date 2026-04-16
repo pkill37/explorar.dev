@@ -344,7 +344,9 @@ async function main() {
 }
 
 // Run if executed directly
-if (require.main === module) {
+import { fileURLToPath } from 'url';
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
