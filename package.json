@@ -8,7 +8,7 @@
     "prebuild": "tsx scripts/download-repos.ts --depth=1",
     "build": "next build",
     "clean": "rm -rf public/repos && rm -rf out && rm -rf node_modules",
-    "lint": "tsx scripts/validate-guides.ts && tsc --noEmit && eslint . --cache --cache-location .eslintcache --max-warnings 0 && prettier --config prettier.config.mjs --check . && depcheck",
+    "lint": "tsx scripts/validate-guides.ts && tsx scripts/check-guide-refs.ts && tsc --noEmit && eslint . --cache --cache-location .eslintcache --max-warnings 0 && prettier --config prettier.config.mjs --check . && depcheck",
     "fix": "eslint . --fix && prettier --config prettier.config.mjs --write . && npm audit fix && tsc --noEmit",
     "prepare": "husky",
     "test": "playwright test",

@@ -83,17 +83,15 @@ fileRecommendations:
   docs:
     - path: Doc/
       description: Official Python documentation source
-    - path: InternalDocs/
-      description: Internal implementation notes
     - path: Doc/c-api/veryhigh.rst
       description: High-level compilation API
   source:
     - path: Python/ceval.c
-      description: Main evaluation loop (~6,000 lines)
+      description: Main evaluation loop (~2,800 lines)
     - path: Python/compile.c
       description: Bytecode compiler — AST to bytecode
     - path: Objects/typeobject.c
-      description: Type system (~8,000 lines)
+      description: Type system (~10,600 lines)
     - path: Include/object.h
       description: PyObject and PyTypeObject definitions
     - path: Parser/tokenizer.c
@@ -172,7 +170,7 @@ fileRecommendations:
     - path: Objects/object.c
       description: Base object implementation
     - path: Objects/typeobject.c
-      description: Type system (~8,000 lines)
+      description: Type system (~10,600 lines)
     - path: Modules/gcmodule.c
       description: Cyclic garbage collector
     - path: Objects/abstract.c
@@ -217,7 +215,7 @@ Key files:
 In Python, types are themselves objects. The `PyTypeObject` structure defines how objects of a particular type behave: what methods they support, how they're created, how they're compared, and how they're represented as strings. Understanding type objects reveals how Python's dynamic typing and method resolution work.
 
 Key files:
-- [Objects/typeobject.c](Objects/typeobject.c) — Type object implementation (~8,000 lines)
+- [Objects/typeobject.c](Objects/typeobject.c) — Type object implementation (~10,600 lines)
 - [Include/cpython/object.h](Include/cpython/object.h) — Type object structure internals
 - [Objects/abstract.c](Objects/abstract.c) — Abstract object protocol
 
@@ -294,7 +292,7 @@ Python integers have arbitrary precision, meaning they can represent numbers of 
 
 Key files:
 - [Objects/longobject.c](Objects/longobject.c) — Integer implementation
-- [Include/longintrepr.h](Include/longintrepr.h) — Integer representation
+- [Include/cpython/longintrepr.h](Include/cpython/longintrepr.h) — Integer representation
 
 ### Strings: Unicode and Immutability
 
@@ -317,7 +315,7 @@ Key files:
 Python dictionaries are implemented as hash tables with open addressing. They use a clever probing strategy and maintain insertion order (as of Python 3.7). Understanding dictionary implementation reveals how Python achieves average O(1) lookups while maintaining predictable iteration order.
 
 Key files:
-- [Objects/dictobject.c](Objects/dictobject.c) — Dictionary implementation (~6,000 lines)
+- [Objects/dictobject.c](Objects/dictobject.c) — Dictionary implementation (~5,850 lines)
 - [Include/dictobject.h](Include/dictobject.h) — Dictionary object definitions
 
 ---
@@ -371,7 +369,7 @@ Include/opcode.h -> Lib/dis.py : Python disassembler decodes same table
 The heart of CPython is the evaluation loop in [Python/ceval.c](Python/ceval.c). This function interprets bytecode instructions, manipulating a value stack and maintaining execution state. Each bytecode instruction is a case in a large switch statement (or computed goto), and the loop continues until the frame completes or an exception is raised.
 
 Key files:
-- [Python/ceval.c](Python/ceval.c) — Main evaluation loop (~6,000 lines)
+- [Python/ceval.c](Python/ceval.c) — Main evaluation loop (~2,800 lines)
 - [Include/opcode.h](Include/opcode.h) — Bytecode opcodes
 
 ### Frames: Execution Context
@@ -443,7 +441,7 @@ Python's import system is responsible for finding, loading, and initializing mod
 Key files:
 - [Python/import.c](Python/import.c) — Import system implementation
 - [Lib/importlib/](Lib/importlib/) — Import library (Python implementation)
-- [Python/importlib.h](Python/importlib.h) — Import library internals
+- [Lib/importlib/](Lib/importlib/) — Import library (Python side)
 
 ### Module Objects: Namespaces as Objects
 
@@ -510,7 +508,7 @@ When an exception is raised, Python builds a traceback object that records the c
 
 Key files:
 - [Python/traceback.c](Python/traceback.c) — Traceback implementation
-- [Objects/traceback.c](Objects/traceback.c) — Traceback object
+- [Python/traceback.c](Python/traceback.c) — Traceback object
 - [Include/traceback.h](Include/traceback.h) — Traceback definitions
 
 ---

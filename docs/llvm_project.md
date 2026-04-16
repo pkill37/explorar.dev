@@ -316,11 +316,11 @@ Key CodeGen files:
 
 **IR Core ([llvm/lib/IR/](llvm/lib/IR/)):**
 
-- [llvm/lib/IR/Type.cpp](llvm/lib/IR/Type.cpp) (~2,500 lines) - Type system implementation
-- [llvm/lib/IR/Value.cpp](llvm/lib/IR/Value.cpp) (~1,000 lines) - Base value class
+- [llvm/lib/IR/Type.cpp](llvm/lib/IR/Type.cpp) (~860 lines) - Type system implementation
+- [llvm/lib/IR/Value.cpp](llvm/lib/IR/Value.cpp) (~1,300 lines) - Base value class
 - [llvm/lib/IR/Instructions.cpp](llvm/lib/IR/Instructions.cpp) (~4,000 lines) - All instruction types
-- [llvm/lib/IR/BasicBlock.cpp](llvm/lib/IR/BasicBlock.cpp) (~500 lines) - Basic block implementation
-- [llvm/lib/IR/Verifier.cpp](llvm/lib/IR/Verifier.cpp) (~4,000 lines) - IR validity checking
+- [llvm/lib/IR/BasicBlock.cpp](llvm/lib/IR/BasicBlock.cpp) (~1,200 lines) - Basic block implementation
+- [llvm/lib/IR/Verifier.cpp](llvm/lib/IR/Verifier.cpp) (~7,200 lines) - IR validity checking
 
 **Target-Specific ([llvm/lib/Target/X86/](llvm/lib/Target/X86/)):**
 
@@ -512,7 +512,7 @@ fileRecommendations:
       description: Sparse Conditional Constant Propagation
     - path: llvm/lib/Transforms/Utils/Mem2Reg.cpp
       description: Promote stack allocas to SSA registers
-    - path: llvm/lib/Transforms/Scalar/InstCombine/
+    - path: llvm/lib/Transforms/InstCombine/
       description: Instruction combining (~50,000 lines of peepholes)
     - path: llvm/include/llvm/IR/PassManager.h
       description: New Pass Manager infrastructure
@@ -539,10 +539,10 @@ graph TD
 
 ```chapter-graph
 llvm/include/llvm/IR/PassManager.h -> llvm/lib/Transforms/Scalar/DCE.cpp : pass interface → impl
-llvm/lib/Analysis/DominatorTree.cpp -> llvm/lib/Transforms/Scalar/SCCP.cpp : dominator info feeds SCCP
-llvm/lib/Transforms/Utils/Mem2Reg.cpp -> llvm/lib/Analysis/DominatorTree.cpp : requires dominator tree
+llvm/include/llvm/IR/Dominators.h -> llvm/lib/Transforms/Scalar/SCCP.cpp : dominator info feeds SCCP
+llvm/lib/Transforms/Utils/Mem2Reg.cpp -> llvm/include/llvm/IR/Dominators.h : requires dominator tree
 llvm/lib/Transforms/Scalar/SCCP.cpp -> llvm/include/llvm/IR/InstVisitor.h : visits all instructions
-llvm/lib/Transforms/Scalar/InstCombine/ -> llvm/include/llvm/IR/PatternMatch.h : pattern matching IR
+llvm/lib/Transforms/InstCombine/ -> llvm/include/llvm/IR/PatternMatch.h : pattern matching IR
 ```
 
 ### The Pass Infrastructure
@@ -659,7 +659,7 @@ store i32 5, i32* %x
 
 A large collection (~50,000 lines) of algebraic simplifications and canonicalizations.
 
-Directory: [llvm/lib/Transforms/Scalar/InstCombine/](llvm/lib/Transforms/Scalar/InstCombine/)
+Directory: [llvm/lib/Transforms/InstCombine/](llvm/lib/Transforms/InstCombine/)
 
 Examples of what InstCombine does:
 
@@ -680,7 +680,7 @@ Loops are the highest-leverage optimization targets since they execute repeatedl
 
 **Key loop passes:**
 
-1. **Loop Unrolling** ([llvm/lib/Transforms/Scalar/LoopUnroll.cpp](llvm/lib/Transforms/Scalar/LoopUnroll.cpp)) — replicate loop body to reduce branch overhead
+1. **Loop Unrolling** ([llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp](llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp)) — replicate loop body to reduce branch overhead
 2. **Loop Vectorization** ([llvm/lib/Transforms/Vectorize/LoopVectorize.cpp](llvm/lib/Transforms/Vectorize/LoopVectorize.cpp)) — auto-vectorize with SIMD instructions
 3. **Loop Interchange** — swap loop nesting for cache efficiency
 4. **Loop Fusion** — combine adjacent loops with the same bounds

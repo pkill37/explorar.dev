@@ -279,7 +279,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           </button>
           <button
             onClick={() => {
-              if (editorMounted) setMode('editor');
+              setEditorMounted(true);
+              setMode('editor');
             }}
             title="Code editor"
             style={{
@@ -288,14 +289,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               padding: '3px 8px',
               borderRadius: 3,
               border: 'none',
-              cursor: editorMounted ? 'pointer' : 'default',
+              cursor: 'pointer',
               background: mode === 'editor' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
-              color:
-                mode === 'editor'
-                  ? '#fff'
-                  : editorMounted
-                    ? 'var(--vscode-text-muted, #666)'
-                    : '#333',
+              color: mode === 'editor' ? '#fff' : 'var(--vscode-text-muted, #666)',
               transition: 'background 0.15s, color 0.15s',
             }}
           >

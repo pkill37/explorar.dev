@@ -12,6 +12,7 @@ import {
   fetchFileContent,
   getCurrentRepoLabel,
   setGitHubRepoWithDefaultBranch,
+  getTrustedVersion,
   getRepoIdentifier,
 } from '@/lib/github-api';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
@@ -97,21 +98,28 @@ export default function KernelExplorer({
     id: number;
   } | null>(null);
   // Initialize with consistent values for SSR (will be updated after hydration)
-  const [repoLabel, setRepoLabel] = useState<string>('torvalds/linux');
+  const [repoLabel, setRepoLabel] = useState<string>(() =>
+    owner && repo ? `${owner}/${repo}` : ''
+  );
 
-  // Kernel version state - use default branch from project config
+  // Kernel version state - use default branch from project config.
+  // Also initialises currentConfig synchronously (setGitHubRepoWithDefaultBranch has
+  // no awaits, so its body runs synchronously) so that FileTree's mount effect reads
+  // the correct repo rather than the module-level default (torvalds/linux).
   const [selectedVersion, setSelectedVersion] = useState<string>(() => {
     const config = owner && repo ? getProjectConfig(owner, repo) : null;
-    const defaultBranch = config?.defaultBranch || 'main';
-    return branch || defaultBranch;
+    const trusted = owner && repo ? getTrustedVersion(owner, repo) : '';
+    const defaultBranch = config?.defaultBranch || trusted || 'main';
+    const effectiveBranch = branch || defaultBranch;
+    if (owner && repo) {
+      void setGitHubRepoWithDefaultBranch(owner, repo, effectiveBranch);
+    }
+    return effectiveBranch;
   });
 
   // Get project config
   const projectConfig = useMemo(() => {
-    if (owner && repo) {
-      return getProjectConfig(owner, repo);
-    }
-    return getProjectConfig('torvalds', 'linux'); // Default fallback
+    return owner && repo ? getProjectConfig(owner, repo) : null;
   }, [owner, repo]);
 
   // Panel width state - start with defaults to avoid hydration mismatch

@@ -30,12 +30,14 @@ fileRecommendations:
     - path: INSTALL
       description: Build and installation instructions
   source:
-    - path: csu/crt1.c
-      description: Program startup — first code that runs
+    - path: sysdeps/x86_64/start.S
+      description: Program startup — _start assembly entry point
+    - path: csu/libc-start.c
+      description: __libc_start_main — sets up runtime and calls main()
     - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
       description: x86-64 syscall assembly wrapper
-    - path: stdio-common/vfprintf.c
-      description: Core printf formatting (~2,000 lines)
+    - path: stdio-common/vfprintf-internal.c
+      description: Core printf formatting (~1,570 lines)
     - path: elf/rtld.c
       description: Dynamic linker / runtime loader (~3,000 lines)
 ---
@@ -171,7 +173,7 @@ grep -r "open" sysdeps/unix/sysv/linux/syscalls.list
 
 1. `libio/libio.h` - I/O library structures
 2. `libio/fileops.c` - File operations
-3. `stdio-common/vfprintf.c` - Printf formatting (~2,000 lines!)
+3. `stdio-common/vfprintf-internal.c` - Printf formatting core (~1,570 lines)
 4. `libio/iofread.c` - fread() implementation
 
 **Practical Exercise:**
@@ -216,7 +218,7 @@ glibc provides the interface between user programs and the Linux kernel through 
 
 ### Study Files
 
-- `sysdeps/unix/sysv/linux/syscall.S` - System call assembly wrappers
+- `sysdeps/unix/sysv/linux/x86_64/syscall.S` - System call assembly wrappers
 - `sysdeps/unix/syscall-template.S` - System call template
 - `sysdeps/unix/sysv/linux/x86_64/` - x86-64 specific syscalls
 
@@ -607,8 +609,8 @@ fileRecommendations:
       description: Generic (portable) strlen implementation
     - path: sysdeps/x86_64/multiarch/strlen-avx2.S
       description: AVX2-optimized strlen — processes 32 bytes per cycle
-    - path: sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
-      description: AVX memcpy for unaligned buffers
+    - path: sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+      description: AVX memcpy/memmove for unaligned buffers (includes memmove-vec-unaligned-erms.S)
     - path: sysdeps/x86_64/multiarch/ifunc-impl-list.c
       description: IFUNC dispatch table — maps CPU features to implementations
     - path: sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
@@ -634,7 +636,7 @@ graph TD
 ```chapter-graph
 sysdeps/x86_64/multiarch/ifunc-impl-list.c -> sysdeps/x86_64/multiarch/strlen-avx2.S : IFUNC selects AVX2 impl
 sysdeps/x86_64/multiarch/ifunc-impl-list.c -> string/strlen.c : IFUNC selects generic fallback
-sysdeps/x86_64/multiarch/strlen-avx2.S -> sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S : same vectorization strategy
+sysdeps/x86_64/multiarch/strlen-avx2.S -> sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S : same vectorization strategy
 string/strlen.c -> string/strcpy.c : generic pattern shared across string functions
 ```
 
@@ -702,7 +704,7 @@ memcpy has even more variants because its optimal strategy depends on size:
 - **Large copies** (> 256 bytes): Non-temporal stores to bypass cache (`movntdq`)
 
 ```nasm
-; Excerpt from memcpy-avx-unaligned.S — large copy path
+; Excerpt from memmove-vec-unaligned-erms.S — large copy path
 ; Uses NT stores to avoid cache pollution for large buffers
 vmovdqu     (%rsi), %ymm0          ; load 32 bytes from src
 vmovntdq    %ymm0, (%rdi)          ; non-temporal store to dst
@@ -712,7 +714,7 @@ vmovntdq    %ymm1, 32(%rdi)
 ```
 
 Key files:
-- [sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S](sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S) — AVX unaligned memcpy
+- [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — AVX unaligned memcpy/memmove (glibc-2.14+ unified impl)
 - [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — memmove with overlap handling
 
 ### ERMS: Enhanced REP MOVSB/STOSB
