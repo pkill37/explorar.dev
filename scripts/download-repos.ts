@@ -146,12 +146,19 @@ async function gitCloneShallow(
   }
 }
 
+// Full in-memory node (name + path for convenience during build)
 interface FileNode {
   name: string;
   path: string;
   type: 'file' | 'directory';
-  size?: number;
   children?: FileNode[];
+}
+
+// Compact node written to manifest – no redundant path/size fields
+interface ManifestNode {
+  name: string;
+  type: 'f' | 'd';
+  children?: ManifestNode[];
 }
 
 /**
@@ -191,12 +198,10 @@ function buildFileTree(dirPath: string, basePath: string = ''): FileNode[] {
         children,
       });
     } else {
-      const stats = fs.statSync(fullPath);
       nodes.push({
         name: entry.name,
         path: relativePath,
         type: 'file',
-        size: stats.size,
       });
     }
   }
@@ -204,17 +209,25 @@ function buildFileTree(dirPath: string, basePath: string = ''): FileNode[] {
   return nodes;
 }
 
+function toManifestNode(node: FileNode): ManifestNode {
+  const result: ManifestNode = { name: node.name, type: node.type === 'directory' ? 'd' : 'f' };
+  if (node.children) {
+    result.children = node.children.map(toManifestNode);
+  }
+  return result;
+}
+
 /**
- * Create manifest file with tree structure
+ * Create manifest file with tree structure (compact – no path/size, minified JSON)
  */
 function createManifest(repoDir: string, tree: FileNode[]): void {
   const manifestPath = path.join(repoDir, 'repo-manifest.json');
   const manifest = {
-    tree,
+    tree: tree.map(toManifestNode),
     createdAt: new Date().toISOString(),
   };
 
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
   console.log(`   ✓ Manifest created: ${manifestPath}`);
 }
 

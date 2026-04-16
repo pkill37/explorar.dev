@@ -109,6 +109,28 @@ export async function listDirectoryFromStatic(
   }));
 }
 
+// Compact node format stored in manifest (short keys, no path/size)
+interface ManifestNode {
+  name: string;
+  type: 'f' | 'd';
+  children?: ManifestNode[];
+}
+
+function expandManifestNodes(nodes: ManifestNode[], parentPath: string = ''): FileNode[] {
+  return nodes.map((node) => {
+    const nodePath = parentPath ? `${parentPath}/${node.name}` : node.name;
+    const expanded: FileNode = {
+      name: node.name,
+      path: nodePath,
+      type: node.type === 'd' ? 'directory' : 'file',
+    };
+    if (node.children) {
+      expanded.children = expandManifestNodes(node.children, nodePath);
+    }
+    return expanded;
+  });
+}
+
 /**
  * Get tree structure from static files
  * Uses manifest file created during build
@@ -135,7 +157,12 @@ export async function getTreeStructureFromStatic(
 
       if (response.ok) {
         const manifest = await response.json();
-        return manifest.tree || null;
+        const rawTree: ManifestNode[] | null = manifest.tree || null;
+        if (!rawTree) return null;
+        // New compact format uses short type keys ('f'/'d'); legacy format uses full FileNode shape
+        const isCompact =
+          rawTree.length > 0 && (rawTree[0].type === 'f' || rawTree[0].type === 'd');
+        return isCompact ? expandManifestNodes(rawTree) : (rawTree as unknown as FileNode[]);
       }
 
       // Silently continue on 404 (expected for branches that weren't downloaded)
