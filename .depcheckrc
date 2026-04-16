@@ -4,6 +4,7 @@
     "tailwindcss",
     "raw-loader",
     "@types/node",
-    "@types/react-dom"
+    "@types/react-dom",
+    "serve"
   ]
 }

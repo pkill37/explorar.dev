@@ -119,6 +119,20 @@ const CATEGORIES: Category[] = [
 // Curated quickstart repositories
 const QUICKSTART_REPOS: GitHubRepo[] = [
   {
+    owner: 'apple-oss-distributions',
+    repo: 'xnu',
+    displayName: 'XNU Kernel',
+    icon: '🍎',
+    gradient: 'from-gray-500/10 to-slate-500/10',
+    category: 'System & Kernel',
+    description:
+      "Explore Apple's XNU kernel — the hybrid Mach/BSD core powering macOS and iOS. Study Mach IPC, virtual memory, I/O Kit drivers, and the BSD subsystem.",
+    trustedBranches: (() => {
+      const v = getTrustedVersion('apple-oss-distributions', 'xnu');
+      return v ? [v] : [];
+    })(),
+  },
+  {
     owner: 'torvalds',
     repo: 'linux',
     displayName: 'Linux Kernel',
@@ -691,124 +705,41 @@ export default function Home() {
           </div>
 
           {/* LSP Features Section */}
-          <div className="mb-16 relative bg-gradient-to-br from-gray-800/20 to-gray-800/10 border border-gray-700/30 rounded-xl p-6 sm:p-8 overflow-hidden opacity-70">
-            {/* Background Gradient */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 rounded-xl pointer-events-none" />
+          <div className="mb-16 border border-gray-700/30 rounded-xl p-6 sm:p-8 opacity-70">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-xl opacity-60">⚡</span>
+              <h2 className="text-lg font-semibold text-gray-300">
+                Powered by Language Server Protocol
+              </h2>
+            </div>
 
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-2xl opacity-60">⚡</div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-300 mb-1">
-                    Powered by Language Server Protocol
-                  </h2>
-                  <p className="text-xs text-gray-500">
-                    Professional-grade code intelligence powered by{' '}
-                    <a
-                      href="https://microsoft.github.io/language-server-protocol/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500/70 hover:text-blue-400 underline"
-                    >
-                      Microsoft's LSP
-                    </a>
-                  </p>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-gray-900/30 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 mb-1">Hover tooltips</div>
+                <p className="text-xs text-gray-500">
+                  Signatures, docs, and usage counts on hover.
+                </p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-                {/* Hover Documentation */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">💡</div>
-                    <h3 className="text-xs font-semibold text-gray-400">Rich Hover Tooltips</h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    Hover over any symbol to see function signatures, struct members, documentation
-                    comments, and usage statistics. Get instant context without leaving your code.
-                  </p>
-                </div>
-
-                {/* Go to Definition */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">🔍</div>
-                    <h3 className="text-xs font-semibold text-gray-400">Go to Definition</h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    Press{' '}
-                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
-                      F12
-                    </kbd>{' '}
-                    or{' '}
-                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
-                      Ctrl+Click
-                    </kbd>{' '}
-                    to jump directly to symbol definitions. Navigate codebases like a pro.
-                  </p>
-                </div>
-
-                {/* Find All References */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">📊</div>
-                    <h3 className="text-xs font-semibold text-gray-400">Find All References</h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    Press{' '}
-                    <kbd className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
-                      Shift+F12
-                    </kbd>{' '}
-                    to find every usage of a symbol across the codebase. Understand impact and
-                    dependencies instantly.
-                  </p>
-                </div>
-
-                {/* Code Lens */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">👁️</div>
-                    <h3 className="text-xs font-semibold text-gray-400">Code Lens</h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    See reference counts inline above every definition. Click to explore all usages
-                    and understand code relationships at a glance.
-                  </p>
-                </div>
-
-                {/* Cross-Reference Analysis */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">🔗</div>
-                    <h3 className="text-xs font-semibold text-gray-400">
-                      Cross-Reference Analysis
-                    </h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    Discover related symbols and dependencies automatically. See how functions,
-                    structs, and classes interconnect throughout the codebase.
-                  </p>
-                </div>
-
-                {/* Multi-Language Support */}
-                <div className="p-4 bg-gray-900/30 border border-gray-700/30 rounded-lg hover:border-gray-600/50 transition-all">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="text-lg opacity-60">🌐</div>
-                    <h3 className="text-xs font-semibold text-gray-400">C & C++ Support</h3>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    Full LSP support for C and C++ codebases. Parse structs, classes, functions, and
-                    macros with intelligent symbol resolution.
-                  </p>
-                </div>
+              <div className="p-3 bg-gray-900/30 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 mb-1">Go to definition</div>
+                <p className="text-xs text-gray-500">
+                  <kbd className="px-1 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                    F12
+                  </kbd>{' '}
+                  or{' '}
+                  <kbd className="px-1 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                    Ctrl+Click
+                  </kbd>{' '}
+                  to jump to any symbol.
+                </p>
               </div>
-
-              <div className="mt-6 pt-6 border-t border-gray-700/30">
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  <strong className="text-gray-500">Built on industry standards:</strong> The same
-                  Language Server Protocol used by VS Code, enabling rich code intelligence without
-                  requiring local development environments. Explore massive codebases with
-                  professional IDE features in your browser.
+              <div className="p-3 bg-gray-900/30 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 mb-1">Find all references</div>
+                <p className="text-xs text-gray-500">
+                  <kbd className="px-1 py-0.5 bg-gray-800/50 border border-gray-700/50 rounded text-xs">
+                    Shift+F12
+                  </kbd>{' '}
+                  to see every usage across the codebase.
                 </p>
               </div>
             </div>

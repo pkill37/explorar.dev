@@ -412,21 +412,3 @@ export function findAllReferences(symbolName: string, symbols: SymbolReference[]
   }
   return allReferences;
 }
-
-export function findSymbolAtPosition(
-  symbols: SymbolReference[],
-  line: number,
-  column: number
-): SymbolReference | null {
-  // Find the symbol that contains this position
-  for (const symbol of symbols) {
-    if (symbol.line === line) {
-      // Check if column is within the symbol's range (approximate)
-      const symbolLength = symbol.name.length;
-      if (column >= symbol.column && column <= symbol.column + symbolLength) {
-        return symbol;
-      }
-    }
-  }
-  return null;
-}

@@ -11,6 +11,7 @@ import jaxFrameworkMd from '../../../docs/jax_framework.md?raw';
 import pytorchFrameworkMd from '../../../docs/pytorch_framework.md?raw';
 import tinygradFrameworkMd from '../../../docs/tinygrad_framework.md?raw';
 import golangGoMd from '../../../docs/golang_go.md?raw';
+import appleXnuMd from '../../../docs/apple-oss-distributions_xnu.md?raw';
 
 /**
  * Guide metadata extracted from frontmatter
@@ -46,6 +47,7 @@ const DOCS_MARKDOWN: Record<string, string> = {
   'pytorch_framework.md': pytorchFrameworkMd,
   'tinygrad_framework.md': tinygradFrameworkMd,
   'golang_go.md': golangGoMd,
+  'apple-oss-distributions_xnu.md': appleXnuMd,
 };
 
 /**

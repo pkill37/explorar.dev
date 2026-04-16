@@ -26,6 +26,7 @@ const CURATED_REPOS: RepoConfig[] = [
   { owner: 'python', repo: 'cpython', branch: 'v3.12.0' },
   { owner: 'bminor', repo: 'glibc', branch: 'glibc-2.39' },
   { owner: 'llvm', repo: 'llvm-project', branch: 'llvmorg-18.1.0' },
+  { owner: 'apple-oss-distributions', repo: 'xnu', branch: 'xnu-12377.1.9' },
 ];
 
 const REPOS_DIR = path.join(process.cwd(), 'public', 'repos');

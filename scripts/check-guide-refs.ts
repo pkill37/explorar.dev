@@ -1,9 +1,11 @@
 /**
  * check-guide-refs.ts — Guide reference consistency validator
  *
- * For every curated repo (those with static files in public/repos/), validates
- * that every reference inside docs/*.md is consistent with the actual content
- * at the chosen git tag.
+ * For every guide whose static files exist in public/repos/, validates that
+ * every reference inside docs/*.md resolves to a real path in the downloaded
+ * tree.  The repo root is derived directly from each guide's own frontmatter
+ * (owner / repo / defaultBranch) — there is no separate hardcoded list to
+ * keep in sync.
  *
  * Checks (hard errors → exit 1):
  *   1. fileRecommendations.source[].path   — file or directory exists in repo
@@ -16,21 +18,13 @@
  * Checks (warnings only — do NOT exit 1):
  *   7. Line-count claims  (~N lines)       — actual wc within 30 % of claimed
  *
- * Non-curated repos (golang, frida, jax, pytorch, tinygrad) are skipped with a notice.
+ * Guides whose static files are not present in public/repos/ are skipped with
+ * a notice (non-curated or not yet downloaded).
  */
 
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
-
-// ─── Curated repo roots ───────────────────────────────────────────────────────
-
-const CURATED_ROOTS: Record<string, string> = {
-  'torvalds/linux': path.join(process.cwd(), 'public/repos/torvalds/linux/v6.1'),
-  'python/cpython': path.join(process.cwd(), 'public/repos/python/cpython/v3.12.0'),
-  'llvm/llvm-project': path.join(process.cwd(), 'public/repos/llvm/llvm-project/llvmorg-18.1.0'),
-  'bminor/glibc': path.join(process.cwd(), 'public/repos/bminor/glibc/glibc-2.39'),
-};
 
 const DOCS_DIR = path.join(process.cwd(), 'docs');
 const SKIP_FILES = new Set(['common.md']);
@@ -393,11 +387,20 @@ function stripFencedBlocks(text: string): string {
 
     const owner = String(fm['owner'] ?? '');
     const repo = String(fm['repo'] ?? '');
+    const defaultBranch = String(fm['defaultBranch'] ?? '');
     const repoKey = `${owner}/${repo}`;
 
-    const repoRoot = CURATED_ROOTS[repoKey];
-    if (!repoRoot || !fs.existsSync(repoRoot)) {
-      console.log(`⚠ skip: ${file} (${repoKey} not in public/repos/)`);
+    if (!owner || !repo || !defaultBranch) {
+      console.log(`⚠ skip: ${file} (missing owner/repo/defaultBranch in frontmatter)`);
+      skipped++;
+      continue;
+    }
+
+    const repoRoot = path.join(process.cwd(), 'public', 'repos', owner, repo, defaultBranch);
+    if (!fs.existsSync(repoRoot)) {
+      console.log(
+        `⚠ skip: ${file} (${repoKey}@${defaultBranch} not in public/repos/ — not downloaded)`
+      );
       skipped++;
       continue;
     }

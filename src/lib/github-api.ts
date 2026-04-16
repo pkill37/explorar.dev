@@ -37,6 +37,7 @@ const TRUSTED_VERSIONS: Record<string, string> = {
   'bminor/glibc': 'glibc-2.39',
   'python/cpython': 'v3.12.0',
   'golang/go': 'go1.22.0',
+  'apple-oss-distributions/xnu': 'xnu-12377.1.9',
 } as const;
 
 /**
