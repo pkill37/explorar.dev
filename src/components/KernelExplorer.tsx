@@ -66,7 +66,6 @@ interface KernelExplorerProps {
   repo?: string;
   branch?: string;
   initialFile?: string | string[] | null;
-  onBackToGraph?: () => void;
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
 }
@@ -76,7 +75,6 @@ export default function KernelExplorer({
   repo,
   branch,
   initialFile,
-  onBackToGraph,
   hideGuidePanel = false,
 }: KernelExplorerProps) {
   const router = useRouter();
@@ -710,31 +708,6 @@ export default function KernelExplorer({
 
   return (
     <div className="vscode-container" style={{ position: 'relative' }}>
-      {onBackToGraph && (
-        <button
-          onClick={onBackToGraph}
-          title="Back to graph map"
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 12,
-            zIndex: 200,
-            background: 'rgba(37,37,38,0.9)',
-            border: '1px solid #3c3c3c',
-            borderRadius: 5,
-            padding: '4px 10px',
-            color: '#aaa',
-            fontSize: 11,
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-          }}
-        >
-          ◈ Graph Map
-        </button>
-      )}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
         <div
           className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}

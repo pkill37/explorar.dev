@@ -5,6 +5,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { getAllGuideDocuments } from '@/lib/guides/docs-loader';
 
 // Only pre-generated routes are valid; all others return 404
+// For arbitrary repos, they will fail in static export but work in dev mode
 export const dynamicParams = false;
 
 // Generate routes for all curated repositories from docs/ guides

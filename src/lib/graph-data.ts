@@ -1,5 +1,6 @@
 import Dagre from '@dagrejs/dagre';
 import type { Node, Edge } from '@xyflow/react';
+import type { GuideSection } from '@/lib/project-guides';
 
 export interface FolderNodeData extends Record<string, unknown> {
   folderName: string;
@@ -9,8 +10,8 @@ export interface FolderNodeData extends Record<string, unknown> {
   filePaths: string[]; // file node IDs in this folder
 }
 
-export const FOLDER_NODE_WIDTH = 200;
-export const FOLDER_NODE_HEIGHT = 120;
+export const FOLDER_NODE_WIDTH = 220;
+export const FOLDER_NODE_HEIGHT = 136;
 
 export interface FileNodeData extends Record<string, unknown> {
   filePath: string;
@@ -19,10 +20,13 @@ export interface FileNodeData extends Record<string, unknown> {
   sectionLabel: string;
   sectionIndex: number;
   color: string;
+  isDocumentation: boolean;
+  pedagogicalOrder: number;
+  pedagogicalOrderLabel: string;
 }
 
-export const NODE_WIDTH = 300;
-export const NODE_HEIGHT = 180;
+export const NODE_WIDTH = 336;
+export const NODE_HEIGHT = 212;
 
 export interface PairedNodeData extends Record<string, unknown> {
   primaryPath: string; // .c file
@@ -33,6 +37,22 @@ export interface PairedNodeData extends Record<string, unknown> {
   sectionLabel: string;
   sectionIndex: number;
   color: string;
+  pedagogicalOrder: number;
+  pedagogicalOrderEnd: number;
+  pedagogicalOrderLabel: string;
+}
+
+interface GraphFileEntry {
+  filePath: string;
+  sectionLabel: string;
+  sectionIndex: number;
+  isDocumentation: boolean;
+  pedagogicalOrder: number;
+  pedagogicalOrderLabel: string;
+}
+
+function getPedagogicalOrderLabel(start: number, end?: number): string {
+  return end && end !== start ? `${start}-${end}` : `${start}`;
 }
 
 /**
@@ -81,6 +101,12 @@ function mergeCHPairs(
         sectionLabel: cNode.data.sectionLabel,
         sectionIndex: cNode.data.sectionIndex,
         color: cNode.data.color,
+        pedagogicalOrder: Math.min(cNode.data.pedagogicalOrder, hNode.data.pedagogicalOrder),
+        pedagogicalOrderEnd: Math.max(cNode.data.pedagogicalOrder, hNode.data.pedagogicalOrder),
+        pedagogicalOrderLabel: getPedagogicalOrderLabel(
+          Math.min(cNode.data.pedagogicalOrder, hNode.data.pedagogicalOrder),
+          Math.max(cNode.data.pedagogicalOrder, hNode.data.pedagogicalOrder)
+        ),
       },
     });
   }
@@ -215,6 +241,19 @@ const DOC_EXTENSIONS = new Set([
   'odt',
 ]);
 
+const TEXTUAL_DOC_EXTENSIONS = new Set([
+  'md',
+  'rst',
+  'txt',
+  'adoc',
+  'asciidoc',
+  'texi',
+  'texinfo',
+  'html',
+  'htm',
+  'xml',
+]);
+
 function isCoreSourceFile(filePath: string): boolean {
   const parts = filePath.split('/');
   const fileName = parts[parts.length - 1];
@@ -259,55 +298,38 @@ function isFilePath(path: string): boolean {
   );
 }
 
-export function buildGraphData(guideContent: string): {
+function isGuideRecommendedFile(filePath: string, includeDocs: boolean): boolean {
+  const parts = filePath.split('/');
+  const fileName = parts[parts.length - 1];
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+
+  if (!fileName || filePath.startsWith('http') || filePath.startsWith('#')) {
+    return false;
+  }
+
+  if (
+    /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|so|a|o|pyc|class|jar|bin|exe|dll)$/i.test(
+      fileName
+    )
+  ) {
+    return false;
+  }
+
+  if (isCoreSourceFile(filePath)) return true;
+  if (!includeDocs) return false;
+
+  return DOC_FILENAME_RE.test(fileName) || TEXTUAL_DOC_EXTENSIONS.has(ext);
+}
+
+function buildGraphDataFromFileEntries(files: GraphFileEntry[]): {
   nodes: Node<FileNodeData>[];
   edges: Edge[];
 } {
-  console.time('[graph-data] buildGraphData total');
-  const files: Array<{ filePath: string; sectionLabel: string; sectionIndex: number }> = [];
-  const seen = new Set<string>();
-
-  const lines = guideContent.split('\n');
-  let sectionLabel = 'Overview';
-  let sectionIndex = 0;
-
-  for (const line of lines) {
-    const h2 = line.match(/^##\s+(.+)/);
-    if (h2) {
-      sectionLabel = h2[1].replace(/^Chapter\s+\d+\s*[—\-–]\s*/, '').trim();
-      sectionIndex++;
-      continue;
-    }
-
-    // Markdown links: [text](path)
-    const linkRe = /\[([^\]]+)\]\(([^)#\s]+)\)/g;
-    let m: RegExpExecArray | null;
-    while ((m = linkRe.exec(line)) !== null) {
-      const p = m[2];
-      if (isFilePath(p) && isCoreSourceFile(p) && !seen.has(p)) {
-        seen.add(p);
-        files.push({ filePath: p, sectionLabel, sectionIndex });
-      }
-    }
-
-    // Backtick paths with directory separator: `kernel/fork.c`
-    const btRe = /`([a-zA-Z0-9_./-]+\/[a-zA-Z0-9_./-]+\.[a-zA-Z]{1,4})`/g;
-    while ((m = btRe.exec(line)) !== null) {
-      const p = m[1];
-      if (isFilePath(p) && isCoreSourceFile(p) && !seen.has(p)) {
-        seen.add(p);
-        files.push({ filePath: p, sectionLabel, sectionIndex });
-      }
-    }
-  }
-
   console.log(`[graph-data] parsed ${files.length} file refs from guide`);
-  // Cap at 60 nodes (more headroom now that doc files are filtered out)
-  const limited = files.slice(0, 60);
 
   // Group by section
-  const bySection = new Map<string, typeof limited>();
-  for (const f of limited) {
+  const bySection = new Map<string, typeof files>();
+  for (const f of files) {
     if (!bySection.has(f.sectionLabel)) bySection.set(f.sectionLabel, []);
     bySection.get(f.sectionLabel)!.push(f);
   }
@@ -315,7 +337,7 @@ export function buildGraphData(guideContent: string): {
   // Assign colors per top-level directory (files in the same folder share a color)
   const folderColorMap = new Map<string, string>();
   let ci = 0;
-  for (const f of limited) {
+  for (const f of files) {
     const folder = f.filePath.includes('/') ? f.filePath.split('/')[0] : '';
     if (!folderColorMap.has(folder)) {
       folderColorMap.set(folder, SECTION_COLORS[ci % SECTION_COLORS.length]);
@@ -326,7 +348,7 @@ export function buildGraphData(guideContent: string): {
   const nodes: Node<FileNodeData>[] = [];
   const edges: Edge[] = [];
 
-  for (const f of limited) {
+  for (const f of files) {
     const folder = f.filePath.includes('/') ? f.filePath.split('/')[0] : '';
     const color = folderColorMap.get(folder) ?? '#1d4ed8';
     nodes.push({
@@ -340,6 +362,9 @@ export function buildGraphData(guideContent: string): {
         sectionLabel: f.sectionLabel,
         sectionIndex: f.sectionIndex,
         color,
+        isDocumentation: f.isDocumentation,
+        pedagogicalOrder: f.pedagogicalOrder,
+        pedagogicalOrderLabel: f.pedagogicalOrderLabel,
       },
     });
   }
@@ -363,7 +388,7 @@ export function buildGraphData(guideContent: string): {
   console.time('[graph-data] dagre layout');
   const g = new Dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 55, ranksep: 130, marginx: 40, marginy: 40 });
+  g.setGraph({ rankdir: 'TB', nodesep: 72, ranksep: 96, marginx: 36, marginy: 32 });
 
   for (const node of nodes) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
@@ -381,10 +406,152 @@ export function buildGraphData(guideContent: string): {
       node.position = { x: n.x - NODE_WIDTH / 2, y: n.y - NODE_HEIGHT / 2 };
     }
   }
-
-  console.log(`[graph-data] buildGraphData → ${nodes.length} nodes, ${edges.length} edges`);
-  console.timeEnd('[graph-data] buildGraphData total');
   return { nodes, edges };
+}
+
+function clusterDocumentationNodes(
+  nodes: Array<Node<FileNodeData | FolderNodeData | PairedNodeData>>
+): void {
+  const documentationNodes = nodes.filter(
+    (node): node is Node<FileNodeData> =>
+      node.type === 'fileNode' && node.data.isDocumentation === true
+  );
+  if (documentationNodes.length === 0) return;
+
+  const columns = Math.max(1, Math.ceil(Math.sqrt(documentationNodes.length)));
+  const clusterOriginX = 28;
+  const clusterOriginY = 20;
+  const horizontalGap = 26;
+  const verticalGap = 24;
+
+  documentationNodes
+    .sort((a, b) => a.data.pedagogicalOrder - b.data.pedagogicalOrder)
+    .forEach((node, index) => {
+      const row = Math.floor(index / columns);
+      const col = index % columns;
+      node.position = {
+        x: clusterOriginX + col * (NODE_WIDTH + horizontalGap),
+        y: clusterOriginY + row * (NODE_HEIGHT + verticalGap),
+      };
+    });
+
+  const clusterWidth = columns * NODE_WIDTH + (columns - 1) * horizontalGap;
+  const clusterOffsetX = clusterWidth + 120;
+  for (const node of nodes) {
+    if (node.type === 'fileNode' && node.data.isDocumentation) continue;
+    node.position = {
+      x: node.position.x + clusterOffsetX,
+      y: node.position.y + 8,
+    };
+  }
+}
+
+export function buildGraphDataFromSections(
+  guideSections: GuideSection[],
+  options?: { includeDocs?: boolean }
+): {
+  nodes: Node<FileNodeData>[];
+  edges: Edge[];
+} {
+  console.time('[graph-data] buildGraphDataFromSections total');
+  const files: GraphFileEntry[] = [];
+  const seen = new Set<string>();
+  const includeDocs = options?.includeDocs ?? false;
+  let pedagogicalOrder = 1;
+
+  guideSections.forEach((section, index) => {
+    const sectionLabel = section.title.replace(/^Chapter\s+\d+\s*[—\-–]\s*/, '').trim();
+    const recommendedFiles = [
+      ...(includeDocs ? (section.fileRecommendations?.docs ?? []) : []),
+      ...(section.fileRecommendations?.source ?? []),
+    ];
+    for (const file of recommendedFiles) {
+      const path = file.path;
+      if (!isGuideRecommendedFile(path, includeDocs)) continue;
+      const currentOrder = pedagogicalOrder++;
+      if (seen.has(path)) continue;
+      seen.add(path);
+      files.push({
+        filePath: path,
+        sectionLabel,
+        sectionIndex: index + 1,
+        isDocumentation: !isCoreSourceFile(path),
+        pedagogicalOrder: currentOrder,
+        pedagogicalOrderLabel: getPedagogicalOrderLabel(currentOrder),
+      });
+    }
+  });
+
+  const result = buildGraphDataFromFileEntries(files);
+  console.timeEnd('[graph-data] buildGraphDataFromSections total');
+  return result;
+}
+
+export function buildGraphData(guideContent: string): {
+  nodes: Node<FileNodeData>[];
+  edges: Edge[];
+} {
+  console.time('[graph-data] buildGraphData total');
+  const files: GraphFileEntry[] = [];
+  const seen = new Set<string>();
+
+  const lines = guideContent.split('\n');
+  let sectionLabel = 'Overview';
+  let sectionIndex = 0;
+  let pedagogicalOrder = 1;
+
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.+)/);
+    if (h2) {
+      sectionLabel = h2[1].replace(/^Chapter\s+\d+\s*[—\-–]\s*/, '').trim();
+      sectionIndex++;
+      continue;
+    }
+
+    // Markdown links: [text](path)
+    const linkRe = /\[([^\]]+)\]\(([^)#\s]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = linkRe.exec(line)) !== null) {
+      const p = m[2];
+      if (isFilePath(p) && isCoreSourceFile(p) && !seen.has(p)) {
+        seen.add(p);
+        files.push({
+          filePath: p,
+          sectionLabel,
+          sectionIndex,
+          isDocumentation: false,
+          pedagogicalOrder,
+          pedagogicalOrderLabel: getPedagogicalOrderLabel(pedagogicalOrder),
+        });
+        pedagogicalOrder++;
+      }
+    }
+
+    // Backtick paths with directory separator: `kernel/fork.c`
+    const btRe = /`([a-zA-Z0-9_./-]+\/[a-zA-Z0-9_./-]+\.[a-zA-Z]{1,4})`/g;
+    while ((m = btRe.exec(line)) !== null) {
+      const p = m[1];
+      if (isFilePath(p) && isCoreSourceFile(p) && !seen.has(p)) {
+        seen.add(p);
+        files.push({
+          filePath: p,
+          sectionLabel,
+          sectionIndex,
+          isDocumentation: false,
+          pedagogicalOrder,
+          pedagogicalOrderLabel: getPedagogicalOrderLabel(pedagogicalOrder),
+        });
+        pedagogicalOrder++;
+      }
+    }
+  }
+
+  const result = buildGraphDataFromFileEntries(files.slice(0, 60));
+  console.log(
+    `[graph-data] buildGraphData → ${result.nodes.length} nodes, ${result.edges.length} edges`
+  );
+  console.timeEnd('[graph-data] buildGraphData total');
+  return result;
 }
 
 // ─── CWD-based depth=1 view ───────────────────────────────────────────────────
@@ -414,8 +581,14 @@ export function buildCwdView(
 
   const folderMap = new Map<string, Node<FileNodeData>[]>(); // subdir name → files
   const directFiles: Node<FileNodeData>[] = [];
+  const surfacedDocumentationPaths = new Set<string>();
 
   for (const node of filesUnderCwd) {
+    if (node.data.isDocumentation) {
+      directFiles.push(node);
+      surfacedDocumentationPaths.add(node.id);
+      continue;
+    }
     const relPath = cwd === '' ? node.data.filePath : node.data.filePath.slice(cwd.length + 1);
     const firstSlash = relPath.indexOf('/');
     if (firstSlash === -1) {
@@ -460,6 +633,7 @@ export function buildCwdView(
   // Project edges to depth=1 representatives
   // Returns the ID of the depth=1 node for a given filePath, or null if not in cwd
   function getRepresentative(filePath: string): string | null {
+    if (surfacedDocumentationPaths.has(filePath)) return filePath;
     if (cwd !== '' && !filePath.startsWith(cwd + '/')) return null;
     const relPath = cwd === '' ? filePath : filePath.slice(cwd.length + 1);
     const firstSlash = relPath.indexOf('/');
@@ -514,7 +688,7 @@ export function buildCwdView(
   console.time('[graph-data] buildCwdView dagre');
   const g = new Dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 150, marginx: 40, marginy: 40 });
+  g.setGraph({ rankdir: 'TB', nodesep: 84, ranksep: 104, marginx: 36, marginy: 28 });
 
   for (const node of finalNodes) {
     const w = node.type === 'folderNode' ? FOLDER_NODE_WIDTH : NODE_WIDTH;
@@ -536,6 +710,8 @@ export function buildCwdView(
       node.position = { x: n.x - w / 2, y: n.y - h / 2 };
     }
   }
+
+  clusterDocumentationNodes(finalNodes);
 
   console.timeEnd(label);
   return { nodes: finalNodes, edges: mergedEdges };
@@ -625,6 +801,9 @@ export function buildChapterView(
           sectionLabel: 'Related',
           sectionIndex: -1,
           color: fallbackColor,
+          isDocumentation: !isCoreSourceFile(path),
+          pedagogicalOrder: Number.MAX_SAFE_INTEGER,
+          pedagogicalOrderLabel: 'R',
         },
       });
     }
@@ -670,7 +849,7 @@ export function buildChapterView(
   // Dagre layout
   const g = new Dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 55, ranksep: 130, marginx: 40, marginy: 40 });
+  g.setGraph({ rankdir: 'TB', nodesep: 72, ranksep: 96, marginx: 36, marginy: 32 });
 
   for (const node of finalNodes) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
@@ -689,6 +868,8 @@ export function buildChapterView(
       node.position = { x: n.x - NODE_WIDTH / 2, y: n.y - NODE_HEIGHT / 2 };
     }
   }
+
+  clusterDocumentationNodes(finalNodes);
 
   console.log(
     `[graph-data] buildChapterView → ${finalNodes.length} nodes, ${finalEdges.length} edges`
@@ -711,10 +892,16 @@ export function projectEdgesForCwd(
 ): Edge[] {
   // Classify files in current cwd: direct files vs. files inside sub-folders
   const directFiles: Node<FileNodeData>[] = [];
+  const surfacedDocumentationPaths = new Set<string>();
 
   for (const node of allFileNodes) {
     const filePath = node.data.filePath;
     if (cwd !== '' && !filePath.startsWith(cwd + '/')) continue;
+    if (node.data.isDocumentation) {
+      directFiles.push(node);
+      surfacedDocumentationPaths.add(node.id);
+      continue;
+    }
     const relPath = cwd === '' ? filePath : filePath.slice(cwd.length + 1);
     if (relPath.indexOf('/') === -1) directFiles.push(node);
   }
@@ -740,6 +927,7 @@ export function projectEdgesForCwd(
   }
 
   function getRepresentative(filePath: string): string | null {
+    if (surfacedDocumentationPaths.has(filePath)) return filePath;
     if (cwd !== '' && !filePath.startsWith(cwd + '/')) return null;
     const relPath = cwd === '' ? filePath : filePath.slice(cwd.length + 1);
     const firstSlash = relPath.indexOf('/');

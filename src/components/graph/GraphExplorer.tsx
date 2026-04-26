@@ -23,6 +23,7 @@ import { ZoomWatcher } from './ZoomWatcher';
 import { GraphLegend } from './GraphLegend';
 import {
   buildGraphData,
+  buildGraphDataFromSections,
   buildCwdView,
   buildChapterView,
   projectEdgesForCwd,
@@ -38,7 +39,7 @@ import {
   type FileSymbols,
 } from '@/lib/code-analysis';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
-import { getProjectConfig } from '@/lib/project-guides';
+import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { GraphContext } from '@/contexts/GraphContext';
 
 // Defined at module scope to avoid ReactFlow "nodeTypes changed" warnings
@@ -459,6 +460,7 @@ interface GraphExplorerProps {
   onEnterFile: (filePath: string) => void;
   activeChapterId?: string | null;
   chapterMapEntries?: ChapterMapEntry[];
+  guideSections?: GuideSection[];
 }
 
 export function GraphExplorer({
@@ -467,18 +469,25 @@ export function GraphExplorer({
   onEnterFile,
   activeChapterId,
   chapterMapEntries,
+  guideSections,
 }: GraphExplorerProps) {
   const guideDoc = useMemo(() => getGuideByRepo(owner, repo), [owner, repo]);
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultBranch ?? 'main';
 
   const { nodes: allFileNodes, edges: allFileEdges } = useMemo(() => {
+    if (guideSections && guideSections.length > 0) {
+      console.log(`[GraphExplorer] building graph from parsed guide sections for ${owner}/${repo}`);
+      const result = buildGraphDataFromSections(guideSections, { includeDocs: true });
+      console.log(`[GraphExplorer] graph built: ${result.nodes.length} nodes`);
+      return result;
+    }
     if (!guideDoc) return { nodes: [] as Node<FileNodeData>[], edges: [] as Edge[] };
     console.log(`[GraphExplorer] building graph for ${owner}/${repo}`);
     const result = buildGraphData(guideDoc.content);
     console.log(`[GraphExplorer] graph built: ${result.nodes.length} nodes`);
     return result;
-  }, [guideDoc, owner, repo]);
+  }, [guideDoc, guideSections, owner, repo]);
 
   if (allFileNodes.length === 0) {
     return (

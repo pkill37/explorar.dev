@@ -38,10 +38,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     setMode('editor');
   }, []);
 
-  const handleBackToGraph = useCallback(() => {
-    setMode('graph');
-  }, []);
-
   // ── Guide sections ──────────────────────────────────────────────────────────
   // loadGuideFromMarkdown is synchronous (all guide docs are bundled at build time),
   // so it's safe to call inside useMemo.
@@ -71,6 +67,18 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       guideSections.map((s) => ({
         id: s.id,
         files: s.fileRecommendations?.source?.map((f) => f.path) ?? [],
+        graph: s.graph,
+      })),
+    [guideSections]
+  );
+  const graphChapterMapEntries = useMemo(
+    () =>
+      guideSections.map((s) => ({
+        id: s.id,
+        files: [
+          ...(s.fileRecommendations?.source?.map((f) => f.path) ?? []),
+          ...(s.fileRecommendations?.docs?.map((f) => f.path) ?? []),
+        ],
         graph: s.graph,
       })),
     [guideSections]
@@ -169,7 +177,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             repo={repo}
             onEnterFile={handleEnterFile}
             activeChapterId={activeChapterId}
-            chapterMapEntries={chapterMapEntries}
+            chapterMapEntries={graphChapterMapEntries}
+            guideSections={guideSections}
           />
         </div>
 
@@ -186,13 +195,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           }}
         >
           {(mode === 'editor' || editorMounted) && (
-            <KernelExplorer
-              owner={owner}
-              repo={repo}
-              initialFile={initialFile}
-              onBackToGraph={handleBackToGraph}
-              hideGuidePanel
-            />
+            <KernelExplorer owner={owner} repo={repo} initialFile={initialFile} hideGuidePanel />
           )}
         </div>
 
@@ -214,6 +217,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               onOpenFile={handleEnterFile}
               activeChapterId={activeChapterId}
               chapterMapEntries={chapterMapEntries}
+              guideSections={guideSections}
             />
           )}
         </div>

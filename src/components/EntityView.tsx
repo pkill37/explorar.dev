@@ -1,15 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getProjectConfig } from '@/lib/project-guides';
+import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
-import { buildGraphData } from '@/lib/graph-data';
-import {
-  extractEntities,
-  ENTITY_KIND_COLOR,
-  type CodeEntity,
-  type EntityKind,
-} from '@/lib/entity-analysis';
+import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
+import { extractEntities, type CodeEntity } from '@/lib/entity-analysis';
 
 // ─── Importance tiers ────────────────────────────────────────────────────────
 
@@ -20,6 +15,58 @@ interface ScoredEntity {
   refCount: number;
   score: number;
   tier: Tier;
+}
+
+interface FolderGroup {
+  folder: string;
+  color: string;
+  items: ScoredEntity[];
+}
+
+const FOLDER_COLORS = [
+  '#1d4ed8',
+  '#059669',
+  '#d97706',
+  '#7c3aed',
+  '#db2777',
+  '#0891b2',
+  '#65a30d',
+  '#dc2626',
+];
+
+function getFolderLabel(filePath: string): string {
+  return filePath.includes('/') ? filePath.split('/')[0] : 'root';
+}
+
+function buildFolderGroups(scored: ScoredEntity[]): FolderGroup[] {
+  const folderOrder: string[] = [];
+  const folderItems = new Map<string, ScoredEntity[]>();
+
+  for (const item of scored) {
+    const folder = getFolderLabel(item.entity.filePath);
+    if (!folderItems.has(folder)) {
+      folderItems.set(folder, []);
+      folderOrder.push(folder);
+    }
+    folderItems.get(folder)!.push(item);
+  }
+
+  const colorMap = new Map<string, string>();
+  folderOrder.forEach((folder, index) => {
+    colorMap.set(folder, FOLDER_COLORS[index % FOLDER_COLORS.length]);
+  });
+
+  return folderOrder
+    .map((folder) => ({
+      folder,
+      color: colorMap.get(folder) ?? FOLDER_COLORS[0],
+      items: folderItems.get(folder) ?? [],
+    }))
+    .sort((a, b) => {
+      const aTop = a.items[0]?.score ?? 0;
+      const bTop = b.items[0]?.score ?? 0;
+      return bTop - aTop;
+    });
 }
 
 function scoreEntities(entities: CodeEntity[]): ScoredEntity[] {
@@ -75,11 +122,12 @@ function scoreEntities(entities: CodeEntity[]): ScoredEntity[] {
 interface EntityCardProps {
   scored: ScoredEntity;
   onOpenFile: (path: string) => void;
+  color: string;
+  folderLabel: string;
 }
 
-function EntityCard({ scored, onOpenFile }: EntityCardProps) {
+function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps) {
   const { entity, tier, refCount } = scored;
-  const color = ENTITY_KIND_COLOR[entity.kind as EntityKind];
 
   const isHero = tier === 'hero';
   const isMajor = tier === 'major';
@@ -193,6 +241,18 @@ function EntityCard({ scored, onOpenFile }: EntityCardProps) {
           >
             {entity.kind}
           </span>
+          <span
+            style={{
+              fontSize: fieldFontSize - 1,
+              color: '#cfcfcf',
+              background: '#ffffff10',
+              padding: '2px 5px',
+              borderRadius: 3,
+              fontWeight: 600,
+            }}
+          >
+            {folderLabel}
+          </span>
         </div>
       </div>
 
@@ -200,7 +260,7 @@ function EntityCard({ scored, onOpenFile }: EntityCardProps) {
       <div style={{ flex: 1 }}>
         {visibleFields.map((field, idx) => (
           <div
-            key={field.name}
+            key={`${field.name}:${field.type ?? 'unknown'}:${idx}`}
             style={{
               height: fieldHeight,
               display: 'flex',
@@ -293,6 +353,7 @@ interface EntityViewProps {
   onOpenFile: (path: string) => void;
   activeChapterId?: string | null;
   chapterMapEntries?: ChapterEntry[];
+  guideSections?: GuideSection[];
 }
 
 const FETCH_CAP = 40;
@@ -305,6 +366,7 @@ export function EntityView({
   onOpenFile,
   activeChapterId,
   chapterMapEntries,
+  guideSections,
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultBranch ?? 'main';
@@ -314,6 +376,7 @@ export function EntityView({
 
   const [scored, setScored] = useState<ScoredEntity[]>([]);
   const [loading, setLoading] = useState(false);
+  const folderGroups = useMemo(() => buildFolderGroups(scored), [scored]);
 
   // Stable key for the current view
   const currentKey = activeChapterId ?? '__all__';
@@ -337,12 +400,16 @@ export function EntityView({
       }
       return all;
     }
-    // Fallback: extract from guide content (no chapter map available)
+    if (guideSections && guideSections.length > 0) {
+      const { nodes } = buildGraphDataFromSections(guideSections);
+      return nodes.map((n) => n.id);
+    }
+    // Fallback: extract from guide content (no parsed guide sections available)
     const guideDoc = getGuideByRepo(owner, repo);
     if (!guideDoc) return [] as string[];
     const { nodes } = buildGraphData(guideDoc.content);
     return nodes.map((n) => n.id);
-  }, [owner, repo, activeChapterId, chapterMapEntries]);
+  }, [owner, repo, activeChapterId, chapterMapEntries, guideSections]);
 
   useEffect(() => {
     let cancelled = false;
@@ -512,28 +579,70 @@ export function EntityView({
             <span style={{ color: '#666' }}>{majorCount}</span> major
           </span>
         )}
+        <span style={{ color: '#555' }}>{folderGroups.length} folders</span>
         <span style={{ color: '#333', marginLeft: 'auto', fontSize: 9 }}>
           ×N = referenced by N entities · click to open file
         </span>
       </div>
 
-      {/* Grid */}
-      <div
-        style={{
-          padding: 14,
-          display: 'grid',
-          // base column width ~220px; hero cards span 2 cols
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: 10,
-          alignItems: 'start',
-        }}
-      >
-        {scored.map((s, i) => (
-          <EntityCard
-            key={`${s.entity.filePath}::${s.entity.name}::${i}`}
-            scored={s}
-            onOpenFile={onOpenFile}
-          />
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {folderGroups.map((group) => (
+          <section
+            key={group.folder}
+            style={{
+              border: `1px solid ${group.color}26`,
+              borderRadius: 10,
+              overflow: 'hidden',
+              background: '#101010',
+              boxShadow: `0 0 0 1px ${group.color}10 inset`,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                background: `${group.color}14`,
+                borderBottom: `1px solid ${group.color}26`,
+                fontFamily: 'monospace',
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: group.color,
+                  boxShadow: `0 0 12px ${group.color}88`,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#e5e5e5' }}>
+                {group.folder}
+              </span>
+              <span style={{ fontSize: 10, color: '#8f8f8f' }}>{group.items.length} entities</span>
+            </div>
+            <div
+              style={{
+                padding: 12,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 10,
+                alignItems: 'start',
+              }}
+            >
+              {group.items.map((item, index) => (
+                <EntityCard
+                  key={`${item.entity.filePath}::${item.entity.name}::${index}`}
+                  scored={item}
+                  onOpenFile={onOpenFile}
+                  color={group.color}
+                  folderLabel={group.folder}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </div>

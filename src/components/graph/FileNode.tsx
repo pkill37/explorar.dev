@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useViewport } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
-import type { FileNodeData } from '@/lib/graph-data';
+import { NODE_WIDTH, NODE_HEIGHT, type FileNodeData } from '@/lib/graph-data';
 import type { FileSymbols } from '@/lib/code-analysis';
 import { useGraphContext } from '@/contexts/GraphContext';
 import { ENTRY_ZOOM_THRESHOLD, ENTRY_APPROACH_START } from './ZoomWatcher';
@@ -25,6 +25,48 @@ const LANG_BADGE: Record<string, string> = {
   bash: 'sh',
   text: '?',
 };
+
+function PedagogicalBadge({ label, subtle = false }: { label: string; subtle?: boolean }) {
+  return (
+    <span
+      style={{
+        fontSize: subtle ? 7 : 8,
+        background: subtle ? '#111827' : '#0f172a',
+        color: subtle ? '#bfdbfe' : '#e0f2fe',
+        border: '1px solid #2563eb55',
+        padding: subtle ? '1px 4px' : '2px 5px',
+        borderRadius: 999,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        lineHeight: 1.1,
+        flexShrink: 0,
+      }}
+    >
+      #{label}
+    </span>
+  );
+}
+
+function DocumentChip() {
+  return (
+    <span
+      style={{
+        fontSize: 7,
+        background: '#fef3c7',
+        color: '#78350f',
+        border: '1px solid #f59e0b66',
+        padding: '1px 4px',
+        borderRadius: 999,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        lineHeight: 1.1,
+        flexShrink: 0,
+      }}
+    >
+      DOC
+    </span>
+  );
+}
 
 // Fetch the first N lines of a file from the public static directory
 async function fetchPreviewLines(
@@ -91,11 +133,16 @@ function NodeTiny({ data }: { data: FileNodeData }) {
       style={{
         width: '100%',
         height: '100%',
-        background: `${data.color}1a`,
-        border: `2px solid ${data.color}`,
+        background: data.isDocumentation ? '#fffbeb' : `${data.color}1a`,
+        border: `2px solid ${data.isDocumentation ? '#f59e0b' : data.color}`,
         borderRadius: 6,
+        position: 'relative',
       }}
-    />
+    >
+      <div style={{ position: 'absolute', top: 2, left: 2 }}>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} subtle />
+      </div>
+    </div>
   );
 }
 
@@ -107,10 +154,10 @@ function NodeCompact({ data }: { data: FileNodeData }) {
         width: '100%',
         height: '100%',
         background: 'rgba(28,28,30,0.97)',
-        borderTop: `3px solid ${data.color}`,
-        borderRight: `1px solid ${data.color}44`,
-        borderBottom: `1px solid ${data.color}44`,
-        borderLeft: `1px solid ${data.color}44`,
+        borderTop: `3px solid ${data.isDocumentation ? '#f59e0b' : data.color}`,
+        borderRight: `1px solid ${data.isDocumentation ? '#f59e0b55' : data.color + '44'}`,
+        borderBottom: `1px solid ${data.isDocumentation ? '#f59e0b55' : data.color + '44'}`,
+        borderLeft: `1px solid ${data.isDocumentation ? '#f59e0b55' : data.color + '44'}`,
         borderRadius: 5,
         overflow: 'hidden',
         display: 'flex',
@@ -118,9 +165,15 @@ function NodeCompact({ data }: { data: FileNodeData }) {
         justifyContent: 'center',
         padding: '0 10px',
         gap: 4,
+        position: 'relative',
+        backgroundColor: data.isDocumentation ? 'rgba(54, 38, 12, 0.96)' : 'rgba(28,28,30,0.97)',
       }}
     >
+      <div style={{ position: 'absolute', top: 6, right: 8 }}>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} subtle />
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {data.isDocumentation && <DocumentChip />}
         <span
           style={{
             fontSize: 9,
@@ -213,9 +266,9 @@ function OutlineStripInner({ symbols }: { symbols: FileSymbols }) {
           >
             {cat.icon}
           </div>
-          {cat.items.map((name) => (
+          {cat.items.map((name, idx) => (
             <div
-              key={name}
+              key={`${cat.icon}:${name}:${idx}`}
               style={{
                 fontSize: 5.5,
                 color: cat.color,
@@ -294,8 +347,8 @@ function NodeFull({
       {/* Title bar */}
       <div
         style={{
-          background: '#252526',
-          borderBottom: '1px solid #3c3c3c',
+          background: data.isDocumentation ? '#3b2a11' : '#252526',
+          borderBottom: `1px solid ${data.isDocumentation ? '#7c5a1f' : '#3c3c3c'}`,
           padding: '4px 10px',
           display: 'flex',
           alignItems: 'center',
@@ -321,17 +374,20 @@ function NodeFull({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            flex: 1,
           }}
         >
           {data.filePath}
         </span>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} />
+        {data.isDocumentation && <DocumentChip />}
       </div>
 
       {/* Tab bar */}
       <div
         style={{
-          background: '#2d2d2d',
-          borderBottom: '1px solid #3c3c3c',
+          background: data.isDocumentation ? '#4a3414' : '#2d2d2d',
+          borderBottom: `1px solid ${data.isDocumentation ? '#7c5a1f' : '#3c3c3c'}`,
           padding: '0 8px',
           display: 'flex',
           alignItems: 'center',
@@ -341,8 +397,8 @@ function NodeFull({
       >
         <div
           style={{
-            background: '#1e1e1e',
-            borderTop: `2px solid ${data.color}`,
+            background: data.isDocumentation ? '#2a1e0f' : '#1e1e1e',
+            borderTop: `2px solid ${data.isDocumentation ? '#f59e0b' : data.color}`,
             padding: '0 8px',
             height: '100%',
             display: 'flex',
@@ -474,7 +530,13 @@ function NodeFull({
       {/* Status bar */}
       <div
         style={{
-          background: entryGlow > 0.5 ? `${data.color}dd` : data.color,
+          background: data.isDocumentation
+            ? entryGlow > 0.5
+              ? '#d97706'
+              : '#b45309'
+            : entryGlow > 0.5
+              ? `${data.color}dd`
+              : data.color,
           padding: '2px 8px',
           flexShrink: 0,
           display: 'flex',
@@ -484,7 +546,9 @@ function NodeFull({
         }}
       >
         <span style={{ fontSize: 7, color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-          {LANG_BADGE[data.language] ?? data.language.toUpperCase()}
+          {data.isDocumentation
+            ? 'DOC'
+            : (LANG_BADGE[data.language] ?? data.language.toUpperCase())}
           {entryGlow > 0.1 && (
             <span style={{ opacity: 0.85, marginLeft: 6 }}>
               {entryGlow >= 1
@@ -554,7 +618,7 @@ function FileNodeInner({ data, selected }: NodeProps<FileNodeType>) {
   }
 
   return (
-    <div style={{ width: 300, height: 180, cursor: 'pointer' }}>
+    <div style={{ width: NODE_WIDTH, height: NODE_HEIGHT, cursor: 'pointer' }}>
       <Handle
         type="target"
         position={Position.Left}

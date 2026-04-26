@@ -3,11 +3,32 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useViewport } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
-import type { PairedNodeData } from '@/lib/graph-data';
+import { NODE_WIDTH, NODE_HEIGHT, type PairedNodeData } from '@/lib/graph-data';
 import { useGraphContext } from '@/contexts/GraphContext';
 import { ENTRY_ZOOM_THRESHOLD, ENTRY_APPROACH_START } from './ZoomWatcher';
 
 export type PairedNodeType = Node<PairedNodeData, 'pairedNode'>;
+
+function PedagogicalBadge({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 8,
+        background: '#0f172a',
+        color: '#e0f2fe',
+        border: '1px solid #2563eb55',
+        padding: '2px 5px',
+        borderRadius: 999,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        lineHeight: 1.1,
+        flexShrink: 0,
+      }}
+    >
+      #{label}
+    </span>
+  );
+}
 
 async function fetchPreviewLines(
   owner: string,
@@ -73,8 +94,12 @@ function PairedNodeTiny({ data }: { data: PairedNodeData }) {
         borderRadius: 6,
         overflow: 'hidden',
         border: `2px solid ${data.color}`,
+        position: 'relative',
       }}
     >
+      <div style={{ position: 'absolute', top: 2, left: 2, zIndex: 1 }}>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} />
+      </div>
       <div style={{ flex: 1, background: `${data.color}1a` }} />
       <div style={{ width: 1, background: `${data.color}55` }} />
       <div style={{ flex: 1, background: `${data.color}0d` }} />
@@ -101,8 +126,12 @@ function PairedNodeCompact({ data }: { data: PairedNodeData }) {
         justifyContent: 'center',
         padding: '0 10px',
         gap: 5,
+        position: 'relative',
       }}
     >
+      <div style={{ position: 'absolute', top: 6, right: 8 }}>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} />
+      </div>
       {(
         [
           [data.primaryName, 'C'],
@@ -221,10 +250,12 @@ function PairedNodeFull({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            flex: 1,
           }}
         >
           {dir}
         </span>
+        <PedagogicalBadge label={data.pedagogicalOrderLabel} />
       </div>
 
       {/* Tab bar — two tabs */}
@@ -446,7 +477,7 @@ function PairedNodeInner({ data }: NodeProps<PairedNodeType>) {
   }
 
   return (
-    <div style={{ width: 300, height: 180, cursor: 'pointer' }}>
+    <div style={{ width: NODE_WIDTH, height: NODE_HEIGHT, cursor: 'pointer' }}>
       <Handle
         type="target"
         position={Position.Left}
