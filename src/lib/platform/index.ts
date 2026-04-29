@@ -67,10 +67,6 @@ export function isWebPlatform(): boolean {
   return currentPlatform === 'web';
 }
 
-export function isVSCodePlatform(): boolean {
-  return currentPlatform === 'vscode';
-}
-
 // Platform providers - will be injected
 let fileSystemProvider: FileSystemProvider | null = null;
 let storageProvider: StorageProvider | null = null;

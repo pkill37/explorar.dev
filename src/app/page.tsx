@@ -7,6 +7,7 @@ import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { getMultipleRepoMetadata, type RepoMetadata } from '@/lib/repo-metadata';
+import { CURATED_REPOS, type CuratedRepoConfig } from '@/lib/curated-repos';
 
 // Icon Components
 const DiscordIcon = ({ className }: { className?: string }) => (
@@ -70,107 +71,9 @@ const SOCIAL_LINKS = [
   },
 ];
 
-interface GitHubRepo {
-  owner: string;
-  repo: string;
-  displayName: string;
-  trustedBranches: string[];
-  description?: string;
-  icon?: string;
-  gradient?: string;
-  category?: string;
-  /** Card is visually de-emphasized; repo is available on demand but not pre-bundled */
-  dimmed?: boolean;
-}
+type GitHubRepo = CuratedRepoConfig;
 
-// Curated quickstart repositories
-const QUICKSTART_REPOS: GitHubRepo[] = [
-  {
-    owner: 'apple-oss-distributions',
-    repo: 'xnu',
-    displayName: 'XNU Kernel',
-    icon: '🍎',
-    gradient: 'from-gray-500/10 to-slate-500/10',
-    category: 'Operating Systems',
-    description:
-      "Explore Apple's XNU kernel — the hybrid Mach/BSD core powering macOS and iOS. Study Mach IPC, virtual memory, I/O Kit drivers, and the BSD subsystem.",
-    trustedBranches: (() => {
-      const v = getTrustedVersion('apple-oss-distributions', 'xnu');
-      return v ? [v] : [];
-    })(),
-  },
-  {
-    owner: 'torvalds',
-    repo: 'linux',
-    displayName: 'Linux Kernel',
-    icon: '🐧',
-    gradient: 'from-orange-500/10 to-red-500/10',
-    category: 'Operating Systems',
-    description:
-      'Explore the Linux kernel source code. Study kernel architecture, system calls, device drivers, and core subsystems.',
-    trustedBranches: (() => {
-      const v = getTrustedVersion('torvalds', 'linux');
-      return v ? [v] : [];
-    })(),
-  },
-  {
-    owner: 'python',
-    repo: 'cpython',
-    displayName: 'CPython',
-    icon: '🐍',
-    gradient: 'from-yellow-500/10 to-blue-500/10',
-    category: 'Languages',
-    description:
-      'Explore the Python interpreter source code. Learn how Python works under the hood, from bytecode execution to garbage collection.',
-    trustedBranches: (() => {
-      const v = getTrustedVersion('python', 'cpython');
-      return v ? [v] : [];
-    })(),
-  },
-  {
-    owner: 'bminor',
-    repo: 'glibc',
-    displayName: 'GNU C Library',
-    icon: '🖥️',
-    gradient: 'from-orange-500/10 to-red-500/10',
-    category: 'Operating Systems',
-    description:
-      'Explore the GNU C Library source code. Study standard C library implementations, system calls, and POSIX compliance.',
-    trustedBranches: (() => {
-      const v = getTrustedVersion('bminor', 'glibc');
-      return v ? [v] : [];
-    })(),
-  },
-  {
-    owner: 'golang',
-    repo: 'go',
-    displayName: 'Go',
-    icon: '🐹',
-    gradient: 'from-cyan-500/10 to-teal-500/10',
-    category: 'Languages',
-    description:
-      'Explore the Go runtime source code. Study goroutine scheduling, the garbage collector, channel implementation, and the type system.',
-    trustedBranches: (() => {
-      const v = getTrustedVersion('golang', 'go');
-      return v ? [v] : [];
-    })(),
-  },
-  {
-    owner: 'llvm',
-    repo: 'llvm-project',
-    displayName: 'LLVM Project',
-    icon: '⚙️',
-    gradient: 'from-blue-500/10 to-cyan-500/10',
-    category: 'Languages',
-    description:
-      'Explore the LLVM compiler infrastructure. Study compiler design, optimization passes, and code generation.',
-    trustedBranches: (() => {
-      const v = getTrustedVersion('llvm', 'llvm-project');
-      return v ? [v] : [];
-    })(),
-    dimmed: true,
-  },
-];
+const QUICKSTART_REPOS: GitHubRepo[] = CURATED_REPOS;
 
 export default function Home() {
   const router = useRouter();
@@ -218,7 +121,7 @@ export default function Home() {
 
   // Get selected branch for a repo (defaults to first trusted branch)
   const getSelectedBranch = (repo: GitHubRepo): string => {
-    return repo.trustedBranches[0] || '';
+    return getTrustedVersion(repo.owner, repo.repo);
   };
 
   // Handle repository download or open
@@ -405,6 +308,7 @@ export default function Home() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 p-5">
                 {QUICKSTART_REPOS.filter((r) => r.category === 'Operating Systems').map((repo) => {
                   const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+                  const selectedBranch = getSelectedBranch(repo);
 
                   return (
                     <button
@@ -415,9 +319,9 @@ export default function Home() {
                     >
                       <div className="relative z-10">
                         <div className="flex items-center justify-between mb-3">
-                          {repo.trustedBranches.length > 0 ? (
+                          {selectedBranch ? (
                             <div className="px-2 py-1 bg-gray-700/70 text-gray-200 text-xs font-medium rounded border border-gray-600/70">
-                              {getSelectedBranch(repo)}
+                              {selectedBranch}
                             </div>
                           ) : (
                             <div />
@@ -510,6 +414,7 @@ export default function Home() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 p-5">
                 {QUICKSTART_REPOS.filter((r) => r.category === 'Languages').map((repo) => {
                   const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+                  const selectedBranch = getSelectedBranch(repo);
 
                   return (
                     <button
@@ -524,9 +429,9 @@ export default function Home() {
                             <div className="px-2 py-1 bg-gray-800/70 text-gray-500 text-xs font-medium rounded border border-gray-700/50">
                               on demand
                             </div>
-                          ) : repo.trustedBranches.length > 0 ? (
+                          ) : selectedBranch ? (
                             <div className="px-2 py-1 bg-gray-700/70 text-gray-200 text-xs font-medium rounded border border-gray-600/70">
-                              {getSelectedBranch(repo)}
+                              {selectedBranch}
                             </div>
                           ) : null}
                         </div>

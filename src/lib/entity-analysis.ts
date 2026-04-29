@@ -323,13 +323,3 @@ export function extractEntities(filePath: string, content: string): CodeEntity[]
   }
   return [];
 }
-
-// ─── Color per kind ──────────────────────────────────────────────────────────
-
-export const ENTITY_KIND_COLOR: Record<EntityKind, string> = {
-  struct: '#38bdf8', // sky blue
-  class: '#a78bfa', // violet
-  enum: '#fb923c', // orange
-  interface: '#4ade80', // green
-  type: '#f472b6', // pink
-};

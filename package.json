@@ -12,6 +12,7 @@
     "predev": "tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=python/cpython --only=torvalds/linux --depth=1",
     "dev": "next dev --turbopack --port 3000",
     "build": "next build",
+    "postbuild": "tsx scripts/report-build.ts",
     "prebuild": "tsx scripts/download-repos.ts --depth=1 && tsx scripts/validate-guides.ts && tsx scripts/check-guide-refs.ts",
     "start": "next start",
     "serve": "serve -l 3000 out -c",

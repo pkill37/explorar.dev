@@ -2,13 +2,13 @@
 // Reads from public/repos/ directory using fetch (works with static export)
 
 import type { FileNode } from '@/types';
-import { getProjectConfig } from './project-guides';
+import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
 
 /**
  * Check if a repository is curated (pre-downloaded at build time)
  */
 export function isCuratedRepo(owner: string, repo: string): boolean {
-  return getProjectConfig(owner, repo) !== null;
+  return isConfiguredCuratedRepo(owner, repo);
 }
 
 /**
@@ -55,58 +55,6 @@ export async function readFileFromStatic(
     }
     throw new Error(`Failed to read file from static storage: ${filePath}`);
   }
-}
-
-/**
- * List directory contents from static files
- * Uses tree structure from manifest to find directory contents
- */
-export async function listDirectoryFromStatic(
-  owner: string,
-  repo: string,
-  branch: string,
-  dirPath: string = ''
-): Promise<Array<{ name: string; path: string; type: 'file' | 'directory'; size?: number }>> {
-  // Get full tree structure
-  const tree = await getTreeStructureFromStatic(owner, repo, branch);
-  if (!tree) {
-    return [];
-  }
-
-  // Find the directory in the tree
-  const findDirectory = (nodes: FileNode[], targetPath: string): FileNode | null => {
-    if (!targetPath) {
-      // Return root level items
-      return { name: '', path: '', type: 'directory', children: nodes } as FileNode;
-    }
-
-    const pathParts = targetPath.split('/').filter(Boolean);
-    let current: FileNode | null = null;
-    let currentNodes = nodes;
-
-    for (const part of pathParts) {
-      current = currentNodes.find((n) => n.name === part && n.type === 'directory') || null;
-      if (!current || !current.children) {
-        return null;
-      }
-      currentNodes = current.children;
-    }
-
-    return current;
-  };
-
-  const dir = findDirectory(tree, dirPath);
-  if (!dir || !dir.children) {
-    return [];
-  }
-
-  // Convert FileNode children to FileEntry format
-  return dir.children.map((node) => ({
-    name: node.name,
-    path: node.path,
-    type: node.type,
-    size: node.size,
-  }));
 }
 
 // Compact node format stored in manifest (short keys, no path/size)

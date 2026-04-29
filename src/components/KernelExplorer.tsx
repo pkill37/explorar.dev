@@ -486,37 +486,36 @@ export default function KernelExplorer({
         // For other directories, check if downloaded and download if needed, then expand
         setSelectedFile(normalizedPath);
 
-        // Check if directory metadata exists, download if needed
+        // For arbitrary repos: fetch directory metadata from GitHub API if not cached.
+        // Curated repos skip this — directory structure comes from the static manifest.
         const handleDirectoryExpand = async () => {
           try {
-            const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
-            const config = owner && repo ? getProjectConfig(owner, repo) : null;
-            const defaultBranch = config?.defaultBranch || 'main';
-            const branchToUse = currentBranch || branch || defaultBranch;
+            if (!isCuratedRepo(owner || 'torvalds', repo || 'linux')) {
+              const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
+              const config = owner && repo ? getProjectConfig(owner, repo) : null;
+              const defaultBranch = config?.defaultBranch || 'main';
+              const branchToUse = currentBranch || branch || defaultBranch;
 
-            // Check if directory metadata exists
-            const metadata = await getDirectoryMetadata(
-              'github',
-              identifier,
-              branchToUse,
-              normalizedPath
-            );
-
-            // If metadata doesn't exist, download the directory contents first
-            if (!metadata || metadata.length === 0) {
-              await downloadDirectoryContents(
-                owner || 'torvalds',
-                repo || 'linux',
+              const metadata = await getDirectoryMetadata(
+                'github',
+                identifier,
                 branchToUse,
                 normalizedPath
               );
+
+              if (!metadata || metadata.length === 0) {
+                await downloadDirectoryContents(
+                  owner || 'torvalds',
+                  repo || 'linux',
+                  branchToUse,
+                  normalizedPath
+                );
+              }
             }
 
-            // Now expand the directory
             setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
           } catch (error) {
             console.error('Failed to download directory:', error);
-            // Still try to expand even if download fails (might work from cache)
             setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
           }
         };

@@ -270,53 +270,6 @@ export async function getAvailableBranches(
 }
 
 /**
- * Read file content from storage
- */
-export async function readFileFromStorage(
-  source: 'github' | 'uploaded',
-  identifier: string,
-  branch: string,
-  path: string
-): Promise<string> {
-  try {
-    const database = await ensureDB();
-    const key = getFileKey(source, identifier, branch, path);
-    const transaction = database.transaction([FILES_STORE], 'readonly');
-    const store = transaction.objectStore(FILES_STORE);
-
-    return new Promise<string>((resolve, reject) => {
-      const request = store.get(key);
-
-      request.onsuccess = () => {
-        const record = request.result;
-        if (!record) {
-          reject(new Error(`File not found: ${path}`));
-          return;
-        }
-
-        // Convert ArrayBuffer or string to string
-        if (typeof record.content === 'string') {
-          resolve(record.content);
-        } else if (record.content instanceof ArrayBuffer) {
-          // Convert ArrayBuffer to string (assuming UTF-8)
-          const decoder = new TextDecoder();
-          resolve(decoder.decode(record.content));
-        } else {
-          reject(new Error(`Invalid content type for file: ${path}`));
-        }
-      };
-
-      request.onerror = () => {
-        reject(new Error(`Failed to read file: ${path}`));
-      };
-    });
-  } catch (error) {
-    console.error('Failed to read file from storage:', error);
-    throw new Error(`Failed to read file: ${path}`);
-  }
-}
-
-/**
  * Store directory metadata (file listings) for lazy loading
  */
 export async function storeDirectoryMetadata(

@@ -1,7 +1,7 @@
 // Dynamic project guide configuration system using docs/ markdown files
 import React from 'react';
 import { QuizQuestion } from '@/components/ChapterQuiz';
-import { getGuideByRepo } from './guides/docs-loader';
+import { getCuratedGuideByRepo } from './guides/docs-loader';
 
 export interface FileRecommendation {
   path: string;
@@ -173,7 +173,7 @@ export function createFileRecommendationsComponent(
  * Dynamically builds configuration from docs/ markdown files
  */
 export function getProjectConfig(owner: string, repo: string): ProjectConfig | null {
-  const guideDoc = getGuideByRepo(owner, repo);
+  const guideDoc = getCuratedGuideByRepo(owner, repo);
 
   if (!guideDoc) {
     return null;

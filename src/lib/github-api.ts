@@ -5,6 +5,7 @@ import { getGitHubRepoIdentifier, isFileAvailable, getTreeStructure } from './re
 import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } from './repo-static';
 import { getHttpClient, isWebPlatform } from './platform';
 import { storeTreeStructure } from './repo-storage';
+import { getCuratedRepoBranch } from './curated-repos';
 
 /**
  * Build headers for GitHub API requests
@@ -27,20 +28,6 @@ type GitHubConfig = {
 let currentConfig: GitHubConfig = { ...GITHUB_CONFIG };
 
 /**
- * Trusted version for each repository
- * Only one trusted branch per repository for now
- * Main/master branches are excluded as they are unstable
- */
-const TRUSTED_VERSIONS: Record<string, string> = {
-  'torvalds/linux': 'v6.1',
-  'llvm/llvm-project': 'llvmorg-18.1.0',
-  'bminor/glibc': 'glibc-2.39',
-  'python/cpython': 'v3.12.0',
-  'golang/go': 'go1.22.0',
-  'apple-oss-distributions/xnu': 'xnu-12377.1.9',
-} as const;
-
-/**
  * Check if a branch/version is unstable (main or master)
  */
 export function isUnstableBranch(branch: string): boolean {
@@ -60,8 +47,7 @@ export function filterUnstableBranches(branches: string[]): string[] {
  * Main/master branches are never included
  */
 export function getTrustedVersion(owner: string, repo: string): string {
-  const key = `${owner}/${repo}`;
-  return TRUSTED_VERSIONS[key] || '';
+  return getCuratedRepoBranch(owner, repo);
 }
 
 /**

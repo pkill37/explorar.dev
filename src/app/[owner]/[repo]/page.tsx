@@ -2,15 +2,14 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import RepositoryExplorerClient from './client';
 import LoadingScreen from '@/components/LoadingScreen';
-import { getAllGuideDocuments } from '@/lib/guides/docs-loader';
+import { getAllCuratedGuideDocuments } from '@/lib/guides/docs-loader';
 
-// Only pre-generated routes are valid; all others return 404
-// For arbitrary repos, they will fail in static export but work in dev mode
+// Only curated, pre-generated routes are valid.
 export const dynamicParams = false;
 
-// Generate routes for all curated repositories from docs/ guides
+// Generate routes only for curated repositories that ship a bundled guide.
 export async function generateStaticParams() {
-  const guides = getAllGuideDocuments();
+  const guides = getAllCuratedGuideDocuments();
   return Array.from(guides.values()).map((doc) => ({
     owner: doc.metadata.owner,
     repo: doc.metadata.repo,
@@ -26,7 +25,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { owner, repo } = await params;
-  const guides = getAllGuideDocuments();
+  const guides = getAllCuratedGuideDocuments();
   const guide = Array.from(guides.values()).find(
     (d) => d.metadata.owner === owner && d.metadata.repo === repo
   );

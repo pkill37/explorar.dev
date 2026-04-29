@@ -1,16 +1,12 @@
 // Auto-discovery system for docs/ markdown guides
 import matter from 'gray-matter';
+import { isCuratedRepo } from '@/lib/curated-repos';
 
 // Import all guide markdown files
 import pythonCpythonMd from '../../../docs/python_cpython.md?raw';
 import torvaldsLinuxMd from '../../../docs/torvalds_linux.md?raw';
 import llvmProjectMd from '../../../docs/llvm_project.md?raw';
 import bminorGlibcMd from '../../../docs/bminor_glibc.md?raw';
-import fridaFrameworkMd from '../../../docs/frida_framework.md?raw';
-import jaxFrameworkMd from '../../../docs/jax_framework.md?raw';
-import pytorchFrameworkMd from '../../../docs/pytorch_framework.md?raw';
-import tinygradFrameworkMd from '../../../docs/tinygrad_framework.md?raw';
-import golangGoMd from '../../../docs/golang_go.md?raw';
 import appleXnuMd from '../../../docs/apple-oss-distributions_xnu.md?raw';
 
 /**
@@ -42,11 +38,6 @@ const DOCS_MARKDOWN: Record<string, string> = {
   'torvalds_linux.md': torvaldsLinuxMd,
   'llvm_project.md': llvmProjectMd,
   'bminor_glibc.md': bminorGlibcMd,
-  'frida_framework.md': fridaFrameworkMd,
-  'jax_framework.md': jaxFrameworkMd,
-  'pytorch_framework.md': pytorchFrameworkMd,
-  'tinygrad_framework.md': tinygradFrameworkMd,
-  'golang_go.md': golangGoMd,
   'apple-oss-distributions_xnu.md': appleXnuMd,
 };
 
@@ -133,6 +124,27 @@ export function getGuideByRepo(owner: string, repo: string): GuideDocument | nul
   }
 
   return null;
+}
+
+export function getAllCuratedGuideDocuments(): Map<string, GuideDocument> {
+  const guides = getAllGuideDocuments();
+  const curatedGuides = new Map<string, GuideDocument>();
+
+  for (const [guideId, doc] of guides) {
+    if (isCuratedRepo(doc.metadata.owner, doc.metadata.repo)) {
+      curatedGuides.set(guideId, doc);
+    }
+  }
+
+  return curatedGuides;
+}
+
+export function getCuratedGuideByRepo(owner: string, repo: string): GuideDocument | null {
+  if (!isCuratedRepo(owner, repo)) {
+    return null;
+  }
+
+  return getGuideByRepo(owner, repo);
 }
 
 /**

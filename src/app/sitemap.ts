@@ -1,17 +1,11 @@
 import { MetadataRoute } from 'next';
+import { CURATED_REPOS } from '@/lib/curated-repos';
 
 export const dynamic = 'force-static';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const commonRepos = [
-    { owner: 'torvalds', repo: 'linux', priority: 0.9 },
-    { owner: 'python', repo: 'cpython', priority: 0.9 },
-    { owner: 'bminor', repo: 'glibc', priority: 0.8 },
-    { owner: 'llvm', repo: 'llvm-project', priority: 0.8 },
-  ];
-
   const baseDate = new Date();
 
   return [
@@ -21,11 +15,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily',
       priority: 1.0,
     },
-    ...commonRepos.map(({ owner, repo, priority }) => ({
+    ...CURATED_REPOS.map(({ owner, repo, sitemapPriority }) => ({
       url: `${siteUrl}/${owner}/${repo}`,
       lastModified: baseDate,
       changeFrequency: 'weekly' as const,
-      priority,
+      priority: sitemapPriority,
     })),
   ];
 }

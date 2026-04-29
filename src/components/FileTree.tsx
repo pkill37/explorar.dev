@@ -278,9 +278,19 @@ const FileTree: React.FC<FileTreeProps> = ({
           console.warn('Failed to load complete tree from storage, falling back:', storageError);
         }
 
-        // Fallback: load root directory only (backward compatibility)
+        // Fallback: load tree via buildFileTree.
+        // For curated repos this returns the full manifest tree (all children populated).
+        // Set completeTree so subsequent directory expansions use in-memory data
+        // instead of re-fetching the manifest on every click.
         const nodes = listDirectory ? await listDirectory('') : await buildFileTree('');
         setRootNodes(nodes);
+        const hasPopulatedDirs = nodes.some(
+          (n) => n.type === 'directory' && n.children !== undefined
+        );
+        if (hasPopulatedDirs) {
+          markDirectoriesAsLoaded(nodes);
+          setCompleteTree(nodes);
+        }
       } catch (err) {
         // Check if it's a rate limit error
         if (err instanceof GitHubApiError && err.status === 403) {
