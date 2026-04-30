@@ -123,6 +123,10 @@ function parseRepoSelector(selector: string): { key: string; branchOverride?: st
   return { key, branchOverride };
 }
 
+function isCommitSha(ref: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(ref);
+}
+
 /**
  * Run a command and resolve on exit 0. Output is piped (not inherited) so
  * parallel invocations don't produce interleaved terminal noise; stderr is
@@ -238,6 +242,10 @@ async function shouldSkipDownload(
   if (!storedSha) {
     // Old manifest written before SHA tracking — fall back to existence check.
     return true;
+  }
+
+  if (isCommitSha(branch)) {
+    return storedSha.toLowerCase() === branch.toLowerCase();
   }
 
   const remoteSha = await getRemoteSHA(owner, repo, branch);
@@ -458,6 +466,36 @@ async function gitCloneShallow(
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
   const sparsePatterns = buildSparsePatterns(config);
 
+  if (isCommitSha(branch)) {
+    fs.mkdirSync(repoDir, { recursive: true });
+    await runCommand('git', ['init'], repoDir);
+    await runCommand('git', ['remote', 'add', 'origin', repoUrl], repoDir);
+
+    if (sparsePatterns) {
+      await runCommand(
+        'git',
+        ['sparse-checkout', 'set', '--no-cone', '--stdin'],
+        repoDir,
+        [...sparsePatterns, ''].join('\n')
+      );
+    }
+
+    await runCommand(
+      'git',
+      ['fetch', '--depth', String(depth), '--filter=blob:none', 'origin', branch],
+      repoDir
+    );
+    await runCommand('git', ['checkout', '--detach', 'FETCH_HEAD'], repoDir);
+
+    const sha = await getLocalSHA(repoDir);
+    const gitDir = path.join(repoDir, '.git');
+    if (fs.existsSync(gitDir)) {
+      fs.rmSync(gitDir, { recursive: true, force: true });
+    }
+
+    return sha;
+  }
+
   const cloneArgs = [
     '-c',
     'advice.detachedHead=false',
@@ -665,6 +703,42 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
   }
 }
 
+const AVATARS_DIR = path.join(process.cwd(), 'public', 'avatars');
+
+async function downloadAvatar(url: string, destPath: string): Promise<void> {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'explorar.dev-build/1.0 (https://github.com/pkill37/explorar.dev)' },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(destPath, buf);
+}
+
+async function downloadAllAvatars(): Promise<void> {
+  fs.mkdirSync(AVATARS_DIR, { recursive: true });
+
+  const seen = new Set<string>();
+
+  for (const repo of CURATED_REPOS) {
+    const file = repo.avatarFile ?? `${repo.owner}.png`;
+    const destPath = path.join(AVATARS_DIR, file);
+
+    if (seen.has(file) || fs.existsSync(destPath)) {
+      seen.add(file);
+      continue;
+    }
+    seen.add(file);
+
+    const url = repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`;
+    try {
+      await downloadAvatar(url, destPath);
+      console.log(`   ✓ Avatar: ${file}`);
+    } catch (err) {
+      console.warn(`   ⚠ Avatar failed (${file}): ${err}`);
+    }
+  }
+}
+
 /**
  * Main function
  */
@@ -683,6 +757,9 @@ async function main() {
     }
     return;
   }
+
+  console.log('\n🖼️  Downloading owner avatars...');
+  await downloadAllAvatars();
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });

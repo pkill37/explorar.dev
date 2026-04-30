@@ -21,9 +21,37 @@ export interface CuratedRepoConfig {
   category?: string;
   dimmed?: boolean;
   staticBuild?: RepoStaticBuildConfig;
+  /** Filename under /avatars/ (e.g. "gnu.png"). Defaults to "{owner}.png". */
+  avatarFile?: string;
+  /** URL to fetch the avatar from at build time. Defaults to github.com/{owner}.png */
+  buildAvatarUrl?: string;
 }
 
 export const CURATED_REPOS: CuratedRepoConfig[] = [
+  {
+    owner: 'littlekernel',
+    repo: 'lk',
+    branch: 'a521fe60e1a16d5670fe24b7fca2c5155b3339c4',
+    displayName: 'LK Embedded Kernel',
+    icon: '🧩',
+    gradient: 'from-emerald-500/10 to-cyan-500/10',
+    category: 'Operating Systems',
+    description:
+      'Explore LK, a small SMP-aware embedded kernel used in bootloaders and bring-up environments across many architectures.',
+    seoDescription:
+      'Explore the Little Kernel (LK) embedded kernel source code. Study its tiny kernel core, platform ports, target configuration model, and modular embedded build system.',
+    seoKeywords: [
+      'Little Kernel',
+      'LK kernel',
+      'embedded kernel',
+      'bootloader kernel',
+      'RTOS',
+      'kernel bring-up',
+      'embedded systems',
+      'platform porting',
+    ],
+    sitemapPriority: 0.8,
+  },
   {
     owner: 'apple-oss-distributions',
     repo: 'xnu',
@@ -56,6 +84,9 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     icon: '🐧',
     gradient: 'from-orange-500/10 to-red-500/10',
     category: 'Operating Systems',
+    avatarFile: 'tux.png',
+    buildAvatarUrl:
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/256px-Tux.svg.png',
     description:
       'Explore the Linux kernel source code. Study kernel architecture, system calls, device drivers, and core subsystems.',
     seoDescription:
@@ -104,6 +135,9 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     icon: '🖥️',
     gradient: 'from-orange-500/10 to-red-500/10',
     category: 'Operating Systems',
+    avatarFile: 'gnu.png',
+    buildAvatarUrl:
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Heckert_GNU_white.svg/256px-Heckert_GNU_white.svg.png',
     description:
       'Explore the GNU C Library source code. Study standard C library implementations, system calls, and POSIX compliance.',
     seoDescription:
@@ -128,6 +162,8 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     icon: '⚙️',
     gradient: 'from-blue-500/10 to-cyan-500/10',
     category: 'Languages',
+    avatarFile: 'llvm-dragon.png',
+    buildAvatarUrl: 'https://llvm.org/img/DragonMedium.png',
     description:
       'Explore the LLVM compiler infrastructure. Study compiler design, optimization passes, and code generation.',
     seoDescription:
@@ -143,7 +179,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'compiler engineering',
     ],
     sitemapPriority: 0.8,
-    dimmed: true,
   },
 ];
 

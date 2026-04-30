@@ -3,6 +3,7 @@ import matter from 'gray-matter';
 import { isCuratedRepo } from '@/lib/curated-repos';
 
 // Import all guide markdown files
+import littlekernelLkMd from '../../../docs/littlekernel_lk.md?raw';
 import pythonCpythonMd from '../../../docs/python_cpython.md?raw';
 import torvaldsLinuxMd from '../../../docs/torvalds_linux.md?raw';
 import llvmProjectMd from '../../../docs/llvm_project.md?raw';
@@ -34,6 +35,7 @@ export interface GuideDocument {
  * Mapping of markdown files
  */
 const DOCS_MARKDOWN: Record<string, string> = {
+  'littlekernel_lk.md': littlekernelLkMd,
   'python_cpython.md': pythonCpythonMd,
   'torvalds_linux.md': torvaldsLinuxMd,
   'llvm_project.md': llvmProjectMd,

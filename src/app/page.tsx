@@ -6,7 +6,6 @@ import { getTrustedVersion } from '@/lib/github-api';
 import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
-import { getMultipleRepoMetadata, type RepoMetadata } from '@/lib/repo-metadata';
 import { CURATED_REPOS, type CuratedRepoConfig } from '@/lib/curated-repos';
 
 // Icon Components
@@ -18,17 +17,6 @@ const DiscordIcon = ({ className }: { className?: string }) => (
     xmlns="http://www.w3.org/2000/svg"
   >
     <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-  </svg>
-);
-
-const TelegramIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
   </svg>
 );
 
@@ -61,19 +49,7 @@ const SOCIAL_LINKS = [
     title: 'Join Our Community',
     description: 'Discuss code, share discoveries, get help',
   },
-  {
-    name: 'Telegram',
-    url: 'https://t.me/explorardev',
-    icon: TelegramIcon,
-    color: 'hover:bg-[#0088cc] hover:text-white',
-    title: 'Stay Updated',
-    description: 'Get news, updates & quick discussions',
-  },
 ];
-
-type GitHubRepo = CuratedRepoConfig;
-
-const QUICKSTART_REPOS: GitHubRepo[] = CURATED_REPOS;
 
 export default function Home() {
   const router = useRouter();
@@ -82,7 +58,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-  const [repoMetadata, setRepoMetadata] = useState<Map<string, RepoMetadata | null>>(new Map());
 
   // Load existing repositories
   const loadData = async () => {
@@ -99,33 +74,13 @@ export default function Home() {
     loadData();
   }, []);
 
-  // Fetch repository metadata (owner avatars) for quickstart repos
-  useEffect(() => {
-    const fetchMetadata = async () => {
-      try {
-        const reposToFetch = QUICKSTART_REPOS.map((repo) => ({
-          owner: repo.owner,
-          repo: repo.repo,
-        }));
-
-        const metadata = await getMultipleRepoMetadata(reposToFetch);
-        setRepoMetadata(metadata);
-      } catch (err) {
-        console.error('Failed to fetch repository metadata:', err);
-        // Don't set error state - this is non-critical, UI will fall back to emojis
-      }
-    };
-
-    fetchMetadata();
-  }, []);
-
   // Get selected branch for a repo (defaults to first trusted branch)
-  const getSelectedBranch = (repo: GitHubRepo): string => {
+  const getSelectedBranch = (repo: CuratedRepoConfig): string => {
     return getTrustedVersion(repo.owner, repo.repo);
   };
 
   // Handle repository download or open
-  const handleRepositoryAction = async (githubRepo: GitHubRepo) => {
+  const handleRepositoryAction = async (githubRepo: CuratedRepoConfig) => {
     const repoKey = `${githubRepo.owner}/${githubRepo.repo}`;
     const identifier = `${githubRepo.owner}~${githubRepo.repo}`;
     const existingRepo = repositories.find(
@@ -285,340 +240,119 @@ export default function Home() {
             </div>
           )}
 
-          {/* Repository Sea - Whiteboard-style exploration */}
-          <div className="mb-16 relative">
-            {/* Subtle grid background for whiteboard feel */}
-            <div
-              className="absolute inset-0 opacity-10 pointer-events-none"
-              style={{
-                backgroundImage:
-                  'radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
-              }}
-            ></div>
+          {/* Repo grid */}
+          <div className="mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {CURATED_REPOS.map((repo) => {
+              const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
+              const selectedBranch = getSelectedBranch(repo);
+              const avatarUrl = `/avatars/${repo.avatarFile ?? `${repo.owner}.png`}`;
 
-            {/* Operating Systems section */}
-            <div className="border border-orange-500/30 rounded-xl overflow-hidden bg-gray-900/50">
-              <div className="px-4 py-3 border-b border-orange-500/20 flex items-center gap-2 bg-orange-500/10">
-                <span className="text-base">🖥️</span>
-                <span className="text-xs font-semibold text-orange-300 uppercase tracking-wider">
-                  Operating Systems
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 p-5">
-                {QUICKSTART_REPOS.filter((r) => r.category === 'Operating Systems').map((repo) => {
-                  const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
-                  const selectedBranch = getSelectedBranch(repo);
+              return (
+                <button
+                  key={`${repo.owner}/${repo.repo}`}
+                  onClick={() => !repo.dimmed && handleRepositoryAction(repo)}
+                  disabled={isDownloading || repo.dimmed}
+                  className={`group relative p-5 bg-gray-900/60 border border-gray-800 rounded-xl transition-all duration-200 text-left overflow-hidden ${repo.dimmed ? 'opacity-25 grayscale cursor-default' : 'hover:bg-gray-800/70 hover:border-gray-700 cursor-pointer'}`}
+                >
+                  <div className="flex gap-4">
+                    {/* Avatar */}
+                    <div className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                      {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={avatarUrl}
+                          alt={repo.owner}
+                          className="w-full h-full object-contain p-1.5"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">
+                          {repo.icon || '📦'}
+                        </div>
+                      )}
+                    </div>
 
-                  return (
-                    <button
-                      key={`${repo.owner}/${repo.repo}`}
-                      onClick={() => !repo.dimmed && handleRepositoryAction(repo)}
-                      disabled={isDownloading || repo.dimmed}
-                      className={`group relative p-5 bg-gray-800/50 border border-gray-700/50 rounded-lg transition-all duration-200 text-left overflow-hidden ${repo.dimmed ? 'opacity-20 grayscale cursor-default' : 'hover:bg-gray-800/70 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'}`}
-                    >
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
-                          {selectedBranch ? (
-                            <div className="px-2 py-1 bg-gray-700/70 text-gray-200 text-xs font-medium rounded border border-gray-600/70">
-                              {selectedBranch}
-                            </div>
-                          ) : (
-                            <div />
-                          )}
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                        <h2 className="text-sm font-semibold text-gray-100 group-hover:text-white transition-colors truncate">
+                          {repo.displayName}
+                        </h2>
                         </div>
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="relative w-16 h-16 flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                            {(() => {
-                              const metadata = repoMetadata.get(`${repo.owner}/${repo.repo}`);
-                              const avatarUrl = metadata?.ownerAvatarUrl;
-                              if (avatarUrl) {
-                                return (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={avatarUrl}
-                                    alt={repo.owner}
-                                    className="w-full h-full rounded-full object-cover"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                    }}
-                                  />
-                                );
-                              }
-                              return (
-                                <div className="w-full h-full flex items-center justify-center text-4xl">
-                                  {repo.icon || '📦'}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h2 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
-                              {repo.displayName}
-                            </h2>
-                            <p className="text-xs font-mono text-gray-400 group-hover:text-gray-300 transition-colors truncate">
-                              {repo.owner}/{repo.repo}
-                            </p>
-                          </div>
-                        </div>
-                        {repo.description && (
-                          <p className="text-sm text-gray-400 leading-relaxed line-clamp-2 mb-4">
-                            {repo.description}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-700/30">
-                          {isDownloading ? (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs font-medium text-blue-300">
-                              <svg
-                                className="w-3.5 h-3.5 animate-spin"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                />
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                />
-                              </svg>
-                              <span>Downloading...</span>
-                            </div>
-                          ) : (
-                            <div className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">
-                              Click to explore →
-                            </div>
-                          )}
-                        </div>
+                      <p className="text-[11px] font-mono text-gray-500 truncate mb-1.5">
+                        {repo.owner}/{repo.repo}
+                      </p>
+                      {repo.description && (
+                        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+                          {repo.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer row */}
+                  <div className="mt-3 flex items-center justify-between">
+                    {selectedBranch && !repo.dimmed && (
+                      <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 text-[10px] font-mono rounded border border-gray-700/60">
+                        {selectedBranch}
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Languages section */}
-            <div className="mt-8 border border-yellow-500/30 rounded-xl overflow-hidden bg-gray-900/50">
-              <div className="px-4 py-3 border-b border-yellow-500/20 flex items-center gap-2 bg-yellow-500/10">
-                <span className="text-base">🐍</span>
-                <span className="text-xs font-semibold text-yellow-300 uppercase tracking-wider">
-                  Languages
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 p-5">
-                {QUICKSTART_REPOS.filter((r) => r.category === 'Languages').map((repo) => {
-                  const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
-                  const selectedBranch = getSelectedBranch(repo);
-
-                  return (
-                    <button
-                      key={`${repo.owner}/${repo.repo}`}
-                      onClick={() => !repo.dimmed && handleRepositoryAction(repo)}
-                      disabled={isDownloading || repo.dimmed}
-                      className={`group relative p-5 bg-gray-800/50 border border-gray-700/50 rounded-lg transition-all duration-200 text-left overflow-hidden ${repo.dimmed ? 'opacity-20 grayscale cursor-default' : 'hover:bg-gray-800/70 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'}`}
-                    >
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
-                          {repo.dimmed ? (
-                            <div className="px-2 py-1 bg-gray-800/70 text-gray-500 text-xs font-medium rounded border border-gray-700/50">
-                              on demand
-                            </div>
-                          ) : selectedBranch ? (
-                            <div className="px-2 py-1 bg-gray-700/70 text-gray-200 text-xs font-medium rounded border border-gray-600/70">
-                              {selectedBranch}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="relative w-16 h-16 flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                            {(() => {
-                              const metadata = repoMetadata.get(`${repo.owner}/${repo.repo}`);
-                              const avatarUrl = metadata?.ownerAvatarUrl;
-                              if (avatarUrl) {
-                                return (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={avatarUrl}
-                                    alt={repo.owner}
-                                    className="w-full h-full rounded-full object-cover"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                    }}
-                                  />
-                                );
-                              }
-                              return (
-                                <div className="w-full h-full flex items-center justify-center text-4xl">
-                                  {repo.icon || '📦'}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h2 className="text-base font-bold text-gray-100 group-hover:text-white transition-colors mb-1 truncate">
-                              {repo.displayName}
-                            </h2>
-                            <p className="text-xs font-mono text-gray-400 group-hover:text-gray-300 transition-colors truncate">
-                              {repo.owner}/{repo.repo}
-                            </p>
-                          </div>
-                        </div>
-                        {repo.description && (
-                          <p className="text-sm text-gray-400 leading-relaxed line-clamp-2 mb-4">
-                            {repo.description}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-700/30">
-                          {isDownloading ? (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs font-medium text-blue-300">
-                              <svg
-                                className="w-3.5 h-3.5 animate-spin"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                ></circle>
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                              </svg>
-                              <span>Downloading...</span>
-                            </div>
-                          ) : repo.dimmed ? (
-                            <div className="text-xs text-gray-600">Enter URL to explore →</div>
-                          ) : (
-                            <div className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">
-                              Click to explore →
-                            </div>
-                          )}
-                        </div>
+                    )}
+                    {isDownloading ? (
+                      <div className="flex items-center gap-1.5 text-xs text-blue-400 ml-auto">
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        Downloading…
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                    ) : (
+                      <div className="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors ml-auto">
+                        Explore →
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </main>
 
-      {/* Footer with Community Links */}
+      {/* Footer */}
       <footer className="w-full py-8 px-4 border-t border-gray-800/50 relative z-10">
         <div className="w-full max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-            {/* Left Column - Community Header */}
-            <div className="lg:col-span-1">
-              <h3 className="text-lg font-semibold text-gray-200 mb-2">Join Our Community</h3>
-              <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                Connect with fellow developers, share your discoveries, and contribute to making
-                code exploration better for everyone.
-              </p>
-              <div className="mb-3">
-                <p className="text-sm text-gray-300 font-medium mb-1">
-                  🚀 Help us build the future of code exploration
-                </p>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Add new features • Fix bugs • Improve documentation • Share feedback
-                </p>
-              </div>
-
-              {/* Meta + contribution links */}
-              <div className="mt-6 pt-4 border-t border-gray-800/50">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                  <span>Open-source</span>
-                  <span aria-hidden="true">•</span>
-                  <span>Built by the community, for the community</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Community Links */}
-            <div className="lg:col-span-1 space-y-4">
-              {SOCIAL_LINKS.map((link, index) => {
-                const IconComponent = link.icon;
-                const isGitHub = link.name === 'GitHub';
-
-                return isGitHub ? (
-                  <div
-                    key={index}
-                    className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 w-full ${link.color} border-green-500/30 bg-gradient-to-r from-green-500/10 to-blue-500/10`}
-                    title={link.title}
-                    aria-label={link.title}
-                  >
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 flex-1 min-w-0"
-                      aria-label={link.title}
-                      title={link.title}
-                    >
-                      <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
-                      <div className="flex flex-col text-left flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
-                          {link.title}
-                        </span>
-                        <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
-                          {link.description}
-                        </span>
-                      </div>
-                    </a>
-
-                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                      <div className="px-2 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-md">
-                        <span className="text-xs font-medium text-green-300">⭐ Star</span>
-                      </div>
-                      <div className="px-2 py-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-md">
-                        <span className="text-xs font-medium text-orange-300">🍴 Fork</span>
-                      </div>
-                      <a
-                        href="https://github.com/pkill37/explorar.dev/issues"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
-                        aria-label="🐛 Report an issue"
-                        title="Report an issue"
-                      >
-                        <span className="text-xs font-medium text-gray-300">🐛 Issue</span>
-                      </a>
-                      <a
-                        href="https://github.com/pkill37/explorar.dev/pulls"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
-                        aria-label="📝 Submit a PR"
-                        title="Submit a PR"
-                      >
-                        <span className="text-xs font-medium text-gray-300">📝 PR</span>
-                      </a>
-                    </div>
-                  </div>
-                ) : (
+          <h3 className="text-sm font-medium text-gray-500 mb-4 text-center">Join Our Community</h3>
+          <div className="flex flex-col gap-3 max-w-lg mx-auto w-full">
+            {SOCIAL_LINKS.map((link, index) => {
+              const IconComponent = link.icon;
+              const isGitHub = link.name === 'GitHub';
+              return isGitHub ? (
+                <div
+                  key={index}
+                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-green-500/30 bg-gradient-to-r from-green-500/10 to-blue-500/10 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200`}
+                >
                   <a
-                    key={index}
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 w-full ${link.color}`}
-                    title={link.title}
+                    className="flex items-center gap-3 flex-1 min-w-0"
                     aria-label={link.title}
                   >
                     <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
-                    <div className="flex flex-col text-left flex-1">
+                    <div className="flex flex-col text-left flex-1 min-w-0">
                       <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
                         {link.title}
                       </span>
@@ -626,17 +360,61 @@ export default function Home() {
                         {link.description}
                       </span>
                     </div>
-                    {link.name === 'Discord' || link.name === 'Telegram' ? (
-                      <div className="ml-auto">
-                        <div className="px-2 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-md">
-                          <span className="text-xs font-medium text-blue-300">Join</span>
-                        </div>
-                      </div>
-                    ) : null}
                   </a>
-                );
-              })}
-            </div>
+                  <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                    <div className="px-2 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-md">
+                      <span className="text-xs font-medium text-green-300">⭐ Star</span>
+                    </div>
+                    <div className="px-2 py-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-md">
+                      <span className="text-xs font-medium text-orange-300">🍴 Fork</span>
+                    </div>
+                    <a
+                      href="https://github.com/pkill37/explorar.dev/issues"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
+                      aria-label="Report an issue"
+                    >
+                      <span className="text-xs font-medium text-gray-300">🐛 Issue</span>
+                    </a>
+                    <a
+                      href="https://github.com/pkill37/explorar.dev/pulls"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
+                      aria-label="Submit a PR"
+                    >
+                      <span className="text-xs font-medium text-gray-300">📝 PR</span>
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <a
+                  key={index}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 ${link.color}`}
+                  title={link.title}
+                  aria-label={link.title}
+                >
+                  <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
+                  <div className="flex flex-col text-left flex-1">
+                    <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
+                      {link.title}
+                    </span>
+                    <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
+                      {link.description}
+                    </span>
+                  </div>
+                  <div className="ml-auto">
+                    <div className="px-2 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-md">
+                      <span className="text-xs font-medium text-blue-300">Join</span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         </div>
       </footer>

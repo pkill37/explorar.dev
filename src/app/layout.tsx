@@ -21,7 +21,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
 const siteName = 'explorar.dev';
 const defaultTitle = 'Explore Source Code | explorar.dev';
 const defaultDescription =
-  'Interactive source code browser with guided learning paths. Explore the Linux kernel, CPython, LLVM, glibc, and any GitHub repository.';
+  'Interactive source code browser with guided learning paths. Explore LK, XNU, the Linux kernel, CPython, LLVM, glibc, and any GitHub repository.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -32,6 +32,9 @@ export const metadata: Metadata = {
   description: defaultDescription,
   keywords: [
     'Linux kernel',
+    'Little Kernel',
+    'LK kernel',
+    'XNU',
     'kernel exploration',
     'source code browser',
     'kernel learning',

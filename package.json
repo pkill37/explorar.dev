@@ -9,7 +9,7 @@
     "npm": ">=9.0.0"
   },
   "scripts": {
-    "predev": "tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=python/cpython --only=torvalds/linux --depth=1",
+    "predev": "tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=python/cpython --only=torvalds/linux --only=littlekernel/lk --depth=1",
     "dev": "next dev --turbopack --port 3000",
     "build": "next build",
     "postbuild": "tsx scripts/report-build.ts",
@@ -17,7 +17,7 @@
     "start": "next start",
     "serve": "serve -l 3000 out -c",
     "serve:public": "serve -l 3000 public",
-    "clean": "rm -rf public/repos out node_modules .next .eslintcache",
+    "clean": "rm -rf public/repos public/avatars out node_modules .next .eslintcache",
     "clean:all": "npm run clean && rm -rf package-lock.json",
     "lint": "npm run lint:types && npm run lint:eslint && npm run lint:prettier && npm run lint:deps",
     "lint:types": "tsc --noEmit",

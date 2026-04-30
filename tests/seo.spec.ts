@@ -87,7 +87,14 @@ test.describe('SEO Checks', () => {
     await page.goto('/sitemap.xml');
     const content = await page.textContent('body');
 
-    const repos = ['torvalds/linux', 'python/cpython', 'bminor/glibc', 'llvm/llvm-project'];
+    const repos = [
+      'littlekernel/lk',
+      'apple-oss-distributions/xnu',
+      'torvalds/linux',
+      'python/cpython',
+      'bminor/glibc',
+      'llvm/llvm-project',
+    ];
     for (const repo of repos) {
       expect(content).toContain(repo);
     }
