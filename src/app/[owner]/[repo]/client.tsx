@@ -23,10 +23,10 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const projectConfig = getProjectConfig(owner, repo);
   if (!projectConfig) notFound();
 
-  const [mode, setMode] = useState<'graph' | 'editor' | 'entities'>('graph');
+  const [mode, setMode] = useState<'graph' | 'editor' | 'entities'>('editor');
   const [initialFile, setInitialFile] = useState<string | string[] | null>(null);
   // Keep KernelExplorer mounted once it has been rendered to preserve tab state
-  const [editorMounted, setEditorMounted] = useState(false);
+  const [editorMounted, setEditorMounted] = useState(true);
   // Keep EntityView mounted once first activated to preserve per-chapter cache
   const [entitiesMounted, setEntitiesMounted] = useState(false);
 
@@ -161,6 +161,23 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       </h1>
       {/* ── Main content area (graph or editor) ── */}
       <div style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
+        {/* Editor view — first-class default surface */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            opacity: mode === 'editor' ? 1 : 0,
+            pointerEvents: mode === 'editor' ? 'auto' : 'none',
+            transform: mode === 'editor' ? 'scale(1)' : 'scale(1.015)',
+            transition: 'opacity 0.45s ease, transform 0.45s ease',
+            zIndex: mode === 'editor' ? 1 : 0,
+          }}
+        >
+          {(mode === 'editor' || editorMounted) && (
+            <KernelExplorer owner={owner} repo={repo} initialFile={initialFile} hideGuidePanel />
+          )}
+        </div>
+
         {/* Graph view */}
         <div
           style={{
@@ -180,23 +197,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             chapterMapEntries={graphChapterMapEntries}
             guideSections={guideSections}
           />
-        </div>
-
-        {/* Editor view — mounted lazily, kept alive once created */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            opacity: mode === 'editor' ? 1 : 0,
-            pointerEvents: mode === 'editor' ? 'auto' : 'none',
-            transform: mode === 'editor' ? 'scale(1)' : 'scale(1.015)',
-            transition: 'opacity 0.45s ease, transform 0.45s ease',
-            zIndex: mode === 'editor' ? 1 : 0,
-          }}
-        >
-          {(mode === 'editor' || editorMounted) && (
-            <KernelExplorer owner={owner} repo={repo} initialFile={initialFile} hideGuidePanel />
-          )}
         </div>
 
         {/* Entities view — kept mounted to preserve per-chapter cache */}
@@ -265,23 +265,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           }}
         >
           <button
-            onClick={() => setMode('graph')}
-            title="File map"
-            style={{
-              fontSize: 10,
-              fontFamily: 'monospace',
-              padding: '3px 8px',
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'graph' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
-              color: mode === 'graph' ? '#fff' : 'var(--vscode-text-muted, #666)',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            ◈ Map
-          </button>
-          <button
             onClick={() => {
               setEditorMounted(true);
               setMode('editor');
@@ -300,6 +283,23 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             }}
           >
             {'</>'} Editor
+          </button>
+          <button
+            onClick={() => setMode('graph')}
+            title="File map"
+            style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              padding: '3px 8px',
+              borderRadius: 3,
+              border: 'none',
+              cursor: 'pointer',
+              background: mode === 'graph' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
+              color: mode === 'graph' ? '#fff' : 'var(--vscode-text-muted, #666)',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            ◈ Map
           </button>
           <button
             onClick={() => {

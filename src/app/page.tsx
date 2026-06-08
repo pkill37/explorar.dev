@@ -36,20 +36,49 @@ const SOCIAL_LINKS = [
   {
     name: 'GitHub',
     url: 'https://github.com/pkill37/explorar.dev',
+    shortUrl: 'github.com/pkill37/explorar.dev',
     icon: GitHubIcon,
-    color: 'hover:bg-gray-900 hover:text-white',
-    title: 'Contribute & Build Together',
-    description: 'Fork, star, and help improve the codebase',
   },
   {
     name: 'Discord',
     url: 'https://discord.gg/fuXYz44tSs',
+    shortUrl: 'discord.gg/fuXYz44tSs',
     icon: DiscordIcon,
-    color: 'hover:bg-[#5865F2] hover:text-white',
-    title: 'Join Our Community',
-    description: 'Discuss code, share discoveries, get help',
   },
 ];
+
+function CommunityPanel() {
+  return (
+    <div className="w-full max-w-md">
+      <div className="space-y-3">
+        {SOCIAL_LINKS.map((link) => {
+          const IconComponent = link.icon;
+          return (
+            <a
+              key={link.name}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center gap-3 rounded-2xl border border-gray-800/70 bg-gray-950/70 px-4 py-4 text-gray-400 shadow-2xl shadow-black/20 backdrop-blur-xl transition-all duration-300 hover:border-gray-600 hover:bg-gray-900/80 hover:text-gray-200"
+              title={link.name}
+              aria-label={`${link.name}: ${link.shortUrl}`}
+            >
+              <IconComponent className="h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 sm:h-6 sm:w-6" />
+              <div className="min-w-0 flex-1 text-left">
+                <div className="text-sm font-semibold text-gray-200 group-hover:text-white">
+                  {link.name}
+                </div>
+                <div className="mt-1 truncate text-xs text-gray-500 group-hover:text-gray-300">
+                  {link.shortUrl}
+                </div>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -208,14 +237,25 @@ export default function Home() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-12 pb-4 sm:pt-16 sm:pb-6 relative z-10">
         <div className="w-full max-w-6xl mx-auto">
           {/* Header */}
-          <header className="text-center mb-16">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-gray-100 to-gray-400 bg-clip-text text-transparent">
-              explorar.dev
-            </h1>
-            <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
-              Explore curated open-source repositories with an interactive code browser. Study
-              real-world codebases and learn from the best.
-            </p>
+          <header className="relative mb-16">
+            <div className="relative max-w-5xl mx-auto">
+              <div className="lg:pr-[24rem] text-center lg:text-left">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-gray-100 to-gray-400 bg-clip-text text-transparent">
+                  explorar.dev
+                </h1>
+                <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+                  Explore curated open-source repositories with an interactive code browser. Study
+                  real-world codebases and learn from the best.
+                </p>
+              </div>
+
+              <div className="hidden lg:block absolute top-0 right-0 w-[22rem]">
+                <CommunityPanel />
+              </div>
+            </div>
+            <div className="mt-8 lg:hidden">
+              <CommunityPanel />
+            </div>
           </header>
 
           {/* Error Display */}
@@ -280,7 +320,7 @@ export default function Home() {
                         <h2 className="text-sm font-semibold text-gray-100 group-hover:text-white transition-colors truncate">
                           {repo.displayName}
                         </h2>
-                        </div>
+                      </div>
                       <p className="text-[11px] font-mono text-gray-500 truncate mb-1.5">
                         {repo.owner}/{repo.repo}
                       </p>
@@ -330,94 +370,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="w-full py-8 px-4 border-t border-gray-800/50 relative z-10">
-        <div className="w-full max-w-6xl mx-auto">
-          <h3 className="text-sm font-medium text-gray-500 mb-4 text-center">Join Our Community</h3>
-          <div className="flex flex-col gap-3 max-w-lg mx-auto w-full">
-            {SOCIAL_LINKS.map((link, index) => {
-              const IconComponent = link.icon;
-              const isGitHub = link.name === 'GitHub';
-              return isGitHub ? (
-                <div
-                  key={index}
-                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-green-500/30 bg-gradient-to-r from-green-500/10 to-blue-500/10 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200`}
-                >
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 flex-1 min-w-0"
-                    aria-label={link.title}
-                  >
-                    <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
-                    <div className="flex flex-col text-left flex-1 min-w-0">
-                      <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
-                        {link.title}
-                      </span>
-                      <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
-                        {link.description}
-                      </span>
-                    </div>
-                  </a>
-                  <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                    <div className="px-2 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-md">
-                      <span className="text-xs font-medium text-green-300">⭐ Star</span>
-                    </div>
-                    <div className="px-2 py-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-md">
-                      <span className="text-xs font-medium text-orange-300">🍴 Fork</span>
-                    </div>
-                    <a
-                      href="https://github.com/pkill37/explorar.dev/issues"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
-                      aria-label="Report an issue"
-                    >
-                      <span className="text-xs font-medium text-gray-300">🐛 Issue</span>
-                    </a>
-                    <a
-                      href="https://github.com/pkill37/explorar.dev/pulls"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 py-1 bg-gradient-to-r from-gray-500/10 to-gray-500/5 border border-gray-500/20 rounded-md hover:border-gray-400/40 transition-colors"
-                      aria-label="Submit a PR"
-                    >
-                      <span className="text-xs font-medium text-gray-300">📝 PR</span>
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <a
-                  key={index}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 text-gray-400 transition-all duration-300 hover:border-gray-600 hover:shadow-lg hover:shadow-gray-900/50 hover:text-gray-200 ${link.color}`}
-                  title={link.title}
-                  aria-label={link.title}
-                >
-                  <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 transition-transform group-hover:scale-110" />
-                  <div className="flex flex-col text-left flex-1">
-                    <span className="text-sm font-semibold text-gray-300 group-hover:text-white mb-0.5">
-                      {link.title}
-                    </span>
-                    <span className="text-xs text-gray-500 group-hover:text-gray-400 leading-tight">
-                      {link.description}
-                    </span>
-                  </div>
-                  <div className="ml-auto">
-                    <div className="px-2 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-md">
-                      <span className="text-xs font-medium text-blue-300">Join</span>
-                    </div>
-                  </div>
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

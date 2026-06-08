@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchRepositoryFile } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
@@ -439,11 +440,7 @@ export function EntityView({
         await Promise.all(
           batch.slice(i, i + BATCH_SIZE).map(async (fp: string) => {
             try {
-              const res = await fetch(`/repos/${owner}/${repo}/${branch}/${fp}`, {
-                signal: AbortSignal.timeout(5000),
-              });
-              if (!res.ok) return;
-              const fullText = await res.text();
+              const fullText = (await fetchRepositoryFile(owner, repo, branch, fp)).content;
               const text = fullText.length > BYTES_CAP ? fullText.slice(0, BYTES_CAP) : fullText;
               allEntities.push(...extractEntities(fp, text));
             } catch {

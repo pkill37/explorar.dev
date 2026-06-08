@@ -33,7 +33,6 @@ fileRecommendations:
       description: Operation enums — BinaryOps, UnaryOps, ReduceOps, LoadOps
 ---
 
-## Chapter 1 — TinyGrad Architecture
 
 ### The Four-Layer Design
 
@@ -249,7 +248,6 @@ fileRecommendations:
       description: realize() — when and how lazy ops become actual computations
 ---
 
-## Chapter 2 — The LazyBuffer: TinyGrad's Secret Weapon
 
 ### Deferred Execution
 
@@ -340,7 +338,6 @@ fileRecommendations:
       description: ML-specific operations with forward and backward passes
 ---
 
-## Chapter 3 — Operations and the Computational Graph
 
 ### Operation Types
 
@@ -457,7 +454,6 @@ fileRecommendations:
       description: Apple Metal backend for macOS/iOS
 ---
 
-## Chapter 4 — Hardware Acceleration
 
 ### Device Abstraction
 
@@ -565,7 +561,6 @@ fileRecommendations:
       description: ResNet training — production-scale model
 ---
 
-## Chapter 5 — Building Neural Networks in TinyGrad
 
 ### The nn Module
 
@@ -672,7 +667,6 @@ fileRecommendations:
       description: Code generation pipeline for all backends
 ---
 
-## Chapter 6 — Advanced Features
 
 ### JIT Compilation
 
@@ -749,7 +743,6 @@ fileRecommendations:
       description: Second stop — lazy evaluation and graph construction
 ---
 
-## Chapter 7 — Reading the Source Code
 
 ### Essential Files (Ordered by Importance)
 
@@ -813,7 +806,6 @@ fileRecommendations:
       description: The entire framework — read it all (~3000 lines total)
 ---
 
-## Chapter 8 — Philosophy and Design Principles
 
 ### Why TinyGrad?
 
@@ -871,7 +863,6 @@ fileRecommendations:
       description: Extra experiments and research implementations
 ---
 
-## Chapter 9 — Practical Projects
 
 ### Project 1: MNIST Classifier
 

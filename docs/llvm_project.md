@@ -42,7 +42,6 @@ fileRecommendations:
       description: IR validity checking — learn the rules here
 ---
 
-## Chapter 1 — Introduction to LLVM
 
 ### The Philosophy: Separation of Concerns Through IR
 
@@ -193,7 +192,6 @@ fileRecommendations:
       description: x86 IR lowering (~50,000 lines!)
 ---
 
-## Chapter 2 — LLVM IR and Code Generation
 
 The LLVM Intermediate Representation (IR) is a low-level programming language similar to assembly, but with higher-level type information and a consistent three-address code representation. It serves as the universal language that enables LLVM's modular architecture.
 
@@ -350,7 +348,6 @@ fileRecommendations:
       description: Parser for declarations
 ---
 
-## Chapter 3 — Clang Frontend
 
 Clang is the C/C++/Objective-C compiler frontend for LLVM. It parses source code, performs semantic analysis, and generates LLVM IR. Unlike GCC, Clang was designed from the ground up to be a library—enabling tools like clang-tidy, clang-format, and clangd to reuse the same parsing infrastructure.
 
@@ -518,7 +515,6 @@ fileRecommendations:
       description: New Pass Manager infrastructure
 ---
 
-## Chapter 4 — Optimization Passes
 
 LLVM's optimizer consists of a series of passes that transform IR to improve code quality. The pass framework is one of LLVM's most powerful features—it makes optimizations composable, testable, and reusable.
 

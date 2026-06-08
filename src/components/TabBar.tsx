@@ -2,15 +2,21 @@
 
 import React from 'react';
 import { EditorTab } from '@/types';
+import {
+  getFileSourceModeLabel,
+  setFileSourceMode,
+  type FileSourceMode,
+} from '@/lib/curated-content-url';
 
 interface TabBarProps {
   tabs: EditorTab[];
   activeTabId: string | null;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  fileSourceMode: FileSourceMode;
 }
 
-const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
+const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose, fileSourceMode }) => {
   const getFileIcon = (path: string): string => {
     const extension = path.split('.').pop()?.toLowerCase();
     switch (extension) {
@@ -62,43 +68,68 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
     }
   };
 
-  if (tabs.length === 0) {
-    return <div className="vscode-tab-bar" />;
-  }
+  const handleSourceModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    setFileSourceMode(event.target.value as FileSourceMode);
+    window.location.reload();
+  };
 
   return (
     <div className="vscode-tab-bar">
-      {tabs.map((tab) => (
-        <div
-          key={tab.id}
-          className={`vscode-tab ${tab.isActive ? 'active' : ''}`}
-          onClick={(e) => handleTabClick(tab, e)}
-          onMouseDown={(e) => handleTabMiddleClick(tab, e)}
-          title={tab.path}
-        >
-          <span className="icon">
-            {tab.isLoading ? (
-              <div className="vscode-spinner" style={{ width: '10px', height: '10px' }} />
-            ) : (
-              getFileIcon(tab.path)
-            )}
-          </span>
-
-          <span className="name">{getFileName(tab.title || tab.path)}</span>
-
-          {tab.isDirty && (
-            <span style={{ color: '#dcdcaa', fontSize: '12px', marginLeft: '4px' }}>•</span>
-          )}
-
+      <div className="vscode-tab-strip">
+        {tabs.map((tab) => (
           <div
-            className="close"
-            onClick={(e) => handleTabClose(tab.id, e)}
-            title={`Close ${getFileName(tab.path)}`}
+            key={tab.id}
+            className={`vscode-tab ${tab.isActive ? 'active' : ''}`}
+            onClick={(e) => handleTabClick(tab, e)}
+            onMouseDown={(e) => handleTabMiddleClick(tab, e)}
+            title={tab.path}
           >
-            ✕
+            <span className="icon">
+              {tab.isLoading ? (
+                <div className="vscode-spinner" style={{ width: '10px', height: '10px' }} />
+              ) : (
+                getFileIcon(tab.path)
+              )}
+            </span>
+
+            <span className="name">{getFileName(tab.title || tab.path)}</span>
+
+            {tab.isDirty && (
+              <span style={{ color: '#dcdcaa', fontSize: '12px', marginLeft: '4px' }}>•</span>
+            )}
+
+            <div
+              className="close"
+              onClick={(e) => handleTabClose(tab.id, e)}
+              title={`Close ${getFileName(tab.path)}`}
+            >
+              ✕
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+
+      <div className="vscode-tab-actions">
+        <label
+          className="vscode-source-select-wrap"
+          title={`Current source: ${getFileSourceModeLabel(fileSourceMode)}`}
+        >
+          <span className="vscode-source-select-label">Source</span>
+          <select
+            className="vscode-source-select"
+            value={fileSourceMode}
+            onChange={handleSourceModeChange}
+          >
+            <option value="local-filesystem">Local filesystem</option>
+            <option value="github-api">api.github.com</option>
+            <option value="r2-bucket">R2 bucket</option>
+          </select>
+        </label>
+      </div>
     </div>
   );
 };

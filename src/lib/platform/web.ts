@@ -1,6 +1,7 @@
 /**
  * Web platform implementations using browser APIs
  */
+import { buildCuratedRepoUrl, getCuratedContentBaseUrl } from '@/lib/curated-content-url';
 import type {
   FileSystemProvider,
   HttpClient,
@@ -91,7 +92,8 @@ export class WebPathResolver implements PathResolver {
   }
 
   getReposBasePath(): string {
-    return '/repos';
+    const baseUrl = getCuratedContentBaseUrl();
+    return baseUrl ? `${baseUrl}/repos` : '/repos';
   }
 
   getWorkspaceRoot(): string | null {
@@ -99,8 +101,7 @@ export class WebPathResolver implements PathResolver {
   }
 
   getStaticFilePath(owner: string, repo: string, branch: string, filePath: string): string {
-    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-    return `/repos/${owner}/${repo}/${branch}/${cleanPath}`;
+    return buildCuratedRepoUrl(owner, repo, branch, filePath);
   }
 }
 

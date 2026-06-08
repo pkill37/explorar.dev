@@ -38,6 +38,7 @@ import {
   RELATIONSHIP_COLORS,
   type FileSymbols,
 } from '@/lib/code-analysis';
+import { fetchRepositoryFile } from '@/lib/github-api';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { GraphContext } from '@/contexts/GraphContext';
@@ -282,13 +283,7 @@ function GraphFlow({
         await Promise.all(
           batch.map(async (filePath) => {
             try {
-              const url = `/repos/${owner}/${repo}/${branch}/${filePath}`;
-              const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-              if (!res.ok) {
-                console.warn(`[GraphFlow] fetch failed (${res.status}): ${filePath}`);
-                return;
-              }
-              const fullText = await res.text();
+              const fullText = (await fetchRepositoryFile(owner, repo, branch, filePath)).content;
               const text =
                 fullText.length > ANALYSIS_MAX_BYTES
                   ? fullText.slice(0, ANALYSIS_MAX_BYTES)

@@ -4,6 +4,8 @@ import { isCuratedRepo } from '@/lib/curated-repos';
 
 // Import all guide markdown files
 import littlekernelLkMd from '../../../docs/littlekernel_lk.md?raw';
+import mrcxlinuxSrv03rtmAnikaMd from '../../../docs/mrcxlinux_srv03rtm-anika.md?raw';
+import reactosReactosMd from '../../../docs/reactos_reactos.md?raw';
 import pythonCpythonMd from '../../../docs/python_cpython.md?raw';
 import torvaldsLinuxMd from '../../../docs/torvalds_linux.md?raw';
 import llvmProjectMd from '../../../docs/llvm_project.md?raw';
@@ -36,6 +38,8 @@ export interface GuideDocument {
  */
 const DOCS_MARKDOWN: Record<string, string> = {
   'littlekernel_lk.md': littlekernelLkMd,
+  'mrcxlinux_srv03rtm-anika.md': mrcxlinuxSrv03rtmAnikaMd,
+  'reactos_reactos.md': reactosReactosMd,
   'python_cpython.md': pythonCpythonMd,
   'torvalds_linux.md': torvaldsLinuxMd,
   'llvm_project.md': llvmProjectMd,

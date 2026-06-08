@@ -14,19 +14,30 @@ import {
   type GuideSparseExpansion,
   toRepoKey,
 } from '../src/lib/curated-repos';
+import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
+import { runPhase } from './tqdm';
 
 type ScriptOptions = {
   only: string[]; // entries like "owner/repo" or "owner/repo@branch"
   skip: string[]; // entries like "owner/repo"
   depth: number;
   list: boolean;
+  avatarsOnly: boolean;
 };
 
-const REPOS_DIR = path.join(process.cwd(), 'public', 'repos');
+export type CorpusState = {
+  missingAvatars: string[];
+  staleRepos: string[];
+  totalAvatars: number;
+  totalRepos: number;
+};
+
+const REPOS_DIR = CORPUS_REPOS_DIR;
 const DOCS_DIR = path.join(process.cwd(), 'docs');
 
 // Max simultaneous git clones — GitHub allows a few concurrent connections.
 const DOWNLOAD_CONCURRENCY = 3;
+const AVATAR_DOWNLOAD_CONCURRENCY = 4;
 
 // File extensions that cannot be rendered in Monaco. Removed at clone time so
 // they don't appear in the file tree or inflate the Cloudflare file count.
@@ -80,12 +91,18 @@ function parseArgs(argv: string[]): ScriptOptions {
   const skip: string[] = [];
   let depth = 1;
   let list = false;
+  let avatarsOnly = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] ?? '';
 
     if (arg === '--list') {
       list = true;
+      continue;
+    }
+
+    if (arg === '--avatars-only') {
+      avatarsOnly = true;
       continue;
     }
 
@@ -112,7 +129,7 @@ function parseArgs(argv: string[]): ScriptOptions {
     }
   }
 
-  return { only, skip, depth, list };
+  return { only, skip, depth, list, avatarsOnly };
 }
 
 function parseRepoSelector(selector: string): { key: string; branchOverride?: string } {
@@ -121,6 +138,27 @@ function parseRepoSelector(selector: string): { key: string; branchOverride?: st
   const key = (repoPart ?? '').trim();
   const branchOverride = (branchPart ?? '').trim() || undefined;
   return { key, branchOverride };
+}
+
+function selectRepos(opts: ScriptOptions): CuratedRepoConfig[] {
+  const skipSet = new Set(opts.skip.map((s) => parseRepoSelector(s).key));
+  const onlySelectors = opts.only.map((s) => parseRepoSelector(s));
+  const onlyKeySet = new Set(onlySelectors.map((s) => s.key));
+  const branchOverrides = new Map(
+    onlySelectors.filter((s) => s.branchOverride).map((s) => [s.key, s.branchOverride!] as const)
+  );
+
+  const selectedRepos: CuratedRepoConfig[] =
+    opts.only.length > 0
+      ? CURATED_REPOS.filter((r) => onlyKeySet.has(toRepoKey(r.owner, r.repo)))
+      : [...CURATED_REPOS];
+
+  return selectedRepos
+    .filter((r) => !skipSet.has(toRepoKey(r.owner, r.repo)))
+    .map((r) => {
+      const override = branchOverrides.get(toRepoKey(r.owner, r.repo));
+      return override ? { ...r, branch: override } : r;
+    });
 }
 
 function isCommitSha(ref: string): boolean {
@@ -178,28 +216,6 @@ async function runWithConcurrency(tasks: (() => Promise<void>)[], limit: number)
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
-/**
- * Ask the remote for the current SHA of a ref without downloading anything.
- * Returns null if the remote is unreachable or the ref is not found.
- */
-async function getRemoteSHA(owner: string, repo: string, branch: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const url = `https://github.com/${owner}/${repo}.git`;
-    const child = spawn('git', ['ls-remote', url, branch], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    });
-    let output = '';
-    child.stdout?.on('data', (d: Buffer) => (output += d.toString()));
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => {
-      if (code !== 0) return resolve(null);
-      const sha = output.trim().split(/\s+/)[0];
-      resolve(sha || null);
-    });
-  });
-}
-
 /** Read HEAD commit SHA from an already-cloned (still has .git) directory. */
 async function getLocalSHA(repoDir: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -213,56 +229,68 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
   });
 }
 
+function getBuildSignature(config: CuratedRepoConfig): string {
+  return JSON.stringify({
+    owner: config.owner,
+    repo: config.repo,
+    branch: config.branch,
+    sparsePatterns: buildSparsePatterns(config) ?? [],
+  });
+}
+
 /**
  * Decide whether an existing download is still current.
  *
  * Strategy:
  *   1. No manifest → must download.
- *   2. Manifest has no commitSha (legacy) → skip (presence check only).
- *   3. Manifest has commitSha → compare to live remote SHA via git ls-remote.
- *      If remote is unreachable, assume still valid and skip.
+ *   2. Manifest missing buildSignature → re-download once to migrate.
+ *   3. Manifest buildSignature differs from current build inputs → re-download.
+ *
+ * This intentionally does not consult the remote repository. The download
+ * pipeline is pinned to immutable refs, so freshness is derived from local
+ * build inputs only.
  */
-async function shouldSkipDownload(
-  repoDir: string,
-  owner: string,
-  repo: string,
-  branch: string
-): Promise<boolean> {
+async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): Promise<boolean> {
   const manifestPath = path.join(repoDir, 'repo-manifest.json');
   if (!fs.existsSync(manifestPath)) return false;
 
-  let storedSha: string | undefined;
+  let storedSignature: string | undefined;
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
-    storedSha = (JSON.parse(raw) as { commitSha?: string }).commitSha;
+    storedSignature = (JSON.parse(raw) as { buildSignature?: string }).buildSignature;
   } catch {
-    return true; // unreadable manifest — skip (will be replaced on next full clean)
+    return false;
   }
 
-  if (!storedSha) {
-    // Old manifest written before SHA tracking — fall back to existence check.
-    return true;
+  if (!storedSignature) {
+    return false;
   }
 
-  if (isCommitSha(branch)) {
-    return storedSha.toLowerCase() === branch.toLowerCase();
-  }
+  return storedSignature === getBuildSignature(config);
+}
 
-  const remoteSha = await getRemoteSHA(owner, repo, branch);
-  if (!remoteSha) {
-    // Network unavailable — keep existing download.
-    console.log(
-      `   ${owner}/${repo}: remote unreachable, keeping cached (${storedSha.slice(0, 8)})`
-    );
-    return true;
-  }
-
-  if (remoteSha === storedSha) return true;
-
-  console.log(
-    `   ${owner}/${repo}: SHA changed ${storedSha.slice(0, 8)} → ${remoteSha.slice(0, 8)}, re-downloading`
+export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
+  const repos = selectRepos(opts);
+  const avatarTargets = new Set(repos.map((repo) => repo.avatarFile ?? `${repo.owner}.png`));
+  const missingAvatars = [...avatarTargets].filter(
+    (file) => !fs.existsSync(path.join(AVATARS_DIR, file))
   );
-  return false;
+
+  const staleRepos: string[] = [];
+  for (const repo of repos) {
+    const repoDir = path.join(REPOS_DIR, repo.owner, repo.repo, repo.branch);
+    const isCurrent = await shouldSkipDownload(repoDir, repo);
+    if (!isCurrent) {
+      staleRepos.push(`${repo.owner}/${repo.repo}@${repo.branch}`);
+    }
+  }
+
+  return {
+    missingAvatars,
+    staleRepos,
+    totalAvatars: avatarTargets.size,
+    totalRepos: repos.length,
+  };
 }
 
 function normalizeRepoPath(refPath: string): string {
@@ -350,10 +378,11 @@ function collectGuideReferencePaths(markdown: string): string[] {
         fileRecommendations?: {
           docs?: Array<{ path?: string }>;
           source?: Array<{ path?: string }>;
+          directories?: Array<{ path?: string }>;
         };
       };
 
-      for (const bucket of ['docs', 'source'] as const) {
+      for (const bucket of ['docs', 'source', 'directories'] as const) {
         for (const entry of parsed.fileRecommendations?.[bucket] ?? []) {
           const refPath = normalizeRepoPath(entry.path ?? '');
           if (refPath) {
@@ -369,19 +398,35 @@ function collectGuideReferencePaths(markdown: string): string[] {
   return Array.from(refs);
 }
 
-function getGuidePathsForRepo(config: CuratedRepoConfig): string[] {
+let guidePathsByRepoCache: Map<string, string[]> | null = null;
+
+function getGuidePathsByRepo(): Map<string, string[]> {
+  if (guidePathsByRepoCache) {
+    return guidePathsByRepoCache;
+  }
+
+  const guidePathsByRepo = new Map<string, string[]>();
   const markdownFiles = fs.readdirSync(DOCS_DIR).filter((file) => file.endsWith('.md'));
 
   for (const file of markdownFiles) {
     const fullPath = path.join(DOCS_DIR, file);
     const raw = fs.readFileSync(fullPath, 'utf-8');
     const { data } = matter(raw);
-    if (data.owner === config.owner && data.repo === config.repo) {
-      return collectGuideReferencePaths(raw);
+    const owner = typeof data.owner === 'string' ? data.owner : '';
+    const repo = typeof data.repo === 'string' ? data.repo : '';
+    if (!owner || !repo) {
+      continue;
     }
+
+    guidePathsByRepo.set(toRepoKey(owner, repo), collectGuideReferencePaths(raw));
   }
 
-  return [];
+  guidePathsByRepoCache = guidePathsByRepo;
+  return guidePathsByRepoCache;
+}
+
+function getGuidePathsForRepo(config: CuratedRepoConfig): string[] {
+  return getGuidePathsByRepo().get(toRepoKey(config.owner, config.repo)) ?? [];
 }
 
 function buildSparsePatterns(config: CuratedRepoConfig): string[] | null {
@@ -438,6 +483,34 @@ function buildSparsePatterns(config: CuratedRepoConfig): string[] | null {
 
   const patterns = [...includePatterns, ...excludePatterns];
   return patterns.length > 0 ? patterns : null;
+}
+
+function pruneStaleBranchDownloads(repos: CuratedRepoConfig[]): void {
+  const allowedBranchesByRepo = new Map<string, Set<string>>();
+
+  for (const repo of repos) {
+    const key = toRepoKey(repo.owner, repo.repo);
+    const allowed = allowedBranchesByRepo.get(key) ?? new Set<string>();
+    allowed.add(repo.branch);
+    allowedBranchesByRepo.set(key, allowed);
+  }
+
+  for (const [repoKey, allowedBranches] of allowedBranchesByRepo) {
+    const [owner, repo] = repoKey.split('/');
+    if (!owner || !repo) continue;
+
+    const repoRoot = path.join(REPOS_DIR, owner, repo);
+    if (!fs.existsSync(repoRoot)) continue;
+
+    for (const entry of fs.readdirSync(repoRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (allowedBranches.has(entry.name)) continue;
+
+      const stalePath = path.join(repoRoot, entry.name);
+      fs.rmSync(stalePath, { recursive: true, force: true });
+      console.log(`Pruned stale repo download: ${owner}/${repo}@${entry.name}`);
+    }
+  }
 }
 
 /**
@@ -627,31 +700,18 @@ function toManifestNode(node: FileNode): ManifestNode {
 }
 
 /**
- * Write manifest. `sha` is stored for future staleness checks (see shouldSkipDownload).
+ * Write manifest with the current build signature.
  */
-function createManifest(repoDir: string, tree: FileNode[], sha: string | null): void {
+function createManifest(repoDir: string, tree: FileNode[], buildSignature: string): void {
   const manifestPath = path.join(repoDir, 'repo-manifest.json');
   const manifest: Record<string, unknown> = {
     tree: tree.map(toManifestNode),
     createdAt: new Date().toISOString(),
+    buildSignature,
   };
-  if (sha) manifest.commitSha = sha;
 
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  console.log(`   ✓ Manifest: ${manifestPath}`);
-}
-
-/**
- * Migrate old manifest file to new name if it exists
- */
-function migrateManifestIfNeeded(repoDir: string): void {
-  const oldManifestPath = path.join(repoDir, '.repo-manifest.json');
-  const newManifestPath = path.join(repoDir, 'repo-manifest.json');
-
-  if (fs.existsSync(oldManifestPath) && !fs.existsSync(newManifestPath)) {
-    fs.renameSync(oldManifestPath, newManifestPath);
-    console.log(`   ✓ Migrated manifest .repo-manifest.json → repo-manifest.json`);
-  }
+  console.log(`   Manifest: ${manifestPath}`);
 }
 
 /**
@@ -661,20 +721,19 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
   const { owner, repo, branch } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, branch);
   const sparsePatterns = buildSparsePatterns(config);
+  const buildSignature = getBuildSignature(config);
 
-  console.log(`\n📦 ${owner}/${repo}@${branch}`);
+  console.log(`\nRepo ${owner}/${repo}@${branch}`);
   if (sparsePatterns) {
-    console.log(`   ✓ Sparse checkout enabled (${sparsePatterns.length} patterns)`);
+    console.log(`   Sparse checkout enabled (${sparsePatterns.length} patterns)`);
   }
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
-  migrateManifestIfNeeded(repoDir);
-
-  if (await shouldSkipDownload(repoDir, owner, repo, branch)) {
-    console.log(`✅ ${owner}/${repo}@${branch} up-to-date, skipping`);
+  if (await shouldSkipDownload(repoDir, config)) {
+    console.log(`skip: ${owner}/${repo}@${branch} pinned build matches`);
     return;
   }
 
@@ -683,27 +742,27 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
 
     console.log(`   Cloning to: ${repoDir}`);
     const sha = await gitCloneShallow(config, repoDir, depth);
-    console.log(`   ✓ Clone complete${sha ? ` (${sha.slice(0, 8)})` : ''}`);
+    console.log(`   Clone complete${sha ? ` (${sha.slice(0, 8)})` : ''}`);
 
     const { removed } = pruneNonTextFiles(repoDir);
-    if (removed > 0) console.log(`   ✓ Pruned ${removed} binary files`);
+    if (removed > 0) console.log(`   Pruned ${removed} binary files`);
 
     console.log(`   Building file tree...`);
     const tree = buildFileTree(repoDir);
-    createManifest(repoDir, tree, sha);
-    console.log(`   ✓ Tree: ${tree.length} root entries`);
+    createManifest(repoDir, tree, buildSignature);
+    console.log(`   Tree: ${tree.length} root entries`);
 
-    console.log(`✅ ${owner}/${repo}@${branch} ready`);
+    console.log(`ready: ${owner}/${repo}@${branch}`);
   } catch (error) {
     if (fs.existsSync(repoDir)) {
       fs.rmSync(repoDir, { recursive: true, force: true });
     }
-    console.error(`❌ Failed ${owner}/${repo}@${branch}:`, error);
+    console.error(`ERROR ${owner}/${repo}@${branch}:`, error);
     throw error;
   }
 }
 
-const AVATARS_DIR = path.join(process.cwd(), 'public', 'avatars');
+const AVATARS_DIR = PUBLIC_AVATARS_DIR;
 
 async function downloadAvatar(url: string, destPath: string): Promise<void> {
   const res = await fetch(url, {
@@ -717,26 +776,43 @@ async function downloadAvatar(url: string, destPath: string): Promise<void> {
 async function downloadAllAvatars(): Promise<void> {
   fs.mkdirSync(AVATARS_DIR, { recursive: true });
 
-  const seen = new Set<string>();
-
+  const avatarTargets = new Map<string, { file: string; url: string }>();
   for (const repo of CURATED_REPOS) {
     const file = repo.avatarFile ?? `${repo.owner}.png`;
-    const destPath = path.join(AVATARS_DIR, file);
-
-    if (seen.has(file) || fs.existsSync(destPath)) {
-      seen.add(file);
-      continue;
-    }
-    seen.add(file);
-
-    const url = repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`;
-    try {
-      await downloadAvatar(url, destPath);
-      console.log(`   ✓ Avatar: ${file}`);
-    } catch (err) {
-      console.warn(`   ⚠ Avatar failed (${file}): ${err}`);
+    if (!avatarTargets.has(file)) {
+      avatarTargets.set(file, {
+        file,
+        url: repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`,
+      });
     }
   }
+
+  const uniqueTargets = [...avatarTargets.values()];
+  const uniqueAvatarCount = uniqueTargets.length;
+  let processed = 0;
+  console.log(`   Preparing ${uniqueAvatarCount} unique avatar targets`);
+
+  const tasks = uniqueTargets.map(({ file, url }) => async () => {
+    const destPath = path.join(AVATARS_DIR, file);
+
+    try {
+      if (fs.existsSync(destPath)) {
+        processed++;
+        console.log(`   [${processed}/${uniqueAvatarCount}] Avatar cached: ${file}`);
+        return;
+      }
+
+      await downloadAvatar(url, destPath);
+      processed++;
+      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar downloaded: ${file}`);
+    } catch (err) {
+      processed++;
+      console.warn(`   [${processed}/${uniqueAvatarCount}] Avatar failed (${file}): ${err}`);
+    }
+  });
+
+  await runWithConcurrency(tasks, AVATAR_DOWNLOAD_CONCURRENCY);
+  console.log(`   Avatar pass complete: ${processed}/${uniqueAvatarCount}`);
 }
 
 /**
@@ -745,10 +821,10 @@ async function downloadAllAvatars(): Promise<void> {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  console.log('🚀 Starting repository download process...');
-  console.log(`📁 Target directory: ${REPOS_DIR}`);
-  console.log(`🌿 Clone mode: --filter=blob:none --single-branch --depth ${opts.depth}`);
-  console.log(`⚡ Concurrency: ${DOWNLOAD_CONCURRENCY}`);
+  console.log('Repository download process starting...');
+  console.log(`Target directory: ${REPOS_DIR}`);
+  console.log(`Clone mode: --filter=blob:none --single-branch --depth ${opts.depth}`);
+  console.log(`Concurrency: ${DOWNLOAD_CONCURRENCY}`);
 
   if (opts.list) {
     console.log('\nCurated repos:');
@@ -758,43 +834,64 @@ async function main() {
     return;
   }
 
-  console.log('\n🖼️  Downloading owner avatars...');
-  await downloadAllAvatars();
+  await runPhase(
+    '🖼️ Avatar fetch',
+    async () => {
+      console.log('\nDownloading owner avatars...');
+      await downloadAllAvatars();
+    },
+    `${CURATED_REPOS.length} curated repos`
+  );
+
+  if (opts.avatarsOnly) {
+    console.log('\nRepository download process complete.');
+    return;
+  }
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
+  const finalRepos = selectRepos(opts);
 
-  const skipSet = new Set(opts.skip.map((s) => parseRepoSelector(s).key));
-  const onlySelectors = opts.only.map((s) => parseRepoSelector(s));
-  const onlyKeySet = new Set(onlySelectors.map((s) => s.key));
-  const branchOverrides = new Map(
-    onlySelectors.filter((s) => s.branchOverride).map((s) => [s.key, s.branchOverride!] as const)
+  await runPhase(
+    '🧹 Prune stale branches',
+    () => {
+      pruneStaleBranchDownloads(finalRepos);
+    },
+    `${finalRepos.length} repo targets`
   );
 
-  const selectedRepos: CuratedRepoConfig[] =
-    opts.only.length > 0
-      ? CURATED_REPOS.filter((r) => onlyKeySet.has(toRepoKey(r.owner, r.repo)))
-      : [...CURATED_REPOS];
+  console.log('\nFinal curated repo plan:');
+  for (const repo of finalRepos) {
+    const sparsePatterns = buildSparsePatterns(repo);
+    console.log(
+      `   - ${repo.owner}/${repo.repo}@${repo.branch}` +
+        (sparsePatterns ? ` [sparse:${sparsePatterns.length}]` : ' [full]')
+    );
+  }
 
-  const finalRepos = selectedRepos
-    .filter((r) => !skipSet.has(toRepoKey(r.owner, r.repo)))
-    .map((r) => {
-      const override = branchOverrides.get(toRepoKey(r.owner, r.repo));
-      return override ? { ...r, branch: override } : r;
-    });
-
+  let completedRepos = 0;
   const tasks = finalRepos.map((repo) => async () => {
     try {
+      console.log(`\n   Starting ${repo.owner}/${repo.repo}@${repo.branch}`);
       await downloadRepo(repo, opts.depth);
     } catch {
       // Error already logged inside downloadRepo; continue with remaining repos.
+    } finally {
+      completedRepos++;
+      console.log(`   Progress: ${completedRepos}/${finalRepos.length} repos processed`);
     }
   });
 
-  await runWithConcurrency(tasks, DOWNLOAD_CONCURRENCY);
+  await runPhase(
+    '📦 Curated repo sync',
+    async () => {
+      await runWithConcurrency(tasks, DOWNLOAD_CONCURRENCY);
+    },
+    `${finalRepos.length} repos @ concurrency ${DOWNLOAD_CONCURRENCY}`
+  );
 
-  console.log('\n✨ Repository download process complete!');
+  console.log('\nRepository download process complete.');
 }
 
 import { fileURLToPath } from 'url';

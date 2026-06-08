@@ -35,7 +35,6 @@ fileRecommendations:
       description: Low-level assembly — goroutine context switch
 ---
 
-## Chapter 1 — Goroutines and the Scheduler
 
 Go multiplexes goroutines onto OS threads using a **work-stealing M:N scheduler**. Understanding it requires knowing three concepts: `g`, `m`, and `p`.
 
@@ -75,7 +74,6 @@ fileRecommendations:
       description: sync.Mutex — user-space mutex implementation
 ---
 
-## Chapter 2 — Channels and Synchronization
 
 Channels are first-class in Go but implemented entirely in `src/runtime/chan.go`. Every channel is a `hchan` struct on the heap.
 
@@ -121,7 +119,6 @@ fileRecommendations:
       description: Memory allocator entry point — newobject
 ---
 
-## Chapter 3 — Memory and Garbage Collection
 
 Go uses a **tri-color concurrent mark-and-sweep GC** with short stop-the-world pauses. Memory allocation goes through a multi-level cache:
 
@@ -165,7 +162,6 @@ fileRecommendations:
       description: Interface type representation in the compiler
 ---
 
-## Chapter 4 — Interfaces and the Type System
 
 An interface value in Go is a two-word struct: `(itab*, data*)`.
 
@@ -206,7 +202,6 @@ fileRecommendations:
       description: String operations and conversions
 ---
 
-## Chapter 5 — Slices, Maps, and Strings
 
 ### Slices
 
@@ -237,7 +232,6 @@ fileRecommendations:
       description: Escape analysis — stack vs heap decision
 ---
 
-## Chapter 6 — The Compiler and Toolchain
 
 ### Compilation pipeline
 
@@ -274,7 +268,6 @@ fileRecommendations:
       description: Formatted I/O — Printf, Sprintf
 ---
 
-## Chapter 7 — The Standard Library
 
 Go's standard library is written in Go. There is no C shim layer for most packages — the runtime provides the primitives that everything else builds on.
 
@@ -303,7 +296,6 @@ fileRecommendations:
       description: sync.Map — concurrent map
 ---
 
-## Chapter 8 — Concurrency Patterns in the Source
 
 ### sync.Pool
 
@@ -330,7 +322,6 @@ fileRecommendations:
       description: Signal handling — SIGSEGV, SIGBUS, etc.
 ---
 
-## Chapter 9 — Putting It All Together
 
 ### Panic and recover
 

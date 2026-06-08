@@ -4,11 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import MonacoCodeEditor from './MonacoCodeEditor';
 import { fetchFileContent as fetchFromGitHub, GitHubApiError } from '@/lib/github-api';
 import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
+import type { FileFetchDebugInfo, FileFetchResult } from '@/lib/file-fetch-debug';
 
 interface CodeEditorContainerProps {
   filePath: string;
   onContentLoad?: (content: string) => void;
-  fetchFile?: (path: string) => Promise<string>;
+  fetchFile?: (path: string) => Promise<FileFetchResult>;
+  onFetchDebugInfo?: (filePath: string, debugInfo: FileFetchDebugInfo | null) => void;
   scrollToLine?: number;
   searchPattern?: string;
   onCursorChange?: (line: number, column: number) => void;
@@ -18,6 +20,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   filePath,
   onContentLoad,
   fetchFile,
+  onFetchDebugInfo,
   scrollToLine,
   searchPattern,
   onCursorChange,
@@ -27,7 +30,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [currentFilePath, setCurrentFilePath] = useState<string>('');
   // Use ref to cache loaded files without causing re-renders
-  const loadedFilesCache = useRef<Map<string, string>>(new Map());
+  const loadedFilesCache = useRef<Map<string, FileFetchResult>>(new Map());
   const { setRateLimit } = useGitHubRateLimit();
 
   useEffect(() => {
@@ -36,6 +39,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
         setContent('');
         setError(null);
         setCurrentFilePath('');
+        onFetchDebugInfo?.('', null);
         return;
       }
 
@@ -46,10 +50,12 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
 
       // Check if file is already loaded in cache (lazy load optimization)
       if (loadedFilesCache.current.has(filePath)) {
-        const cachedContent = loadedFilesCache.current.get(filePath) || '';
+        const cachedResult = loadedFilesCache.current.get(filePath);
+        const cachedContent = cachedResult?.content || '';
         setContent(cachedContent);
         setCurrentFilePath(filePath);
         setError(null);
+        onFetchDebugInfo?.(filePath, cachedResult?.debugInfo ?? null);
         // Notify parent of cached content
         if (onContentLoad) {
           onContentLoad(cachedContent);
@@ -63,15 +69,16 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       setCurrentFilePath(filePath);
 
       try {
-        const fileContent = await (fetchFile ? fetchFile(filePath) : fetchFromGitHub(filePath));
-        setContent(fileContent);
+        const fileResult = await (fetchFile ? fetchFile(filePath) : fetchFromGitHub(filePath));
+        setContent(fileResult.content);
 
         // Cache the loaded content for future use
-        loadedFilesCache.current.set(filePath, fileContent);
+        loadedFilesCache.current.set(filePath, fileResult);
+        onFetchDebugInfo?.(filePath, fileResult.debugInfo ?? null);
 
         // Notify parent component of content load
         if (onContentLoad) {
-          onContentLoad(fileContent);
+          onContentLoad(fileResult.content);
         }
       } catch (err) {
         // Check if it's a rate limit error
@@ -81,6 +88,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         setError(errorMessage);
         setContent(''); // Clear content on error
+        onFetchDebugInfo?.(filePath, null);
         console.error('Failed to load file content:', err);
       } finally {
         setIsLoading(false);
@@ -88,7 +96,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
     };
 
     loadFileContent();
-  }, [filePath, fetchFile, currentFilePath, onContentLoad, setRateLimit]);
+  }, [filePath, fetchFile, currentFilePath, onContentLoad, onFetchDebugInfo, setRateLimit]);
 
   if (error) {
     return (

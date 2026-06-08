@@ -49,6 +49,29 @@ export interface GitHubTag {
 
 // File System Access API types (for browser compatibility)
 declare global {
+  interface R2Object {
+    body: BodyInit | null;
+    writeHttpMetadata(headers: Headers): void;
+  }
+
+  interface R2Bucket {
+    get(key: string): Promise<R2Object | null>;
+  }
+
+  interface PagesFunctionContext<
+    Env = unknown,
+    Params extends Record<string, string | string[]> = Record<string, string | string[]>,
+  > {
+    env: Env;
+    params: Params;
+    request: Request;
+  }
+
+  type PagesFunction<
+    Env = unknown,
+    Params extends Record<string, string | string[]> = Record<string, string | string[]>,
+  > = (context: PagesFunctionContext<Env, Params>) => Response | Promise<Response>;
+
   interface Window {
     showDirectoryPicker?: (options?: {
       mode?: 'read' | 'readwrite';

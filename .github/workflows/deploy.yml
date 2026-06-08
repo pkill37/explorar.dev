@@ -34,9 +34,47 @@ jobs:
           path: out/
           retention-days: 1
 
+      - name: Upload corpus artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus
+          path: |
+            repos/
+            avatars/
+          retention-days: 1
+
+  deploy-r2:
+    name: Sync → Cloudflare R2
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Download corpus artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: corpus
+          path: .
+
+      - name: Sync curated repos to R2
+        run: |
+          aws s3 sync repos/ s3://${{ secrets.R2_BUCKET_NAME }}/repos/ \
+            --endpoint-url https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --delete \
+            --no-progress
+
+      - name: Sync avatars to R2
+        run: |
+          aws s3 sync avatars/ s3://${{ secrets.R2_BUCKET_NAME }}/avatars/ \
+            --endpoint-url https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --delete \
+            --no-progress
+
   deploy-cloudflare:
     name: Deploy → Cloudflare Pages
-    needs: build
+    needs: [build, deploy-r2]
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifact
@@ -44,6 +82,9 @@ jobs:
         with:
           name: out
           path: out/
+
+      - name: Remove R2-hosted dirs from Pages deploy
+        run: rm -rf out/repos out/avatars
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
@@ -53,43 +94,3 @@ jobs:
           projectName: explorar-dev
           directory: out
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
-  deploy-netlify:
-    name: Deploy → Netlify
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: out
-          path: out/
-
-      - name: Install Netlify CLI
-        run: npm install -g netlify-cli
-
-      - name: Deploy to Netlify
-        run: netlify deploy --prod --dir=out --message="Deploy from GitHub Actions (${{ github.sha }})"
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-
-  deploy-surge:
-    name: Deploy → Surge.sh
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: out
-          path: out/
-
-      - name: Install Surge CLI
-        run: npm install -g surge
-
-      - name: Deploy to Surge.sh
-        run: surge out/ explorar.dev --token ${{ secrets.SURGE_TOKEN }}
-        env:
-          SURGE_LOGIN: ${{ secrets.SURGE_LOGIN }}
-          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}

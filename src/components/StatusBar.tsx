@@ -1,6 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
+import {
+  getFileSourceMode,
+  getFileSourceModeServerSnapshot,
+  getFileSourceModeLabel,
+  subscribeToFileSourceMode,
+  type FileSourceMode,
+} from '@/lib/curated-content-url';
+import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 
 interface StatusBarProps {
   filePath?: string;
@@ -11,6 +19,41 @@ interface StatusBarProps {
   fileSize?: string;
   repoLabel?: string;
   branch?: string;
+  fileFetchDebugInfo?: FileFetchDebugInfo | null;
+}
+
+function formatDebugLabel(debugInfo: FileFetchDebugInfo): string {
+  const source =
+    debugInfo.source === 'r2-bucket'
+      ? 'R2'
+      : debugInfo.source === 'local-filesystem'
+        ? 'LOCAL'
+        : 'GITHUB';
+  const cacheStatus = debugInfo.cacheStatus ? ` ${debugInfo.cacheStatus}` : '';
+  return `SRC ${source}${cacheStatus}`;
+}
+
+function formatDebugTitle(debugInfo: FileFetchDebugInfo): string {
+  const details = [
+    `Source: ${debugInfo.source}`,
+    `Status: ${debugInfo.responseStatus ?? 'unknown'}`,
+    `Request URL: ${debugInfo.requestUrl}`,
+  ];
+
+  if (debugInfo.responseUrl) {
+    details.push(`Response URL: ${debugInfo.responseUrl}`);
+  }
+  if (debugInfo.cacheStatus) {
+    details.push(`CF Cache: ${debugInfo.cacheStatus}`);
+  }
+  if (debugInfo.r2Key) {
+    details.push(`R2 Key: ${debugInfo.r2Key}`);
+  }
+  if (debugInfo.contentLength) {
+    details.push(`Content-Length: ${debugInfo.contentLength}`);
+  }
+
+  return details.join('\n');
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({
@@ -22,7 +65,14 @@ const StatusBar: React.FC<StatusBarProps> = ({
   fileSize,
   repoLabel,
   branch,
+  fileFetchDebugInfo,
 }) => {
+  const fileSourceMode: FileSourceMode = useSyncExternalStore(
+    subscribeToFileSourceMode,
+    getFileSourceMode,
+    getFileSourceModeServerSnapshot
+  );
+
   return (
     <div className="cursor-statusbar">
       <div className="cursor-statusbar-left">
@@ -75,6 +125,18 @@ const StatusBar: React.FC<StatusBarProps> = ({
         )}
       </div>
       <div className="cursor-statusbar-right">
+        <div className="cursor-statusbar-item" title={getFileSourceModeLabel(fileSourceMode)}>
+          <span className="cursor-statusbar-text">{getFileSourceModeLabel(fileSourceMode)}</span>
+        </div>
+        <div className="cursor-statusbar-divider" />
+        {fileFetchDebugInfo?.enabled && (
+          <>
+            <div className="cursor-statusbar-item" title={formatDebugTitle(fileFetchDebugInfo)}>
+              <span className="cursor-statusbar-text">{formatDebugLabel(fileFetchDebugInfo)}</span>
+            </div>
+            <div className="cursor-statusbar-divider" />
+          </>
+        )}
         {repoLabel && (
           <>
             <div className="cursor-statusbar-item" title={repoLabel}>

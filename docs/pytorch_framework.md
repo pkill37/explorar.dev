@@ -33,7 +33,6 @@ fileRecommendations:
       description: Python Tensor class — high-level tensor operations
 ---
 
-## Chapter 1 — PyTorch Architecture and Core Concepts
 
 ### The Layered Architecture
 
@@ -258,7 +257,6 @@ fileRecommendations:
       description: All built-in layers: Linear, Conv2d, BatchNorm, etc.
 ---
 
-## Chapter 2 — Building Neural Networks
 
 ### nn.Module: The Building Block
 
@@ -451,7 +449,6 @@ fileRecommendations:
       description: Python autograd API — backward(), grad()
 ---
 
-## Chapter 3 — Autograd Engine Deep Dive
 
 ### How Gradients Are Computed
 
@@ -579,7 +576,6 @@ fileRecommendations:
       description: SGD with momentum implementation
 ---
 
-## Chapter 4 — Optimization and Training
 
 ### Optimizers
 
@@ -709,7 +705,6 @@ fileRecommendations:
       description: Quantization APIs for model compression
 ---
 
-## Chapter 5 — Advanced Features
 
 ### TorchScript and JIT Compilation
 
@@ -850,7 +845,6 @@ fileRecommendations:
       description: Dispatcher key system — how ops are routed to backends
 ---
 
-## Chapter 6 — PyTorch Internals
 
 ### ATen: The Tensor Library
 
@@ -927,7 +921,6 @@ fileRecommendations:
       description: Performance benchmarks for PyTorch operations
 ---
 
-## Chapter 7 — Production Deployment
 
 ### Model Export and Serving
 

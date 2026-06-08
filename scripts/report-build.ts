@@ -6,6 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 
 const CLOUDFLARE_FILE_LIMIT = 20_000;
 const CLOUDFLARE_FILE_WARN = 18_000;
@@ -102,7 +103,8 @@ function bar(ratio: number, width = 20): string {
 
 function main() {
   const outDir = path.join(process.cwd(), 'out');
-  const reposDir = path.join(outDir, 'repos');
+  const reposDir = CORPUS_REPOS_DIR;
+  const avatarsDir = PUBLIC_AVATARS_DIR;
 
   console.log('\n' + '═'.repeat(60));
   console.log('  BUILD REPORT');
@@ -143,7 +145,7 @@ function main() {
 
   // ── Repos breakdown ────────────────────────────────────────────
   if (fs.existsSync(reposDir)) {
-    console.log('\n  REPOS');
+    console.log('\n  CORPUS REPOS');
     console.log('  ' + '─'.repeat(56));
 
     // Walk owner/repo/branch structure
@@ -171,12 +173,19 @@ function main() {
     }
   }
 
+  if (fs.existsSync(avatarsDir)) {
+    const avatarFiles = walk(avatarsDir);
+    const avatarSize = avatarFiles.reduce((sum, f) => sum + f.size, 0);
+    console.log(
+      `\n  Public avatars            ${avatarFiles.length.toLocaleString().padStart(6)} files  ${fmt(avatarSize).padStart(9)}`
+    );
+  }
+
   // ── App files (non-repos) ──────────────────────────────────────
-  const repoFiles = fs.existsSync(reposDir) ? walk(reposDir) : [];
-  const appFileCount = totalFiles - repoFiles.length;
-  const appSize = totalSize - repoFiles.reduce((sum, f) => sum + f.size, 0);
+  const appFileCount = totalFiles;
+  const appSize = totalSize;
   console.log(
-    `\n  App files (Next.js build)  ${appFileCount.toLocaleString().padStart(6)} files  ${fmt(appSize).padStart(9)}`
+    `\n  Shell files (Next.js build) ${appFileCount.toLocaleString().padStart(6)} files  ${fmt(appSize).padStart(9)}`
   );
 
   // ── Top file types ─────────────────────────────────────────────

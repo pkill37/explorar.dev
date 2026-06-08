@@ -42,7 +42,6 @@ fileRecommendations:
       description: Cyclic garbage collector
 ---
 
-## Chapter 1 — Understanding CPython Before Code
 
 ```mermaid
 graph TD
@@ -98,7 +97,6 @@ fileRecommendations:
       description: Lexical analysis — source to tokens
 ---
 
-## Chapter 2 — Source Code Structure
 
 ```mermaid
 graph LR
@@ -177,7 +175,6 @@ fileRecommendations:
       description: Abstract object protocol dispatch
 ---
 
-## Chapter 3 — The Object Model
 
 ```mermaid
 graph TD
@@ -261,7 +258,6 @@ fileRecommendations:
       description: Set implementation
 ---
 
-## Chapter 4 — Built-in Types
 
 ```mermaid
 graph TD
@@ -340,7 +336,6 @@ fileRecommendations:
       description: Python bytecode disassembler
 ---
 
-## Chapter 5 — The Evaluation Loop
 
 ```mermaid
 graph TD
@@ -411,7 +406,6 @@ fileRecommendations:
       description: Import library Python implementation
 ---
 
-## Chapter 6 — Import System and Modules
 
 ```mermaid
 graph TD
@@ -469,7 +463,6 @@ fileRecommendations:
       description: Exception type declarations
 ---
 
-## Chapter 7 — Exception Handling
 
 ```mermaid
 graph TD
@@ -535,7 +528,6 @@ fileRecommendations:
       description: Master C API header
 ---
 
-## Chapter 8 — Advanced Topics
 
 ```mermaid
 graph TD

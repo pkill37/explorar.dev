@@ -2,17 +2,18 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import RepositoryExplorerClient from './client';
 import LoadingScreen from '@/components/LoadingScreen';
+import { CURATED_REPOS } from '@/lib/curated-repos';
 import { getAllCuratedGuideDocuments } from '@/lib/guides/docs-loader';
 
 // Only curated, pre-generated routes are valid.
 export const dynamicParams = false;
 
-// Generate routes only for curated repositories that ship a bundled guide.
-export async function generateStaticParams() {
-  const guides = getAllCuratedGuideDocuments();
-  return Array.from(guides.values()).map((doc) => ({
-    owner: doc.metadata.owner,
-    repo: doc.metadata.repo,
+// Generate repository routes from the parent owner segment.
+export async function generateStaticParams({ params }: { params: { owner: string } }) {
+  const { owner } = params;
+
+  return CURATED_REPOS.filter((repo) => repo.owner === owner).map((repo) => ({
+    repo: repo.repo,
   }));
 }
 

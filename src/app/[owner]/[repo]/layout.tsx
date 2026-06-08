@@ -1,13 +1,8 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { CURATED_REPOS, getCuratedRepo } from '@/lib/curated-repos';
+import { getCuratedRepo } from '@/lib/curated-repos';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
-
-// For static export, we need to provide generateStaticParams in layouts with dynamic segments
-export async function generateStaticParams() {
-  return CURATED_REPOS.map(({ owner, repo }) => ({ owner, repo }));
-}
 
 // Repository-specific metadata and descriptions
 function getRepoMetadata(owner: string, repo: string) {

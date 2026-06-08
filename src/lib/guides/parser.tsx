@@ -79,6 +79,7 @@ interface SectionFrontmatter {
   fileRecommendations?: {
     docs?: FileRecommendation[];
     source?: FileRecommendation[];
+    directories?: FileRecommendation[];
   };
   quiz?: QuizQuestion[];
 }
@@ -248,10 +249,13 @@ export function parseGuideMarkdown(
             {reactContent}
           </div>
           {sectionMeta.fileRecommendations &&
-            (sectionMeta.fileRecommendations.docs || sectionMeta.fileRecommendations.source) &&
+            (sectionMeta.fileRecommendations.docs ||
+              sectionMeta.fileRecommendations.source ||
+              sectionMeta.fileRecommendations.directories) &&
             createFileRecommendationsComponent(
               sectionMeta.fileRecommendations.docs || [],
               sectionMeta.fileRecommendations.source || [],
+              sectionMeta.fileRecommendations.directories || [],
               openFileInTab
             )}
           {sectionMeta.quiz && sectionMeta.quiz.length > 0 && (

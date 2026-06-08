@@ -1,6 +1,6 @@
 # Test Suite for Static Web App
 
-This directory contains comprehensive tests for the static web application, including sanity checks, performance metrics, SEO validation, and quality scoring.
+This directory contains tests for the static web application, including sanity checks, performance metrics, SEO validation, and quality checks.
 
 ## Test Categories
 
@@ -55,17 +55,6 @@ Accessibility and code quality:
 - Console errors
 - Document structure
 
-### 5. Quality Scoring (`quality-score.spec.ts`)
-
-Overall quality score calculation:
-
-- Performance score (0-100)
-- Accessibility score (0-100)
-- SEO score (0-100)
-- Best practices score (0-100)
-- Total quality score
-- Quality report generation
-
 ## Running Tests
 
 ```bash
@@ -83,9 +72,6 @@ npm run test:seo
 
 # Quality tests only
 npm run test:quality
-
-# Quality scoring only
-npm run test:score
 
 # Interactive UI Mode
 npm run test:ui
@@ -114,10 +100,6 @@ BASE_URL=http://localhost:3000 npm test
 
 ## Quality Thresholds
 
-The tests enforce the following quality thresholds:
-
-- **Performance**: Minimum 70/100
-- **Accessibility**: Minimum 70/100
 - **SEO**: Minimum 70/100
 - **Best Practices**: Minimum 70/100
 - **Total Score**: Minimum 75/100

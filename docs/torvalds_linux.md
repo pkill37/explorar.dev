@@ -76,15 +76,15 @@ fileRecommendations:
 
 Six directories account for nearly all kernel behavior.
 
-**`kernel/`** holds the scheduler (`sched/`), process creation (`fork.c`), signal delivery (`signal.c`), and timers. The CFS scheduler alone spans `fair.c` (~12k lines), `core.c` (~11k lines), and `rt.c` for real-time policies.
+**`kernel/`** holds the scheduler (under `kernel/sched/`), process creation (`fork.c`), signal delivery (`signal.c`), and timers. The CFS scheduler alone spans `fair.c` (~12k lines), `core.c` (~11k lines), and `rt.c` for real-time policies.
 
 **`mm/`** owns physical and virtual memory. `page_alloc.c` is the buddy allocator for page-granularity requests; `slub.c` is the slab allocator for small kernel objects; `mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
 
-**`fs/`** provides the Virtual Filesystem Switch — a uniform interface over all filesystems. `namei.c` resolves paths to dentries; `open.c` and `read_write.c` implement the syscalls; concrete filesystems (`ext4/`, `btrfs/`, `xfs/`) plug in below.
+**`fs/`** provides the Virtual Filesystem Switch — a uniform interface over all filesystems. `namei.c` resolves paths to dentries; `open.c` and `read_write.c` implement the syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
 
 **`net/`** implements the full TCP/IP stack. Socket buffers (`sk_buff`) flow through `net/core/dev.c` (device layer), `net/ipv4/tcp.c` (protocol), and `net/netfilter/` (packet filtering).
 
-**`drivers/`** (~20M lines) abstracts every hardware category through a bus-device-driver model registered with `kobject`/sysfs.
+**The driver subsystem** (~20M lines) abstracts every hardware category through a bus-device-driver model registered with `kobject`/sysfs.
 
 **`arch/x86/`** contains everything that can't be written portably: syscall entry (`arch/x86/entry/entry_64.S`), page-fault handling (`arch/x86/mm/fault.c`), SMP bring-up, and KVM virtualization.
 

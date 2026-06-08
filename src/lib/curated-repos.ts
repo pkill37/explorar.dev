@@ -77,6 +77,34 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     sitemapPriority: 0.9,
   },
   {
+    owner: 'reactos',
+    repo: 'reactos',
+    branch: '0.4.16',
+    displayName: 'ReactOS',
+    icon: '🪟',
+    gradient: 'from-sky-500/10 to-cyan-500/10',
+    category: 'Operating Systems',
+    description:
+      'Explore ReactOS, a Windows-compatible open source operating system focused on NT kernel, Win32, and driver compatibility.',
+    seoDescription:
+      'Explore the ReactOS source code interactively. Study its NT kernel architecture, Win32 subsystem, driver model, boot flow, and Windows compatibility layers.',
+    seoKeywords: [
+      'ReactOS',
+      'Windows-compatible OS',
+      'NT kernel',
+      'Win32',
+      'driver compatibility',
+      'operating system internals',
+      'systems programming',
+      'open source OS',
+    ],
+    sitemapPriority: 0.75,
+    staticBuild: {
+      guideMode: 'guide-only',
+      guideExpansion: 'directory-expanded',
+    },
+  },
+  {
     owner: 'torvalds',
     repo: 'linux',
     branch: 'v6.1',
@@ -102,6 +130,10 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'Linux internals',
     ],
     sitemapPriority: 0.9,
+    staticBuild: {
+      guideMode: 'guide-only',
+      guideExpansion: 'directory-expanded',
+    },
   },
   {
     owner: 'python',
@@ -153,6 +185,11 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'libc',
     ],
     sitemapPriority: 0.8,
+    staticBuild: {
+      guideMode: 'guide-only',
+      guideExpansion: 'directory-expanded',
+      includeDirs: ['libio'],
+    },
   },
   {
     owner: 'llvm',
@@ -179,6 +216,39 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'compiler engineering',
     ],
     sitemapPriority: 0.8,
+    staticBuild: {
+      guideMode: 'guide-only',
+      guideExpansion: 'directory-expanded',
+    },
+  },
+  {
+    owner: 'mrcxlinux',
+    repo: 'srv03rtm-anika',
+    branch: '9e4d6bae9ed79e542f0f3ab463d6b00866019ec1',
+    displayName: 'Windows Server 2003 Source Tree',
+    icon: '🪟',
+    gradient: 'from-sky-500/10 to-blue-500/10',
+    category: 'Operating Systems',
+    avatarFile: 'mrcxlinux.svg',
+    description:
+      'Explore the Windows Server 2003 source tree, with focus on its build layout, core subsystem families, and server-oriented components.',
+    seoDescription:
+      'Explore the Windows Server 2003 source tree interactively. Study the build layout, subsystem organization, server components, networking stack, and developer tooling behind the NT 5.2 codebase.',
+    seoKeywords: [
+      'Windows Server 2003',
+      'Windows internals',
+      'NT source code',
+      'source tree',
+      'Razzle build',
+      'server operating system',
+      'systems programming',
+      'Windows source code',
+    ],
+    sitemapPriority: 0.75,
+    staticBuild: {
+      guideMode: 'guide-only',
+      guideExpansion: 'subtree',
+    },
   },
 ];
 

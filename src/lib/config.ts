@@ -36,6 +36,10 @@ class Config {
     return this.getConfig('NEXT_PUBLIC_GUIDES_API_KEY') || '';
   }
 
+  getCuratedContentBaseUrl(): string {
+    return this.getConfig('NEXT_PUBLIC_CURATED_CONTENT_BASE_URL') || '';
+  }
+
   isProduction(): boolean {
     return this.getConfig('NODE_ENV') === 'production';
   }

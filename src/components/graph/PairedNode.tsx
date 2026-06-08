@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useViewport } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
+import { fetchRepositoryFile } from '@/lib/github-api';
 import { NODE_WIDTH, NODE_HEIGHT, type PairedNodeData } from '@/lib/graph-data';
 import { useGraphContext } from '@/contexts/GraphContext';
 import { ENTRY_ZOOM_THRESHOLD, ENTRY_APPROACH_START } from './ZoomWatcher';
@@ -38,11 +39,7 @@ async function fetchPreviewLines(
   maxLines = 28
 ): Promise<string | null> {
   try {
-    const res = await fetch(`/repos/${owner}/${repo}/${branch}/${filePath}`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    const text = await res.text();
+    const text = (await fetchRepositoryFile(owner, repo, branch, filePath)).content;
     return text.split('\n').slice(0, maxLines).join('\n');
   } catch {
     return null;

@@ -1,8 +1,11 @@
-// Static file reader for build-time downloaded repositories
-// Reads from public/repos/ directory using fetch (works with static export)
+// Static file reader for curated repositories.
+// In local dev this resolves to /public/repos/; in production curated files
+// are typically fetched from a direct public bucket/custom-domain origin.
 
 import type { FileNode } from '@/types';
+import { buildCuratedRepoUrl, type StaticFileSourceMode } from './curated-content-url';
 import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
+import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
 
 /**
  * Check if a repository is curated (pre-downloaded at build time)
@@ -18,14 +21,13 @@ export function getRepositoryMode(owner: string, repo: string): 'curated' | 'arb
   return isCuratedRepo(owner, repo) ? 'curated' : 'arbitrary';
 }
 
-/**
- * Get the static file path for a repository file
- */
-function getStaticFilePath(owner: string, repo: string, branch: string, filePath: string): string {
-  // Remove leading slash if present
-  const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
-  return `/repos/${owner}/${repo}/${branch}/${cleanPath}`;
-}
+export const getStaticFilePath = (
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string,
+  source: StaticFileSourceMode = 'local-filesystem'
+) => buildCuratedRepoUrl(owner, repo, branch, filePath, source);
 
 /**
  * Read file content from static files
@@ -34,9 +36,11 @@ export async function readFileFromStatic(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string
-): Promise<string> {
-  const url = getStaticFilePath(owner, repo, branch, filePath);
+  filePath: string,
+  source: StaticFileSourceMode = 'local-filesystem'
+): Promise<FileFetchResult> {
+  const requestUrl = getStaticFilePath(owner, repo, branch, filePath, source);
+  const url = requestUrl;
 
   try {
     const response = await fetch(url);
@@ -48,7 +52,22 @@ export async function readFileFromStatic(
       throw new Error(`Failed to read file: ${response.statusText}`);
     }
 
-    return await response.text();
+    const result: FileFetchResult = {
+      content: await response.text(),
+      debugInfo: {
+        enabled: true,
+        source: source === 'r2-bucket' ? 'r2-bucket' : 'local-filesystem',
+        requestUrl: url,
+        responseUrl: response.url || undefined,
+        responseStatus: response.status,
+        cacheStatus: response.headers.get('cf-cache-status'),
+        r2Key: response.headers.get('x-explorar-r2-key'),
+        contentLength: response.headers.get('content-length'),
+      },
+    };
+
+    logFileFetchDebugInfo(result.debugInfo);
+    return result;
   } catch (error) {
     if (error instanceof Error) {
       throw error;

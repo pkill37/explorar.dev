@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { CURATED_TEST_SITEMAP_PATHS } from './helpers/curated-repos';
 
 /**
  * SEO Tests
@@ -87,15 +88,7 @@ test.describe('SEO Checks', () => {
     await page.goto('/sitemap.xml');
     const content = await page.textContent('body');
 
-    const repos = [
-      'littlekernel/lk',
-      'apple-oss-distributions/xnu',
-      'torvalds/linux',
-      'python/cpython',
-      'bminor/glibc',
-      'llvm/llvm-project',
-    ];
-    for (const repo of repos) {
+    for (const repo of CURATED_TEST_SITEMAP_PATHS) {
       expect(content).toContain(repo);
     }
   });

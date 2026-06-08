@@ -98,7 +98,10 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
 
   // Normalize paths for comparison (remove trailing slashes)
   const normalizePath = (path: string) => path.replace(/\/+$/, '');
-  const isSelected = normalizePath(selectedFile || '') === normalizePath(node.path);
+  const selectedPath = normalizePath(selectedFile || '');
+  const currentPath = normalizePath(node.path);
+  const isSelected =
+    !!selectedPath && (currentPath === selectedPath || currentPath.startsWith(`${selectedPath}/`));
 
   return (
     <div>

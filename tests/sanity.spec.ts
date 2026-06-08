@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { CURATED_TEST_REPOS } from './helpers/curated-repos';
 
 /**
  * Sanity checks for the static web app
@@ -24,16 +25,7 @@ test.describe('Sanity Checks', () => {
   });
 
   test('repository pages load successfully', async ({ page }) => {
-    const repos = [
-      { owner: 'littlekernel', repo: 'lk' },
-      { owner: 'apple-oss-distributions', repo: 'xnu' },
-      { owner: 'torvalds', repo: 'linux' },
-      { owner: 'python', repo: 'cpython' },
-      { owner: 'bminor', repo: 'glibc' },
-      { owner: 'llvm', repo: 'llvm-project' },
-    ];
-
-    for (const { owner, repo } of repos) {
+    for (const { owner, repo } of CURATED_TEST_REPOS) {
       const response = await page.goto(`/${owner}/${repo}`);
       expect(response?.status()).toBe(200);
       await expect(page.locator('body')).toBeVisible();
@@ -54,25 +46,14 @@ test.describe('Sanity Checks', () => {
     expect(content).toContain('urlset');
   });
 
-  test('manifest files are accessible', async ({ page }) => {
-    const repos = [
-      { owner: 'littlekernel', repo: 'lk', branch: 'a521fe60e1a16d5670fe24b7fca2c5155b3339c4' },
-      { owner: 'apple-oss-distributions', repo: 'xnu', branch: 'xnu-12377.1.9' },
-      { owner: 'torvalds', repo: 'linux', branch: 'v6.1' },
-      { owner: 'python', repo: 'cpython', branch: 'v3.12.0' },
-      { owner: 'bminor', repo: 'glibc', branch: 'glibc-2.39' },
-      { owner: 'llvm', repo: 'llvm-project', branch: 'llvmorg-18.1.0' },
-    ];
-
-    for (const { owner, repo, branch } of repos) {
-      // Try new manifest name first, fall back to old name for backward compatibility
-      let response = await page.goto(`/repos/${owner}/${repo}/${branch}/repo-manifest.json`);
-      if (!response?.ok()) {
-        response = await page.goto(`/repos/${owner}/${repo}/${branch}/.repo-manifest.json`);
-      }
+  test('repository pages expose source selection for on-demand loading', async ({ page }) => {
+    for (const { owner, repo } of CURATED_TEST_REPOS) {
+      const response = await page.goto(`/${owner}/${repo}`);
       expect(response?.status()).toBe(200);
-      const json = await response?.json();
-      expect(json).toHaveProperty('tree');
+
+      const sourceSelect = page.locator('select.vscode-source-select').first();
+      await expect(sourceSelect).toHaveValue('r2-bucket');
+      await expect(sourceSelect.locator('option[value="r2-bucket"]')).toContainText('R2 bucket');
     }
   });
 

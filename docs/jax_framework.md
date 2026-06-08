@@ -33,7 +33,6 @@ fileRecommendations:
       description: JAX NumPy compatibility layer
 ---
 
-## Chapter 1 — JAX Philosophy and Architecture
 
 ### The Functional Paradigm
 
@@ -196,7 +195,6 @@ fileRecommendations:
       description: Primitive operations with their gradient rules
 ---
 
-## Chapter 2 — Automatic Differentiation with grad
 
 ### Forward and Reverse Mode AD
 
@@ -318,7 +316,6 @@ fileRecommendations:
       description: XLA backend integration
 ---
 
-## Chapter 3 — JIT Compilation with jax.jit
 
 ### How JIT Works
 
@@ -408,7 +405,6 @@ fileRecommendations:
       description: vmap() entry point and axis specification
 ---
 
-## Chapter 4 — Automatic Vectorization with vmap
 
 ### Vectorizing Over Batches
 
@@ -504,7 +500,6 @@ fileRecommendations:
       description: pmap() entry point and device specification
 ---
 
-## Chapter 5 — Parallel Computation with pmap
 
 ### Multi-Device Parallelization
 
@@ -569,7 +564,6 @@ fileRecommendations:
       description: Public random API — key(), normal(), uniform()
 ---
 
-## Chapter 6 — Random Number Generation
 
 ### Functional PRNG
 
@@ -620,7 +614,6 @@ fileRecommendations:
       description: Public PyTree API
 ---
 
-## Chapter 7 — PyTrees and Nested Structures
 
 ### What Are PyTrees?
 
@@ -701,7 +694,6 @@ fileRecommendations:
       description: Functional optimizers for JAX
 ---
 
-## Chapter 8 — Building Neural Networks
 
 ### Flax: JAX Neural Network Library
 
@@ -790,7 +782,6 @@ fileRecommendations:
       description: JAX dispatch — how computations are sent to devices
 ---
 
-## Chapter 9 — JAX Internals
 
 ### The Tracer System
 

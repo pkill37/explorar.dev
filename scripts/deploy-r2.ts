@@ -1,0 +1,244 @@
+#!/usr/bin/env node
+/**
+ * Deploy curated corpus assets to Cloudflare R2.
+ *
+ * R2 only needs the bucket-backed curated corpus:
+ * - sync `repos/` into `repos/`
+ * - use the Cloudflare R2 S3-compatible endpoint
+ * - delete stale objects in that prefix
+ */
+
+import { spawn, spawnSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import { loadDeployEnv } from './deploy-env';
+import { CORPUS_REPOS_DIR } from './static-asset-paths';
+import { CURATED_REPOS } from '../src/lib/curated-repos';
+import { runPhase } from './tqdm';
+
+type DeployEnv = {
+  bucketName: string;
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+const R2_SYNC_CONCURRENCY = 2;
+
+export function fail(message: string): never {
+  console.error(`\nERROR: ${message}\n`);
+  process.exit(1);
+}
+
+export function readR2Env(): DeployEnv {
+  const bucketName = process.env.R2_BUCKET_NAME?.trim();
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
+
+  if (!bucketName) fail('Missing R2_BUCKET_NAME');
+  if (!accountId) fail('Missing CLOUDFLARE_ACCOUNT_ID');
+  if (!accessKeyId) fail('Missing R2_ACCESS_KEY_ID');
+  if (!secretAccessKey) fail('Missing R2_SECRET_ACCESS_KEY');
+
+  return { bucketName, accountId, accessKeyId, secretAccessKey };
+}
+
+export function ensureOutDir(): void {
+  const outDir = path.join(process.cwd(), 'out');
+  if (!fs.existsSync(outDir)) {
+    fail('The `out/` directory does not exist. Run `npm run build` first.');
+  }
+}
+
+function ensureCorpusDir(dirPath: string, label: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fail(
+      `The ${label} directory does not exist at ${dirPath}. Run \`tsx scripts/download-repos.ts\` first.`
+    );
+  }
+}
+
+function runAwsCommand(args: string[], env: DeployEnv, failureContext: string) {
+  const endpointUrl = `https://${env.accountId}.r2.cloudflarestorage.com`;
+  const argsWithEndpoint = [...args, '--endpoint-url', endpointUrl];
+
+  const result = spawnSync('aws', argsWithEndpoint, {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      AWS_ACCESS_KEY_ID: env.accessKeyId,
+      AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
+      AWS_DEFAULT_REGION: 'auto',
+    },
+  });
+
+  if (result.error) {
+    fail(`Failed to launch aws CLI: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    fail(`${failureContext} (aws exited with status ${result.status ?? 'unknown'})`);
+  }
+}
+
+function runAwsCommandAsync(args: string[], env: DeployEnv, failureContext: string): Promise<void> {
+  const endpointUrl = `https://${env.accountId}.r2.cloudflarestorage.com`;
+  const argsWithEndpoint = [...args, '--endpoint-url', endpointUrl];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('aws', argsWithEndpoint, {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        AWS_ACCESS_KEY_ID: env.accessKeyId,
+        AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
+        AWS_DEFAULT_REGION: 'auto',
+      },
+    });
+
+    child.on('error', (error) => {
+      reject(new Error(`Failed to launch aws CLI: ${error.message}`));
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`${failureContext} (aws exited with status ${code ?? 'unknown'})`));
+    });
+  });
+}
+
+async function runWithConcurrency(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
+  const queue = [...tasks];
+
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      const task = queue.shift();
+      if (!task) {
+        return;
+      }
+      await task();
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+}
+
+function countFiles(dirPath: string): number {
+  let total = 0;
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      total += countFiles(fullPath);
+    } else {
+      total++;
+    }
+  }
+  return total;
+}
+
+function directorySizeBytes(dirPath: string): number {
+  let total = 0;
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      total += directorySizeBytes(fullPath);
+    } else {
+      total += fs.statSync(fullPath).size;
+    }
+  }
+  return total;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function runBucketAccessPreflight(env: DeployEnv): void {
+  runPhase(
+    '🔎 R2 bucket access preflight',
+    () => {
+      runAwsCommand(
+        ['s3api', 'head-bucket', '--bucket', env.bucketName],
+        env,
+        `R2 bucket access preflight failed for s3://${env.bucketName}`
+      );
+    },
+    env.bucketName
+  );
+}
+
+async function syncCorpusRepos(env: DeployEnv): Promise<void> {
+  let completed = 0;
+
+  const tasks = CURATED_REPOS.map((repo) => async () => {
+    const repoDir = path.join(CORPUS_REPOS_DIR, repo.owner, repo.repo, repo.branch);
+    ensureCorpusDir(repoDir, `${repo.owner}/${repo.repo}@${repo.branch}`);
+
+    const fileCount = countFiles(repoDir);
+    const size = directorySizeBytes(repoDir);
+
+    await runPhase(
+      `📦 Sync ${repo.owner}/${repo.repo}`,
+      async () => {
+        await runAwsCommandAsync(
+          [
+            's3',
+            'sync',
+            `${repoDir}/`,
+            `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.branch}/`,
+            '--delete',
+            '--no-progress',
+          ],
+          env,
+          `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.branch}`
+        );
+      },
+      `${fileCount} files · ${formatBytes(size)}`
+    );
+
+    completed++;
+    console.log(`   Corpus repo progress: ${completed}/${CURATED_REPOS.length}`);
+  });
+
+  await runWithConcurrency(tasks, R2_SYNC_CONCURRENCY);
+  console.log(`   Corpus repo sync complete: ${completed}/${CURATED_REPOS.length}`);
+}
+
+export async function runAwsSync(env: DeployEnv): Promise<void> {
+  console.log(`\nSyncing corpus artifacts to R2 bucket ${env.bucketName}`);
+  console.log(`Endpoint: https://${env.accountId}.r2.cloudflarestorage.com`);
+  console.log(`Corpus root: ${CORPUS_REPOS_DIR}`);
+  console.log(
+    'Sync strategy: rely on `aws s3 sync` diffing so only changed files are transferred.'
+  );
+
+  ensureCorpusDir(CORPUS_REPOS_DIR, 'corpus repos');
+
+  runBucketAccessPreflight(env);
+
+  await syncCorpusRepos(env);
+}
+
+async function main(): Promise<void> {
+  loadDeployEnv();
+  const env = readR2Env();
+  await runAwsSync(env);
+  console.log('\nR2 deployment complete.');
+}
+
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((error) => {
+    fail(error instanceof Error ? error.message : String(error));
+  });
+}

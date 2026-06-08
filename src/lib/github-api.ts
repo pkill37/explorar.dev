@@ -6,6 +6,14 @@ import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } fro
 import { getHttpClient, isWebPlatform } from './platform';
 import { storeTreeStructure } from './repo-storage';
 import { getCuratedRepoBranch } from './curated-repos';
+import {
+  getFileSourceMode,
+  getFileSourceModeLabel,
+  InvalidR2PublicBaseUrlError,
+  isStaticFileSourceMode,
+  type FileSourceMode,
+} from './curated-content-url';
+import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
 
 /**
  * Build headers for GitHub API requests
@@ -119,21 +127,182 @@ async function tryFetchFileFromStorage(
   owner: string,
   repo: string,
   branch: string,
-  path: string
-): Promise<string | null> {
+  path: string,
+  source: Extract<FileSourceMode, 'local-filesystem' | 'r2-bucket'>
+): Promise<FileFetchResult | null> {
   try {
-    // Always try static files first (served from out/repos/ via HTTP)
     try {
-      return await readFileFromStatic(owner, repo, branch, path);
+      return await readFileFromStatic(owner, repo, branch, path, source);
     } catch (error) {
-      // File not found in static storage
-      console.warn(`File not found in static storage: ${owner}/${repo}/${branch}/${path}`, error);
+      if (error instanceof InvalidR2PublicBaseUrlError) {
+        throw error;
+      }
+      if (error instanceof Error && error.message.startsWith('File not found:')) {
+        console.warn(`File not found in ${source}: ${owner}/${repo}/${branch}/${path}`, error);
+        return null;
+      }
+      if (error instanceof Error) {
+        throw error;
+      }
+      console.warn(`File not found in ${source}: ${owner}/${repo}/${branch}/${path}`, error);
       return null;
     }
   } catch (error) {
-    console.error('Error fetching file from storage:', error);
+    if (error instanceof InvalidR2PublicBaseUrlError) {
+      throw error;
+    }
+    console.error(`Error fetching file from ${source}:`, error);
     return null;
   }
+}
+
+/**
+ * Fetch file content directly from GitHub API for a pinned ref.
+ * Used as a fallback when curated static files are missing a subtree.
+ */
+async function tryFetchFileFromGitHub(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<FileFetchResult | null> {
+  try {
+    const fileUrl = `${currentConfig.apiBase}/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+    const headers = buildGitHubHeaders();
+
+    let response: Response;
+    if (isWebPlatform()) {
+      try {
+        const httpClient = getHttpClient();
+        response = await httpClient.get(fileUrl, headers as Record<string, string>);
+      } catch {
+        response = await fetch(fileUrl, { headers });
+      }
+    } else {
+      response = await fetch(fileUrl, { headers });
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const fileData: GitHubApiResponse = await response.json();
+    if (fileData.type !== 'file' || !fileData.content || fileData.encoding !== 'base64') {
+      return null;
+    }
+
+    const content = atob(fileData.content.replace(/\n/g, ''));
+
+    // Store in IndexedDB for future use when possible.
+    try {
+      const identifier = getGitHubRepoIdentifier(owner, repo);
+      const { storeFileInStorage } = await import('./repo-storage');
+      await storeFileInStorage('github', identifier, branch, path, content);
+    } catch {
+      // Cache write is best-effort only.
+    }
+
+    const result: FileFetchResult = {
+      content,
+      debugInfo: {
+        enabled: true,
+        source: 'github-api',
+        requestUrl: fileUrl,
+        responseUrl: response.url || undefined,
+        responseStatus: response.status,
+        contentLength: response.headers.get('content-length'),
+      },
+    };
+
+    logFileFetchDebugInfo(result.debugInfo);
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function buildSelectedSourceError(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string,
+  source: FileSourceMode,
+  repoMode: 'curated' | 'arbitrary',
+  cause?: unknown
+): GitHubApiError {
+  const sourceLabel = getFileSourceModeLabel(source);
+
+  if (repoMode === 'arbitrary' && source !== 'github-api') {
+    return new GitHubApiError(
+      `${sourceLabel} is only available for curated repositories.\n\n` +
+        `Switch the source selector to api.github.com to load ${owner}/${repo}@${branch}:${path}.`,
+      400
+    );
+  }
+
+  if (source === 'github-api') {
+    return new GitHubApiError(
+      `Failed to load "${path}" from api.github.com for ${owner}/${repo}@${branch}.`,
+      404
+    );
+  }
+
+  if (cause instanceof Error) {
+    return new GitHubApiError(
+      `Failed to load "${path}" from ${sourceLabel} for ${owner}/${repo}@${branch}.\n\n${cause.message}`,
+      404
+    );
+  }
+
+  return new GitHubApiError(
+    `Failed to load "${path}" from ${sourceLabel} for ${owner}/${repo}@${branch}.`,
+    404
+  );
+}
+
+export async function fetchRepositoryFile(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<FileFetchResult> {
+  const source = getFileSourceMode();
+  const repoMode = getRepositoryMode(owner, repo);
+
+  if (source === 'github-api') {
+    const apiResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
+    if (apiResult) {
+      return apiResult;
+    }
+
+    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
+  }
+
+  if (!isStaticFileSourceMode(source)) {
+    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
+  }
+
+  if (repoMode !== 'curated') {
+    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
+  }
+
+  try {
+    const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path, source);
+    if (staticResult) {
+      return staticResult;
+    }
+  } catch (error) {
+    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode, error);
+  }
+
+  // Curated static corpora may be intentionally sparse in local dev and R2.
+  // Fall back to GitHub for pinned refs when a file is missing from the staged payload.
+  const apiFallbackResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
+  if (apiFallbackResult) {
+    return apiFallbackResult;
+  }
+
+  throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
 }
 
 /**
@@ -261,7 +430,7 @@ export async function fetchFullTreeMetadata(
  * Fetch file content from local storage first, then GitHub API as fallback
  * Supports both curated (static files) and arbitrary (GitHub API) repos
  */
-export async function fetchFileContent(path: string): Promise<string> {
+export async function fetchFileContent(path: string): Promise<FileFetchResult> {
   // Validate configuration
   if (!currentConfig.owner || !currentConfig.repo) {
     const error = new GitHubApiError(
@@ -277,98 +446,17 @@ export async function fetchFileContent(path: string): Promise<string> {
   }
 
   const mode = getRepositoryMode(currentConfig.owner, currentConfig.repo);
-
-  // For curated repos, use static files
   if (mode === 'curated') {
-    // Validate branch is the trusted version
     const trusted = getTrustedVersion(currentConfig.owner, currentConfig.repo);
     if (trusted && trusted !== currentConfig.branch) {
-      const error = new GitHubApiError(
+      throw new GitHubApiError(
         `Invalid branch "${currentConfig.branch}" for ${currentConfig.owner}/${currentConfig.repo}. Only trusted version is allowed: ${trusted}`,
         400
       );
-      throw error;
     }
-
-    // Always try static files first (served from out/repos/ via HTTP)
-    const storageResult = await tryFetchFileFromStorage(
-      currentConfig.owner,
-      currentConfig.repo,
-      currentConfig.branch,
-      path
-    );
-    if (storageResult) {
-      return storageResult;
-    }
-
-    // If static files don't have it, provide helpful error
-    const repoKey = `${currentConfig.owner}/${currentConfig.repo}`;
-    const isDevMode = process.env.NODE_ENV === 'development';
-
-    throw new GitHubApiError(
-      `Repository not downloaded: ${repoKey}\n\n` +
-        `The file "${path}" cannot be loaded because the repository hasn't been downloaded.\n\n` +
-        (isDevMode
-          ? `To download this repository:\n` +
-            `1. Stop the dev server (Ctrl+C)\n` +
-            `2. Run: tsx scripts/download-repos.ts --only=${repoKey} --depth=1\n` +
-            `3. Restart the dev server: npm run dev\n\n` +
-            `Alternatively, download all repos: npm run prebuild`
-          : `This repository needs to be downloaded during the build process.\n` +
-            `Run: npm run build`),
-      404
-    );
   }
 
-  // For arbitrary repos, use GitHub API with auth
-  try {
-    const fileUrl = `${currentConfig.apiBase}/${currentConfig.owner}/${currentConfig.repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(currentConfig.branch)}`;
-    const headers = buildGitHubHeaders();
-
-    let response: Response;
-    if (isWebPlatform()) {
-      try {
-        const httpClient = getHttpClient();
-        response = await httpClient.get(fileUrl, headers as Record<string, string>);
-      } catch {
-        response = await fetch(fileUrl, { headers });
-      }
-    } else {
-      response = await fetch(fileUrl, { headers });
-    }
-
-    if (!response.ok) {
-      throw new GitHubApiError(`Failed to fetch file: ${response.statusText}`, response.status);
-    }
-
-    const fileData: GitHubApiResponse = await response.json();
-
-    if (fileData.type !== 'file') {
-      throw new GitHubApiError(`Path is not a file: ${path}`, 400);
-    }
-
-    // Decode base64 content
-    if (fileData.content && fileData.encoding === 'base64') {
-      const content = atob(fileData.content.replace(/\n/g, ''));
-
-      // Store in IndexedDB for future use
-      const identifier = getGitHubRepoIdentifier(currentConfig.owner, currentConfig.repo);
-      const { storeFileInStorage } = await import('./repo-storage');
-      await storeFileInStorage('github', identifier, currentConfig.branch, path, content);
-
-      return content;
-    }
-
-    throw new GitHubApiError(`File content not available in expected format: ${path}`, 500);
-  } catch (error) {
-    if (error instanceof GitHubApiError) {
-      throw error;
-    }
-    throw new GitHubApiError(
-      `Failed to fetch file content: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    );
-  }
+  return fetchRepositoryFile(currentConfig.owner, currentConfig.repo, currentConfig.branch, path);
 }
 
 /**

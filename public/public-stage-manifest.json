@@ -1,0 +1,45 @@
+{
+  "mode": "dev-symlink",
+  "repoManifests": [
+    {
+      "path": "apple-oss-distributions/xnu/xnu-12377.1.9/repo-manifest.json",
+      "mtimeMs": 1780564123387.7659,
+      "size": 227661
+    },
+    {
+      "path": "bminor/glibc/glibc-2.39/repo-manifest.json",
+      "mtimeMs": 1780564148129.036,
+      "size": 487362
+    },
+    {
+      "path": "littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/repo-manifest.json",
+      "mtimeMs": 1780564127264.4324,
+      "size": 195998
+    },
+    {
+      "path": "llvm/llvm-project/llvmorg-18.1.0/repo-manifest.json",
+      "mtimeMs": 1780564269831.1455,
+      "size": 4109768
+    },
+    {
+      "path": "mrcxlinux/srv03rtm-anika/9e4d6bae9ed79e542f0f3ab463d6b00866019ec1/repo-manifest.json",
+      "mtimeMs": 1780564347707.4182,
+      "size": 7289896
+    },
+    {
+      "path": "python/cpython/v3.12.0/repo-manifest.json",
+      "mtimeMs": 1780564147742.7053,
+      "size": 180056
+    },
+    {
+      "path": "reactos/reactos/0.4.16/repo-manifest.json",
+      "mtimeMs": 1780564159947.7236,
+      "size": 940630
+    },
+    {
+      "path": "torvalds/linux/v6.1/repo-manifest.json",
+      "mtimeMs": 1780564140258.0974,
+      "size": 1407169
+    }
+  ]
+}

@@ -27,6 +27,8 @@ const eslintConfig = defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
+    // Ignore downloaded curated corpus and other generated static payloads
+    'repos/**',
     // Ignore downloaded repository files
     'public/repos/**',
     'public/monaco-editor/**',

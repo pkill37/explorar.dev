@@ -42,7 +42,6 @@ fileRecommendations:
       description: Dynamic linker / runtime loader (~3,000 lines)
 ---
 
-## Chapter 1 — Introduction to glibc
 
 ### The Bridge Between User Space and Kernel
 
@@ -206,7 +205,6 @@ fileRecommendations:
       description: Example: read() syscall wrapper
 ---
 
-## Chapter 2 — System Call Interface
 
 glibc provides the interface between user programs and the Linux kernel through system calls.
 
@@ -237,7 +235,6 @@ fileRecommendations:
       description: malloc hooks for debugging and instrumentation
 ---
 
-## Chapter 3 — Memory Management Deep Dive
 
 glibc's malloc is one of the most sophisticated memory allocators in existence. Understanding it reveals fundamental concepts in systems programming: memory organization, performance optimization, thread safety, and fragmentation management.
 
@@ -617,7 +614,6 @@ fileRecommendations:
       description: AVX2 memset using ERMS (Enhanced REP MOVSB)
 ---
 
-## Chapter 4 — String and Memory Functions
 
 glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships multiple variants selected at runtime based on the CPU's capabilities.
 

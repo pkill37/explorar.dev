@@ -11,8 +11,10 @@ Explorar.dev is a Next.js 16 application for exploring and learning from arbitra
 - **Frontend**: Static Next.js export with no server-side rendering
 - **No Backend**: Pure frontend application, no authentication or user data collection
 - **Repository Modes**:
-  - **Curated Mode**: Static repositories downloaded at build time, served from `/public/repos/`
+  - **Curated Mode**: Static repositories downloaded at build time, served from `/public/repos/` locally and from a public bucket-backed origin in production
   - **Arbitrary Mode**: User-selected GitHub repositories downloaded on-demand to IndexedDB
+
+Curated repositories are pinned to fixed refs. Do not add logic that refreshes them from remote `main`/`master` or otherwise chases the latest upstream commit.
 
 ## Essential Commands
 
@@ -35,7 +37,7 @@ npm run dev              # Start dev server (port 3000)
 ```bash
 # Development
 npm run dev              # Start dev server with Turbopack (runs predev script first)
-npm run predev           # Downloads Python/CPython repo for local testing
+npm run predev           # Downloads the curated dev repo set for local testing
 
 # Building & Deployment
 npm run build            # Build static export (runs prebuild script)
@@ -54,7 +56,6 @@ npm run test:sanity      # Basic functionality tests
 npm run test:performance # Core Web Vitals tests
 npm run test:seo         # SEO validation
 npm run test:quality     # Accessibility checks (axe-core)
-npm run test:score       # Quality score calculation
 npm run test:ui          # Interactive test UI
 npm run test:report      # View HTML test report
 
@@ -81,10 +82,10 @@ User → Route ([owner]/[repo]) → KernelExplorer (Main Container)
     ↓
   ┌─┴─────────────────────────────┐
   ↓                               ↓
-Static (repo-static.ts)    Dynamic (github-archive.ts)
-  ↓                               ↓
-/public/repos/*            IndexedDB (repo-storage.ts)
-(Curated)                  (Downloaded)
+Static (repo-static.ts)         Dynamic (github-archive.ts)
+  ↓                                    ↓
+Local public mirror or public bucket   IndexedDB (repo-storage.ts)
+(Curated)                              (Downloaded)
 ```
 
 ### Key Components
@@ -100,7 +101,6 @@ Static (repo-static.ts)    Dynamic (github-archive.ts)
 - `ActivityBar.tsx`: Navigation sidebar (files, guides, data structures)
 - `TabBar.tsx`: Open file tabs
 - `StatusBar.tsx`: Bottom status information
-- `GitHubRateLimitWrapper.tsx`: Rate limit warnings
 
 **State Management** (`src/contexts/`):
 
@@ -128,10 +128,11 @@ Static (repo-static.ts)    Dynamic (github-archive.ts)
 **Curated (Static)**:
 
 - Repositories pre-downloaded at build time via `scripts/download-repos.ts`
-- Files live in `/public/repos/[owner]/[repo]/[branch]/`
+- Files live in `/public/repos/[owner]/[repo]/[branch]/` for local development
+- Production fetches point at a direct public curated-content origin (R2 by default)
 - Configuration in `src/lib/project-guides.tsx`
 - No API calls needed after build
-- Full offline support
+- Full offline support for the local mirrored corpus
 - Examples: Python/CPython, Linux Kernel, LLVM, glibc
 
 **Arbitrary (Dynamic)**:
@@ -247,8 +248,8 @@ npm run test:sanity
 
 - Static export to `out/` directory
 - No server-side rendering (SSR)
-- Works with any static host (Netlify, Vercel, S3, etc.)
-- Curated repos must be in `out/repos/` after build
+- Works with any static host (Netlify, Vercel, S3, Cloudflare Pages, etc.)
+- Curated repos are not required in `out/` when a public curated-content origin is configured
 
 ## Environment Variables
 

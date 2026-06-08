@@ -1,7 +1,7 @@
 /**
  * check-guide-refs.ts — Guide reference consistency validator
  *
- * For every guide whose static files exist in public/repos/, validates that
+ * For every guide whose static files exist in the local corpus mirror, validates that
  * every reference inside docs/*.md resolves to a real path in the downloaded
  * tree.  The repo root is derived directly from each guide's own frontmatter
  * (owner / repo / defaultBranch) — there is no separate hardcoded list to
@@ -10,21 +10,23 @@
  * Checks (hard errors → exit 1):
  *   1. fileRecommendations.source[].path   — file or directory exists in repo
  *   2. fileRecommendations.docs[].path     — file or directory exists in repo
- *   3. chapter-graph edge paths            — both nodes exist in repo
- *   4. Markdown links  [text](path)        — path exists (when it looks like a repo path)
- *   5. Inline-code paths  `path/file.ext`  — path exists (relative paths only)
- *   6. Symbol names  `sym()` in descriptions — sym found in associated source file
+ *   3. fileRecommendations.directories[].path — directory exists in repo
+ *   4. chapter-graph edge paths            — both nodes exist in repo
+ *   5. Markdown links  [text](path)        — path exists (when it looks like a repo path)
+ *   6. Inline-code paths  `path/file.ext`  — path exists (relative paths only)
+ *   7. Symbol names  `sym()` in descriptions — sym found in associated source file
  *
  * Checks (warnings only — do NOT exit 1):
  *   7. Line-count claims  (~N lines)       — actual wc within 30 % of claimed
  *
- * Guides whose static files are not present in public/repos/ are skipped with
+ * Guides whose static files are not present in the local corpus mirror are skipped with
  * a notice (non-curated or not yet downloaded).
  */
 
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
+import { CORPUS_REPOS_DIR } from './static-asset-paths';
 
 const DOCS_DIR = path.join(process.cwd(), 'docs');
 const SKIP_FILES = new Set(['common.md']);
@@ -70,6 +72,7 @@ interface Section {
   title: string;
   sourceRefs: FileRef[];
   docsRefs: FileRef[];
+  directoryRefs: FileRef[];
   /** Raw prose text (everything between the YAML block and the next ---) */
   prose: string;
 }
@@ -190,6 +193,7 @@ function parseSections(content: string): Section[] {
 
     let sourceRefs: FileRef[] = [];
     let docsRefs: FileRef[] = [];
+    let directoryRefs: FileRef[] = [];
     try {
       const parsed = matter('---\n' + fm + '\n---\n').data as Record<string, unknown>;
       const fr = parsed['fileRecommendations'] as Record<string, unknown> | undefined;
@@ -206,6 +210,7 @@ function parseSections(content: string): Section[] {
         };
         sourceRefs = toRefs(fr['source']);
         docsRefs = toRefs(fr['docs']);
+        directoryRefs = toRefs(fr['directories']);
       }
     } catch {
       /* malformed YAML — skip fileRecommendations for this section */
@@ -226,6 +231,7 @@ function parseSections(content: string): Section[] {
       title: titleMatch?.[1].trim() ?? '',
       sourceRefs,
       docsRefs,
+      directoryRefs,
       prose: proseLines.join('\n'),
     });
   }
@@ -293,7 +299,16 @@ function checkGuide(
       }
     }
 
-    // ── 3. chapter-graph edges ───────────────────────────────────────────────
+    // ── 3. fileRecommendations.directories paths ────────────────────────────
+    for (const ref of section.directoryRefs) {
+      if (!refExists(repoRoot, ref.refPath)) {
+        errors.push(
+          `${label}: MISSING DIRECTORY: ${ref.refPath} (fileRecommendations.directories)`
+        );
+      }
+    }
+
+    // ── 4. chapter-graph edges ───────────────────────────────────────────────
     for (const block of extractFencedBlocks(section.prose, 'chapter-graph')) {
       for (const line of block.code
         .split('\n')
@@ -309,7 +324,7 @@ function checkGuide(
       }
     }
 
-    // ── 4 + 5 + 7 (prose) ────────────────────────────────────────────────────
+    // ── 5 + 6 + 7 (prose) ────────────────────────────────────────────────────
     // Strip fenced code blocks so we don't check example paths inside code snippets.
     const checkedPaths = new Set<string>(); // deduplicate within section
     const proseOutsideFences = stripFencedBlocks(section.prose);
@@ -396,11 +411,9 @@ function stripFencedBlocks(text: string): string {
       continue;
     }
 
-    const repoRoot = path.join(process.cwd(), 'public', 'repos', owner, repo, defaultBranch);
+    const repoRoot = path.join(CORPUS_REPOS_DIR, owner, repo, defaultBranch);
     if (!fs.existsSync(repoRoot)) {
-      console.log(
-        `⚠ skip: ${file} (${repoKey}@${defaultBranch} not in public/repos/ — not downloaded)`
-      );
+      console.log(`⚠ skip: ${file} (${repoKey}@${defaultBranch} not in corpus/ — not downloaded)`);
       skipped++;
       continue;
     }

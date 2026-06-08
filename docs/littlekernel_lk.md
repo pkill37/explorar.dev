@@ -107,7 +107,7 @@ LK's directory layout is the main way the kernel separates responsibilities. Eac
 
 `arch/` owns CPU semantics: interrupt entry, exception handling, context switching, atomics, barriers, and MMU enablement. It may assume CPU behavior but not board wiring.
 
-`platform/` owns SoC and board-family bring-up: timers, interrupt controllers, UART selection, memory layout, clocks, and early display. Platform code on MediaTek SoCs lives at `mediatek/platform/${platform}/lk/` and handles hardware as specific as RGB565 framebuffer allocation for the Mali GPU display driver. It may assume interrupt controller and UART choices, but not product policy.
+`platform/` owns SoC and board-family bring-up: timers, interrupt controllers, UART selection, memory layout, clocks, and early display. Platform code on MediaTek SoCs lives under the `platform/mt*` subtree and handles hardware as specific as RGB565 framebuffer allocation for the Mali GPU display driver. It may assume interrupt controller and UART choices, but not product policy.
 
 `target/` names concrete deployment environments: the exact board that chooses one platform, one architecture path, and a particular hardware profile. `project/` composes features into a finished image.
 

@@ -44,6 +44,8 @@ next-env.d.ts
 .eslintcache
 
 # repos
+/repos
+/avatars
 /public/repos
 /public/monaco-editor
 

@@ -33,7 +33,6 @@ fileRecommendations:
       description: Memory operations — scanning, protection, allocation
 ---
 
-## Chapter 1 — Frida Architecture and Core Concepts
 
 ### The Three-Layer Architecture
 
@@ -244,7 +243,6 @@ fileRecommendations:
       description: Java bridge runtime — method hooking JavaScript API
 ---
 
-## Chapter 2 — Android Java Hooking
 
 ### Understanding Java.use()
 
@@ -458,7 +456,6 @@ fileRecommendations:
       description: Interceptor API — Interceptor.attach() contract
 ---
 
-## Chapter 3 — Native (JNI) Hooking on Android
 
 ### Understanding JNI
 
@@ -634,7 +631,6 @@ fileRecommendations:
       description: ARM64 instruction relocator for safe hook patching
 ---
 
-## Chapter 4 — Native Code Hooking (ARM/ARM64)
 
 ### ARM Assembly Basics for Hooking
 
@@ -754,7 +750,6 @@ fileRecommendations:
       description: SELinux integration affecting Frida injection on Android
 ---
 
-## Chapter 5 — Anti-Frida and Evasion
 
 ### Common Frida Detection Techniques
 
@@ -883,7 +878,6 @@ fileRecommendations:
       description: Official Frida examples and code samples
 ---
 
-## Chapter 6 — Practical Examples
 
 ### SSL Pinning Bypass
 
@@ -999,7 +993,6 @@ fileRecommendations:
       description: Frida CLI tools (frida-ps, frida-trace, etc.)
 ---
 
-## Chapter 7 — Frida Tools and Ecosystem
 
 ### Essential Frida Commands
 
@@ -1064,7 +1057,6 @@ fileRecommendations:
       description: Script backend interface — rpc.exports contract
 ---
 
-## Chapter 8 — Building Reusable Frida Modules
 
 ### Module Template
 

@@ -6,7 +6,7 @@ import { getCuratedGuideByRepo } from './guides/docs-loader';
 export interface FileRecommendation {
   path: string;
   description?: string;
-  type?: 'docs' | 'source';
+  type?: 'docs' | 'source' | 'directory';
 }
 
 export interface GuideSection {
@@ -16,6 +16,7 @@ export interface GuideSection {
   fileRecommendations?: {
     docs?: FileRecommendation[];
     source?: FileRecommendation[];
+    directories?: FileRecommendation[];
   };
   quiz?: QuizQuestion[];
   /** Mermaid diagram describing the pedagogical graph for this chapter */
@@ -48,8 +49,11 @@ export interface ProjectConfig {
 export function createFileRecommendationsComponent(
   docs: FileRecommendation[] = [],
   source: FileRecommendation[] = [],
+  directories: FileRecommendation[] = [],
   onFileClick: (path: string) => void
 ) {
+  const normalizeDirectoryPath = (path: string) => (path.endsWith('/') ? path : `${path}/`);
+
   return (
     <div style={{ marginTop: '16px', marginBottom: '16px' }}>
       {docs.length > 0 && (
@@ -92,6 +96,64 @@ export function createFileRecommendationsComponent(
                 }}
               >
                 <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{file.path}</div>
+                {file.description && (
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--vscode-descriptionForeground, #999)',
+                      marginTop: '2px',
+                    }}
+                  >
+                    {file.description}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {directories.length > 0 && (
+        <div style={{ marginBottom: '12px' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--vscode-symbolIcon-folderForeground, #d7ba7d)',
+              marginBottom: '8px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            📁 Directories
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {directories.map((file) => (
+              <button
+                key={file.path}
+                onClick={() => onFileClick(normalizeDirectoryPath(file.path))}
+                style={{
+                  textAlign: 'left',
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  background: 'var(--vscode-editor-background, #1e1e1e)',
+                  border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                  borderRadius: '4px',
+                  color: 'var(--vscode-foreground, #d4d4d4)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--vscode-list-hoverBackground, #2a2d2e)';
+                  e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--vscode-editor-background, #1e1e1e)';
+                  e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
+                }}
+              >
+                <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>
+                  {normalizeDirectoryPath(file.path)}
+                </div>
                 {file.description && (
                   <div
                     style={{

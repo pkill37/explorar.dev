@@ -1,5 +1,12 @@
 'use client';
-import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import React, {
+  useRef,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useSyncExternalStore,
+} from 'react';
 import { notFound, useRouter } from 'next/navigation';
 import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
@@ -26,6 +33,13 @@ import {
 } from '@/lib/repo-storage';
 import { downloadDirectoryContents } from '@/lib/github-archive';
 import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
+import {
+  getFileSourceMode,
+  getFileSourceModeServerSnapshot,
+  subscribeToFileSourceMode,
+  type FileSourceMode,
+} from '@/lib/curated-content-url';
+import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -82,7 +96,6 @@ export default function KernelExplorer({
     setRepository,
     switchBranch,
     currentBranch,
-    isLoading: _repoLoading,
     error: repoError,
     downloadProgress,
     identifier: repoIdentifier,
@@ -132,6 +145,12 @@ export default function KernelExplorer({
   const [editorLanguage, setEditorLanguage] = useState<string>('');
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
+  const [fileFetchDebugInfo, setFileFetchDebugInfo] = useState<FileFetchDebugInfo | null>(null);
+  const fileSourceMode: FileSourceMode = useSyncExternalStore(
+    subscribeToFileSourceMode,
+    getFileSourceMode,
+    getFileSourceModeServerSnapshot
+  );
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -308,7 +327,6 @@ export default function KernelExplorer({
     };
   }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch]);
 
-  // Load saved state after hydration to avoid SSR mismatch
   useEffect(() => {
     // Use setTimeout to avoid synchronous setState in effect
     setTimeout(() => {
@@ -473,6 +491,13 @@ export default function KernelExplorer({
   // Tabs helpers
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const generateTabId = (path: string) => `tab-${path.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
+
+  const handleFetchDebugInfo = useCallback(
+    (_debugFilePath: string, debugInfo: FileFetchDebugInfo | null) => {
+      setFileFetchDebugInfo(debugInfo);
+    },
+    []
+  );
 
   const openFileInTab = useCallback(
     (filePath: string, searchPattern?: string, scrollToLine?: number) => {
@@ -781,6 +806,7 @@ export default function KernelExplorer({
             activeTabId={activeTabId}
             onTabSelect={onTabSelect}
             onTabClose={onTabClose}
+            fileSourceMode={fileSourceMode}
           />
           {activeTab ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -788,6 +814,7 @@ export default function KernelExplorer({
                 filePath={activeTab.path}
                 onContentLoad={onEditorContentLoad}
                 fetchFile={fetchFileContent}
+                onFetchDebugInfo={handleFetchDebugInfo}
                 scrollToLine={activeTab.scrollToLine}
                 searchPattern={activeTab.searchPattern}
                 onCursorChange={(line, column) => {
@@ -998,6 +1025,7 @@ export default function KernelExplorer({
         fileSize={editorFileSize}
         repoLabel={repoLabel}
         branch={currentBranch || selectedVersion}
+        fileFetchDebugInfo={fileFetchDebugInfo}
       />
     </div>
   );

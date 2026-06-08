@@ -1,6 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+  useEffect,
+} from 'react';
+import RateLimitScreen from '@/components/RateLimitScreen';
 import { GitHubApiError } from '@/lib/github-api';
 
 interface RateLimitState {
@@ -75,27 +83,31 @@ export function GitHubRateLimitProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Check if rate limit has expired
-  React.useEffect(() => {
+  useEffect(() => {
     if (rateLimitState.isRateLimited && rateLimitState.resetTime) {
       const now = new Date();
       const resetTime = rateLimitState.resetTime;
-
-      if (now >= resetTime) {
-        // Rate limit has expired, clear it
+      const timeUntilReset = Math.max(0, resetTime.getTime() - now.getTime());
+      const timer = setTimeout(() => {
         clearRateLimit();
-        return;
-      } else {
-        // Set up a timer to clear when it expires
-        const timeUntilReset = resetTime.getTime() - now.getTime();
-        const timer = setTimeout(() => {
-          clearRateLimit();
-        }, timeUntilReset);
+      }, timeUntilReset);
 
-        return () => clearTimeout(timer);
-      }
+      return () => clearTimeout(timer);
     }
     return;
   }, [rateLimitState.isRateLimited, rateLimitState.resetTime, clearRateLimit]);
+
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      checkRateLimit(event.reason);
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, [checkRateLimit]);
 
   return (
     <GitHubRateLimitContext.Provider
@@ -107,6 +119,7 @@ export function GitHubRateLimitProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      {rateLimitState.isRateLimited && <RateLimitScreen />}
     </GitHubRateLimitContext.Provider>
   );
 }

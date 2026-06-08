@@ -41,7 +41,6 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   const editorRef = useRef<unknown>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [language, setLanguage] = useState<string>('text');
-  const [editorHeight, setEditorHeight] = useState<number>(600);
   const decorationsRef = useRef<string[]>([]);
   const symbolsRef = useRef<SymbolReference[]>([]);
 
@@ -102,33 +101,38 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
   }, [filePath, getMonacoLanguage]);
 
-  // Calculate and update editor height based on container
+  // Force Monaco to relayout whenever its flex container changes size.
   useEffect(() => {
-    const updateHeight = () => {
-      if (containerRef.current) {
-        const height = containerRef.current.clientHeight;
-        if (height > 0) {
-          setEditorHeight(height);
-        }
-      }
+    const layoutEditor = () => {
+      if (!containerRef.current || !editorRef.current) return;
+
+      const { clientWidth, clientHeight } = containerRef.current;
+      if (clientWidth === 0 || clientHeight === 0) return;
+
+      type LayoutableEditor = {
+        layout: (dimension?: { width: number; height: number }) => void;
+      };
+
+      (editorRef.current as LayoutableEditor).layout({
+        width: clientWidth,
+        height: clientHeight,
+      });
     };
 
-    // Initial height calculation with a small delay to ensure DOM is ready
-    const timeoutId = setTimeout(updateHeight, 100);
-
-    // Use ResizeObserver to track container size changes
-    const resizeObserver = new ResizeObserver(updateHeight);
+    const timeoutId = window.setTimeout(layoutEditor, 0);
+    const animationFrameId = window.requestAnimationFrame(layoutEditor);
+    const resizeObserver = new ResizeObserver(layoutEditor);
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
 
-    // Also listen to window resize as fallback
-    window.addEventListener('resize', updateHeight);
+    window.addEventListener('resize', layoutEditor);
 
     return () => {
-      clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId);
+      window.cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
-      window.removeEventListener('resize', updateHeight);
+      window.removeEventListener('resize', layoutEditor);
     };
   }, []);
 
@@ -616,6 +620,15 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
           }
         }
       });
+
+      requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        (editor as { layout: (dimension?: { width: number; height: number }) => void }).layout({
+          width: container.clientWidth,
+          height: container.clientHeight,
+        });
+      });
     },
     [language, onCursorChange]
   );
@@ -659,7 +672,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         }}
       >
         <Editor
-          height={editorHeight}
+          height="100%"
+          width="100%"
           language={language}
           value={content}
           theme="vs-dark"
