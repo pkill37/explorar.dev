@@ -71,14 +71,18 @@ function main() {
         : 'OK';
 
   console.log(
-    `\n  Files   ${totalFiles.toLocaleString()} / ${CLOUDFLARE_FILE_LIMIT.toLocaleString()}  [${bar(Math.min(limitRatio, 1))}]  ${status}`
+    `\n  Files   ${totalFiles.toLocaleString()} / ${CLOUDFLARE_FILE_LIMIT.toLocaleString()}  [${bar(
+      Math.min(limitRatio, 1)
+    )}]  ${status}`
   );
   console.log(`  Size    ${fmt(totalSize)}`);
 
   // Large files warning
   const oversized = allFiles.filter((f) => f.size > CLOUDFLARE_MAX_FILE_SIZE_MB * 1024 * 1024);
   if (oversized.length > 0) {
-    console.log(`\n  WARNING: ${oversized.length} file(s) exceed ${CLOUDFLARE_MAX_FILE_SIZE_MB} MB:`);
+    console.log(
+      `\n  WARNING: ${oversized.length} file(s) exceed ${CLOUDFLARE_MAX_FILE_SIZE_MB} MB:`
+    );
     for (const f of oversized) {
       console.log(`     ${path.relative(outDir, f.path)}  (${fmt(f.size)})`);
     }
@@ -97,7 +101,9 @@ function main() {
   for (const [ext, { count, size }] of sorted) {
     const pct = ((count / totalFiles) * 100).toFixed(1);
     console.log(
-      `  ${ext.padEnd(14)}${count.toLocaleString().padStart(7)} files  ${pct.padStart(5)}%  ${fmt(size).padStart(9)}`
+      `  ${ext.padEnd(14)}${count.toLocaleString().padStart(7)} files  ${pct.padStart(
+        5
+      )}%  ${fmt(size).padStart(9)}`
     );
   }
 

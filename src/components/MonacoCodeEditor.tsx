@@ -30,6 +30,40 @@ interface MonacoCodeEditorProps {
   onCursorChange?: (line: number, column: number) => void;
 }
 
+type MonacoEditorLike = {
+  layout: (dimension?: { width: number; height: number }) => void;
+  updateOptions: (options: Record<string, unknown>) => void;
+  onDidChangeCursorPosition: (
+    listener: (e: { position: { lineNumber: number; column: number } }) => void
+  ) => void;
+  getPosition: () => { lineNumber: number; column: number } | null;
+  addCommand: (keybinding: number, handler: () => void) => string | null;
+  getAction: (actionId: string) => { run: () => Promise<void> } | null;
+  onMouseDown: (
+    listener: (e: {
+      event: { ctrlKey: boolean; metaKey: boolean; preventDefault: () => void };
+      target: { position?: { lineNumber: number; column: number } };
+    }) => void
+  ) => void;
+};
+
+type MonacoLanguageApi = {
+  FoldingRangeKind: {
+    Comment: unknown;
+    Imports: unknown;
+  };
+  registerFoldingRangeProvider: (
+    languageSelector: string,
+    provider: {
+      provideFoldingRanges: () => Array<{
+        start: number;
+        end: number;
+        kind?: unknown;
+      }>;
+    }
+  ) => void;
+};
+
 const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   filePath,
   content,
@@ -101,7 +135,12 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
   }, [filePath, getMonacoLanguage]);
 
-  const getAutoFoldRanges = useCallback((): Array<{ start: number; end: number; kind?: string }> => {
+  const getAutoFoldRanges = useCallback((): Array<{
+    start: number;
+    end: number;
+    kind?: string;
+    isLicenseHeader?: boolean;
+  }> => {
     if (!content) {
       return [];
     }
@@ -117,7 +156,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       fileName.endsWith('.S');
 
     const lines = content.split('\n');
-    const ranges: Array<{ start: number; end: number; kind?: string }> = [];
+    const ranges: Array<{ start: number; end: number; kind?: string; isLicenseHeader?: boolean }> =
+      [];
 
     let current = 0;
     while (current < lines.length && lines[current].trim() === '') {
@@ -130,9 +170,10 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       const first = lines[current].trim();
       if (first.startsWith('/*') || first.startsWith('/**')) {
         let end = current;
-        const sawBlockStart = first.startsWith('/*');
 
-        if (sawBlockStart && !first.includes('*/')) {
+        if (first.includes('*/')) {
+          end = current;
+        } else {
           for (let i = current + 1; i < lines.length; i++) {
             end = i;
             if (lines[i].includes('*/')) {
@@ -142,7 +183,20 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         }
 
         if (end > current) {
-          ranges.push({ start: 1, end: end + 1, kind: 'comment' });
+          const headerText = lines
+            .slice(current, end + 1)
+            .join('\n')
+            .toLowerCase();
+          const looksLikeLicenseHeader =
+            headerText.includes('license') ||
+            headerText.includes('copyright') ||
+            headerText.includes('spdx-license-identifier') ||
+            headerText.includes('permission is hereby granted') ||
+            headerText.includes('all rights reserved');
+
+          if (looksLikeLicenseHeader) {
+            ranges.push({ start: 1, end: end + 1, kind: 'comment', isLicenseHeader: true });
+          }
         }
       }
     }
@@ -694,23 +748,24 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
       const foldingRanges = getAutoFoldRanges();
       if (foldingRanges.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (monaco as any).languages.registerFoldingRangeProvider(language, {
+        const monacoLanguages = (monaco as { languages: MonacoLanguageApi }).languages;
+        monacoLanguages.registerFoldingRangeProvider(language, {
           provideFoldingRanges: () =>
             foldingRanges.map((range) => ({
               start: range.start,
               end: range.end,
               kind:
                 range.kind === 'comment'
-                  ? (monaco as any).languages.FoldingRangeKind.Comment
-                  : (monaco as any).languages.FoldingRangeKind.Imports,
+                  ? monacoLanguages.FoldingRangeKind.Comment
+                  : monacoLanguages.FoldingRangeKind.Imports,
             })),
         });
 
-        if (language === 'c' || language === 'cpp') {
+        const licenseHeader = foldingRanges.find((range) => range.isLicenseHeader);
+        if (licenseHeader) {
           requestAnimationFrame(() => {
-            // Fold top-of-file block comments by default; users can still unfold them normally.
-            (editor as any).getAction('editor.foldAllBlockComments')?.run();
+            const foldAction = (editor as MonacoEditorLike).getAction('editor.fold');
+            void foldAction?.run();
           });
         }
       }

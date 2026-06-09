@@ -10,13 +10,13 @@ defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8']
 
 # Windows Server 2003 In The Mind
 
-> This guide is about reading the tree, not just browsing it.
+> This guide is about reading the tree as a product, not just as source.
 >
-> The goal is to identify the structures that organize the product, the routines that build and package it, and the subsystem boundaries that make the code understandable.
+> The goal is to identify the build contract, the subsystem boundaries, and the release routines that turn an NT 5.2 codebase into a server operating system.
 
-Windows Server 2003 is easiest to approach as a product tree with a control plane. The root files explain the build contract, the subsystem `project.mk` files describe what belongs to each area, and the `tools/` routines turn source into a bootable release. Those layers are the architecture.
+Windows Server 2003 is easiest to approach as a product tree with a control plane. The root files explain the build contract, the subsystem `project.mk` files describe what belongs to each area, and the `tools/` routines turn source into a bootable, signed release. Those layers are the architecture.
 
-The important mental shift is this: the tree is not one monolithic program. It is a set of coordinated subsystems that are composed, signed, staged, and packaged by a repeatable build pipeline.
+The important mental shift is this: the tree is not one monolithic program. It is a composition of runtime layers, server-facing services, device support, and build-time policy, all stitched together by repeatable packaging steps.
 
 ---
 id: ch1
@@ -25,14 +25,14 @@ fileRecommendations:
   source:
     - path: README.md
       description: Historical context, build notes, and caveats for the tree
-    - path: dirs
-      description: Top-level tree map that names the product families
     - path: project.mk
       description: Root build lifecycle, status updates, and cleanup routines
     - path: makefil0
       description: Root entry point for the tree-level build flow
-    - path: base/prerelease.inc
-      description: Root build policy and compile-time guardrail
+    - path: base/project.mk
+      description: Core runtime composition contract directly under the root build
+    - path: base/ntos/project.mk
+      description: Kernel-facing subsystem contract that makes the product boundary concrete
   directories:
     - path: base/
       description: Core runtime foundations and shared OS code
@@ -41,15 +41,15 @@ fileRecommendations:
 ---
 
 ```chapter-graph
-README.md -> dirs : tree map
-dirs -> project.mk : composition contract
+README.md -> project.mk : product expectations to build contract
 project.mk -> makefil0 : root build entry
-project.mk -> base/prerelease.inc : build policy
+project.mk -> base/project.mk : root contract flows into core runtime
+base/project.mk -> base/ntos/project.mk : core runtime narrows into the NT OS layer
 ```
 
 The first question this chapter answers is: what is this tree allowed to be?
 
-`README.md` gives you provenance and expectations. `dirs` tells you which top-level families exist. `makefil0` is the entry point. `project.mk` is the lifecycle file that stamps build identity, updates status, and cleans output. `base/prerelease.inc` is the reminder that even a source tree has policy, not just code.
+`README.md` gives you provenance and expectations. `project.mk` is the lifecycle file that stamps build identity, updates status, and cleans output. `makefil0` is the entry point. `base/project.mk` shows how the root contract immediately turns into subsystem composition, and `base/ntos/project.mk` makes that contract concrete at the kernel-facing layer.
 
 If you understand those five files, you understand the tree at the level of intention rather than just at the level of filenames.
 
@@ -68,12 +68,12 @@ fileRecommendations:
       description: Postbuild signing, missing-file handling, and packaging
     - path: tools/oscdimg.cmd
       description: ISO creation and final media packaging
-    - path: tools/missing.cmd
-      description: Restores binaries required by postbuild
-    - path: tools/ntnewver.cmd
-      description: Version stamping routine used during build identity updates
-    - path: tools/ntsign.cmd
-      description: Signing routine used by the postbuild pipeline
+    - path: tools/driver.conf
+      description: Driver-signing configuration consumed by the release pipeline
+    - path: tools/driver.pfx
+      description: Signing identity material kept alongside the build tools
+    - path: certutil/generate.sh
+      description: Certificate-generation helper for reproducing local trust material
   directories:
     - path: tools/
       description: The entire build control plane lives here
@@ -84,14 +84,14 @@ tools/razzle64.cmd -> tools/razzle.cmd : bootstrap path
 tools/razzle.cmd -> tools/prebuild.cmd : initialize stages
 tools/prebuild.cmd -> tools/postbuild.cmd : build to package
 tools/postbuild.cmd -> tools/oscdimg.cmd : package ISO
-tools/missing.cmd -> tools/postbuild.cmd : restore required binaries
-tools/ntnewver.cmd -> tools/postbuild.cmd : stamp version identity
-tools/driver.pfx -> tools/ntsign.cmd : code signing identity
+tools/driver.conf -> tools/postbuild.cmd : feed signing configuration
+tools/driver.pfx -> tools/postbuild.cmd : provide signing identity
+certutil/generate.sh -> tools/driver.pfx : reproduce trust material
 ```
 
 This chapter is about routine, not just tooling.
 
-The Windows build flow is explicit. `razzle64.cmd` and `razzle.cmd` set up the environment. `prebuild.cmd` prepares the tree. `postbuild.cmd` is where the build becomes a product: missing binaries are reconciled, artifacts are signed, and packaging happens. `oscdimg.cmd` is the final media step. `missing.cmd`, `ntnewver.cmd`, and `ntsign.cmd` are the smaller routines that make the larger one trustworthy.
+The Windows build flow is explicit. `tools/razzle64.cmd` and `tools/razzle.cmd` set up the environment. `tools/prebuild.cmd` prepares the tree. `tools/postbuild.cmd` is where the build becomes a product: artifacts are staged, signed, and packaged. `tools/oscdimg.cmd` is the final media step. `tools/driver.conf`, `tools/driver.pfx`, and `certutil/generate.sh` make the trust material visible instead of leaving it as an implied step.
 
 That is the pedagogical lesson: in a large OS tree, the build pipeline is itself a subsystem.
 
@@ -214,7 +214,7 @@ inetcore/project.mk -> inetsrv/project.mk : shared core feeds server services
 
 This chapter is about the human side of subsystem design.
 
-`owners.txt` tells you who owns the surface. `branch-reasons-and-info.txt` tells you why branches and exceptions exist. `makefil0` and `project.mk` turn those governance notes into buildable output. The result is a good model for a large platform tree: code, ownership, and release rationale all live next to each other.
+`net/owners.txt` tells you who owns the surface. `net/branch-reasons-and-info.txt` tells you why branches and exceptions exist. `net/makefil0` and `net/project.mk` turn those governance notes into buildable output. The result is a good model for a large platform tree: code, ownership, and release rationale all live next to each other.
 
 Pedagogically, networking is a good place to learn that a subsystem is not just protocols. It is a service boundary, an ownership boundary, and a change-management boundary.
 
@@ -244,7 +244,7 @@ fileRecommendations:
 
 The shell subtree teaches an important distinction: UI is not the same thing as the interactive environment.
 
-`common.inc` and `common.mk` are the shared layer. `makefile.inc` and `gnumakefile` show how the shell is composed. `ccshell.ini` is a reminder that configuration is part of the product. `termsrv` sits alongside that work because remote sessions are not an accessory to the shell; they are another path into it.
+`shell/common.inc` and `shell/common.mk` are the shared layer. `shell/makefile.inc` and `shell/gnumakefile` show how the shell is composed. `shell/ccshell.ini` is a reminder that configuration is part of the product. `termsrv/project.mk` sits alongside that work because remote sessions are not an accessory to the shell; they are another path into it.
 
 If you want to understand the user-facing side of the tree, start by asking how the shell is built, not just what the shell looks like.
 
@@ -259,8 +259,8 @@ fileRecommendations:
       description: Driver family build contract
     - path: multimedia/project.mk
       description: Multimedia build contract
-    - path: multimedia/multimedia.mk
-      description: Multimedia composition rules
+    - path: multimedia/directx/project.mk
+      description: A concrete multimedia leaf contract beneath the family root
     - path: printscan/project.mk
       description: Print and scan build contract
     - path: certutil/generate.sh
@@ -284,9 +284,9 @@ fileRecommendations:
 
 This chapter ties together device-facing code and the trust material around it.
 
-The driver tree is not just code. `archive.txt` records curated payloads, `project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia.mk` and `printscan/project.mk` are useful because they show the same pattern in other product surfaces: a feature is a build contract plus a directory family, not just a set of `.c` files.
+The driver tree is not just code. `drivers/archive.txt` records curated payloads, `drivers/project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia/project.mk`, `multimedia/directx/project.mk`, and `printscan/project.mk` show the same pattern in other product surfaces: a feature is a build contract plus a directory family, not just a set of `.c` files.
 
-`certutil/generate.sh` is important here because it turns build trust into a reproducible step. In a tree like this, signing and packaging are part of the subsystem story.
+`certutil/generate.sh` is important here because it turns build trust into a reproducible step. In a tree like this, signing and packaging are part of the subsystem story, not an afterthought.
 
 ---
 id: ch8
@@ -295,16 +295,46 @@ fileRecommendations:
   source:
     - path: README.md
       description: Re-anchor on the project history and build notes
-    - path: dirs
-      description: Revisit the tree map after the subsystem names make sense
     - path: project.mk
       description: Revisit the root build lifecycle
     - path: makefil0
       description: Revisit the root entry point
+    - path: base/project.mk
+      description: Revisit how the root contract fans into the core runtime
+    - path: tools/razzle64.cmd
+      description: Revisit environment bootstrap before the packaging pass
+    - path: tools/prebuild.cmd
+      description: Revisit staging before the packaging pass
     - path: tools/postbuild.cmd
       description: Revisit the packaging routine after the code makes sense
     - path: tools/oscdimg.cmd
       description: Revisit ISO packaging after postbuild
+    - path: com/project.mk
+      description: Revisit COM as one of the core subsystem contracts
+    - path: ds/project.mk
+      description: Revisit directory services as one of the core subsystem contracts
+    - path: net/project.mk
+      description: Revisit networking as a subsystem contract
+    - path: shell/project.mk
+      description: Revisit the shell as a subsystem contract
+    - path: drivers/project.mk
+      description: Revisit drivers as a subsystem contract
+    - path: net/owners.txt
+      description: Revisit networking ownership after the subsystem map is clear
+    - path: net/branch-reasons-and-info.txt
+      description: Revisit networking branch rationale after the subsystem map is clear
+    - path: shell/common.mk
+      description: Revisit the shell shared build layer
+    - path: shell/makefile.inc
+      description: Revisit the shell composition fragment
+    - path: termsrv/project.mk
+      description: Revisit the remote-session boundary beside the shell
+    - path: certutil/generate.sh
+      description: Revisit certificate generation as part of the trust pipeline
+    - path: tools/driver.conf
+      description: Revisit signing configuration as part of the trust pipeline
+    - path: tools/driver.pfx
+      description: Revisit signing identity material as part of the trust pipeline
   directories:
     - path: base/
       description: Revisit the core runtime foundations
@@ -331,13 +361,13 @@ shell/project.mk -> termsrv/project.mk : interactive surface to remote sessions
 
 A good reading order is:
 
-1. Start with `README.md`, `dirs`, `makefil0`, and `project.mk` to learn the tree contract.
-2. Read `tools/razzle64.cmd`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to learn the build routine.
+1. Start with `README.md`, `makefil0`, `project.mk`, and `base/project.mk` to learn the tree contract.
+2. Read `tools/razzle64.cmd`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to learn the build and packaging routine.
 3. Open `base/project.mk`, `com/project.mk`, `ds/project.mk`, `net/project.mk`, `shell/project.mk`, and `drivers/project.mk` to learn subsystem boundaries.
-4. Use `net/owners.txt` and `net/branch-reasons-and-info.txt` to see how governance shapes the tree.
-5. Read `shell/common.mk`, `shell/makefile.inc`, and `termsrv/project.mk` to understand the interactive environment.
-6. End with `certutil/generate.sh` and `tools/driver.pfx` to see how trust and packaging are made repeatable.
+4. Use `net/owners.txt` and `net/branch-reasons-and-info.txt` to see how ownership and branch history shape the tree.
+5. Read `shell/common.mk`, `shell/makefile.inc`, and `termsrv/project.mk` to understand the interactive environment and terminal-session boundary.
+6. End with `certutil/generate.sh`, `tools/driver.conf`, and `tools/driver.pfx` to see how trust and signing are made repeatable.
 
-That sequence works because the tree is arranged around composition. The build system tells you how the product is assembled, the subsystem contracts tell you what belongs where, and the release routines tell you how the result becomes a distributable image.
+That sequence works because the tree is arranged around composition. The build system tells you how the product is assembled, the subsystem contracts tell you what belongs where, and the release routines tell you how the result becomes a distributable server image.
 
 The pedagogical takeaway is simple: read the build, then the contracts, then one subsystem end to end. That is the fastest way to make the tree legible.

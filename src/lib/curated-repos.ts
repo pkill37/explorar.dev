@@ -245,10 +245,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'Windows source code',
     ],
     sitemapPriority: 0.75,
-    staticBuild: {
-      guideMode: 'guide-only',
-      guideExpansion: 'subtree',
-    },
   },
 ];
 

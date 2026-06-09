@@ -1,12 +1,5 @@
 'use client';
-import React, {
-  useRef,
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-  useSyncExternalStore,
-} from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { notFound, useRouter } from 'next/navigation';
 import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
@@ -33,12 +26,6 @@ import {
 } from '@/lib/repo-storage';
 import { downloadDirectoryContents } from '@/lib/github-archive';
 import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
-import {
-  getFileSourceMode,
-  getFileSourceModeServerSnapshot,
-  subscribeToFileSourceMode,
-  type FileSourceMode,
-} from '@/lib/curated-content-url';
 import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 import '@/app/vscode.css';
 
@@ -146,11 +133,6 @@ export default function KernelExplorer({
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
   const [fileFetchDebugInfo, setFileFetchDebugInfo] = useState<FileFetchDebugInfo | null>(null);
-  const fileSourceMode: FileSourceMode = useSyncExternalStore(
-    subscribeToFileSourceMode,
-    getFileSourceMode,
-    getFileSourceModeServerSnapshot
-  );
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
