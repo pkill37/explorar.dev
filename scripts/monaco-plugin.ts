@@ -30,11 +30,11 @@ const WORKER_FILES = [
 function copyMonacoFiles(): void {
   try {
     if (!existsSync(MONACO_SOURCE)) {
-      console.warn(`⚠️  Monaco Editor not found in node_modules. Run 'npm install' first.`);
+      console.warn(`Monaco Editor not found in node_modules. Run 'npm install' first.`);
       return;
     }
 
-    console.log('📦 Copying Monaco Editor worker files...');
+    console.log('Copying Monaco Editor worker files...');
     const startTime = Date.now();
 
     if (existsSync(MONACO_DEST)) {
@@ -50,14 +50,14 @@ function copyMonacoFiles(): void {
         copyFileSync(src, dest);
         copied++;
       } else {
-        console.warn(`⚠️  Worker not found: ${workerFile}`);
+        console.warn(`Worker not found: ${workerFile}`);
       }
     }
 
     const duration = Date.now() - startTime;
-    console.log(`✅ Monaco workers copied (${copied}/${WORKER_FILES.length} files, ${duration}ms)`);
+    console.log(`Monaco workers copied (${copied}/${WORKER_FILES.length} files, ${duration}ms)`);
   } catch (error) {
-    console.error('❌ Error copying Monaco worker files:', error);
+    console.error('Error copying Monaco worker files:', error);
     if (process.env.NODE_ENV === 'production') {
       throw error;
     }

@@ -12,12 +12,12 @@ Build your own local copy of the Explorar application, which will download all t
 npm install
 npm run dev      # starts at localhost:3000, downloads CPython automatically
 npm run lint     # tsc + eslint + prettier + depcheck
-npm run build    # static export to out/ for Cloudflare Pages deployment
+npm run build    # static export to out/ for a static host
 npm run deploy   # production deploy: R2 sync of repo corpus
 npm test         # Playwright tests (requires built output)
 ```
 
-Online you can visit **[https://explorar.dev](https://explorar.dev)** for free where the Next.js application is deployed by CI from the main branch. Repository source files are loaded on demand from a public bucket-backed origin, with R2 as the default source.
+Online you can visit **[https://explorar.dev](https://explorar.dev)** for free. Repository source files are loaded on demand from a public bucket-backed origin, with R2 as the default source.
 
 ## Roadmap
 

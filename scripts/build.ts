@@ -28,7 +28,7 @@ function fmtDuration(ms: number): string {
 function runStep(index: number, total: number, step: Step): Promise<void> {
   const startedAt = Date.now();
   console.log(`\n[${index}/${total}] ${step.name}`);
-  console.log(`    $ ${step.command} ${step.args.join(' ')}`);
+  console.log(`  $ ${step.command} ${step.args.join(' ')}`);
 
   return new Promise((resolve, reject) => {
     const child = spawn(step.command, step.args, {
@@ -46,7 +46,7 @@ function runStep(index: number, total: number, step: Step): Promise<void> {
         return;
       }
 
-      console.log(`done: ${step.name} (${fmtDuration(Date.now() - startedAt)})`);
+      console.log(`  done in ${fmtDuration(Date.now() - startedAt)}`);
       resolve();
     });
   });
@@ -60,6 +60,10 @@ async function runConcurrentGroup(
 ): Promise<void> {
   const startedAt = Date.now();
   console.log(`\n[${index}/${total}] ${label}`);
+  console.log('  running in parallel:');
+  for (const step of steps) {
+    console.log(`  - ${step.name}`);
+  }
 
   const results = await Promise.allSettled(steps.map((step) => runStep(index, total, step)));
 
@@ -74,12 +78,12 @@ async function runConcurrentGroup(
     fail(message);
   }
 
-  console.log(`done: ${label} (${fmtDuration(Date.now() - startedAt)})`);
+  console.log(`  done in ${fmtDuration(Date.now() - startedAt)}`);
 }
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
-  console.log('\nBuild pipeline starting (5 phases)\n');
+  console.log('\n[build] starting 5 phases');
 
   const corpusState = await inspectCorpusState({
     only: [],
@@ -90,20 +94,21 @@ async function main(): Promise<void> {
   });
 
   if (corpusState.missingAvatars.length === 0 && corpusState.staleRepos.length === 0) {
-    console.log('\n[1/5] 📦 Download curated corpus');
+    console.log('\n[1/5] Download curated corpus');
     console.log(
-      `done: 📦 Download curated corpus (skipped; ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached)`
+      `  skipped: ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached`
     );
   } else {
-    console.log('\nCorpus refresh required before build:');
+    console.log('\n[1/5] Download curated corpus');
+    console.log('  refresh required before build:');
     if (corpusState.staleRepos.length > 0) {
-      console.log(`    Refreshing ${corpusState.staleRepos.length} repo target(s)`);
+      console.log(`  - refreshing ${corpusState.staleRepos.length} repo target(s)`);
     }
     if (corpusState.missingAvatars.length > 0) {
-      console.log(`    Fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
+      console.log(`  - fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
     }
     await runStep(1, 5, {
-      name: '📦 Download curated corpus',
+      name: 'Download curated corpus',
       command: 'tsx',
       args:
         corpusState.staleRepos.length === 0 && corpusState.missingAvatars.length > 0
@@ -114,36 +119,36 @@ async function main(): Promise<void> {
 
   await runConcurrentGroup(2, 5, 'Guide validation', [
     {
-      name: '🧭 Validate guide frontmatter',
+      name: 'Validate guide frontmatter',
       command: 'tsx',
       args: ['scripts/validate-guides.ts'],
     },
     {
-      name: '🔎 Check guide references against corpus',
+      name: 'Check guide references against corpus',
       command: 'tsx',
       args: ['scripts/check-guide-refs.ts'],
     },
   ]);
 
   await runStep(3, 5, {
-    name: '🧹 Prepare shell-only public assets',
+    name: 'Prepare shell-only public assets',
     command: 'tsx',
     args: ['scripts/prepare-shell-build.ts'],
   });
 
   await runStep(4, 5, {
-    name: '🏗️ Run Next.js production build',
+    name: 'Run Next.js production build',
     command: 'next',
     args: ['build'],
   });
 
   await runStep(5, 5, {
-    name: '📊 Generate build report',
+    name: 'Generate build report',
     command: 'tsx',
     args: ['scripts/report-build.ts'],
   });
 
-  console.log(`\nBuild pipeline complete in ${fmtDuration(Date.now() - startedAt)}.`);
+  console.log(`\n[build] complete in ${fmtDuration(Date.now() - startedAt)}`);
 }
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);

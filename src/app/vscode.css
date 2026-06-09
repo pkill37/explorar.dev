@@ -201,38 +201,6 @@
   min-width: 0;
 }
 
-.vscode-tab-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-left: 1px solid var(--vscode-border);
-  flex-shrink: 0;
-}
-
-.vscode-source-select-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--vscode-text-secondary);
-  font-size: 11px;
-}
-
-.vscode-source-select-label {
-  white-space: nowrap;
-}
-
-.vscode-source-select {
-  border: 1px solid var(--vscode-border-light);
-  background: var(--vscode-bg-secondary);
-  color: var(--vscode-text-primary);
-  border-radius: 4px;
-  height: 24px;
-  padding: 0 8px;
-  font-size: 11px;
-  min-width: 148px;
-}
-
 .vscode-tab {
   display: flex;
   align-items: center;

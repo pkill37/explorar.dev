@@ -1,72 +1,15 @@
 #!/usr/bin/env node
 /**
- * Build report: file counts, sizes, and Cloudflare Pages limit warnings.
+ * Build report: file counts, sizes, and shell deployment limits.
  * Runs automatically as postbuild.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 
 const CLOUDFLARE_FILE_LIMIT = 20_000;
 const CLOUDFLARE_FILE_WARN = 18_000;
 const CLOUDFLARE_MAX_FILE_SIZE_MB = 25;
-
-interface HostingProvider {
-  name: string;
-  storagePerGBMonth: number;
-  egressPerGB: number;
-  readsPerMillion: number;
-  notes: string;
-}
-
-// Pricing as of 2025 (storage = $/GB/month, egress = $/GB, reads = $/M requests)
-const PROVIDERS: HostingProvider[] = [
-  {
-    name: 'Cloudflare R2',
-    storagePerGBMonth: 0.015,
-    egressPerGB: 0,
-    readsPerMillion: 0.36,
-    notes: 'Free egress',
-  },
-  {
-    name: 'AWS S3',
-    storagePerGBMonth: 0.023,
-    egressPerGB: 0.09,
-    readsPerMillion: 0.4,
-    notes: 'Use CloudFront for CDN caching',
-  },
-  {
-    name: 'Backblaze B2',
-    storagePerGBMonth: 0.006,
-    egressPerGB: 0.01,
-    readsPerMillion: 0.4,
-    notes: 'Free via Cloudflare Bandwidth Alliance',
-  },
-  {
-    name: 'GCS Standard',
-    storagePerGBMonth: 0.02,
-    egressPerGB: 0.08,
-    readsPerMillion: 0.4,
-    notes: 'First 1 TB/mo egress free',
-  },
-  {
-    name: 'Azure Blob (LRS)',
-    storagePerGBMonth: 0.018,
-    egressPerGB: 0.087,
-    readsPerMillion: 0.4,
-    notes: 'First 5 GB/mo free',
-  },
-];
-
-const AVG_MB_PER_VISITOR = 2.0;
-const AVG_REQUESTS_PER_VISITOR = 40;
-
-const TRAFFIC_TIERS: [string, number][] = [
-  ['1k', 1_000],
-  ['10k', 10_000],
-  ['100k', 100_000],
-];
 
 interface FileStat {
   path: string;
@@ -103,15 +46,13 @@ function bar(ratio: number, width = 20): string {
 
 function main() {
   const outDir = path.join(process.cwd(), 'out');
-  const reposDir = CORPUS_REPOS_DIR;
-  const avatarsDir = PUBLIC_AVATARS_DIR;
 
   console.log('\n' + '═'.repeat(60));
-  console.log('  BUILD REPORT');
+  console.log('  SHELL BUILD REPORT');
   console.log('═'.repeat(60));
 
   if (!fs.existsSync(outDir)) {
-    console.log('  ⚠  out/ not found — build output missing');
+    console.log('  WARNING: out/ not found - build output missing');
     console.log('═'.repeat(60) + '\n');
     return;
   }
@@ -124,10 +65,10 @@ function main() {
   const limitRatio = totalFiles / CLOUDFLARE_FILE_LIMIT;
   const status =
     totalFiles > CLOUDFLARE_FILE_LIMIT
-      ? '✘ OVER LIMIT'
+      ? 'OVER LIMIT'
       : totalFiles > CLOUDFLARE_FILE_WARN
-        ? '⚠ NEAR LIMIT'
-        : '✓ OK';
+        ? 'NEAR LIMIT'
+        : 'OK';
 
   console.log(
     `\n  Files   ${totalFiles.toLocaleString()} / ${CLOUDFLARE_FILE_LIMIT.toLocaleString()}  [${bar(Math.min(limitRatio, 1))}]  ${status}`
@@ -137,56 +78,11 @@ function main() {
   // Large files warning
   const oversized = allFiles.filter((f) => f.size > CLOUDFLARE_MAX_FILE_SIZE_MB * 1024 * 1024);
   if (oversized.length > 0) {
-    console.log(`\n  ⚠  ${oversized.length} file(s) exceed ${CLOUDFLARE_MAX_FILE_SIZE_MB} MB:`);
+    console.log(`\n  WARNING: ${oversized.length} file(s) exceed ${CLOUDFLARE_MAX_FILE_SIZE_MB} MB:`);
     for (const f of oversized) {
       console.log(`     ${path.relative(outDir, f.path)}  (${fmt(f.size)})`);
     }
   }
-
-  // ── Repos breakdown ────────────────────────────────────────────
-  if (fs.existsSync(reposDir)) {
-    console.log('\n  CORPUS REPOS');
-    console.log('  ' + '─'.repeat(56));
-
-    // Walk owner/repo/branch structure
-    const owners = fs.readdirSync(reposDir, { withFileTypes: true }).filter((e) => e.isDirectory());
-    for (const owner of owners) {
-      const ownerPath = path.join(reposDir, owner.name);
-      const repos = fs
-        .readdirSync(ownerPath, { withFileTypes: true })
-        .filter((e) => e.isDirectory());
-      for (const repo of repos) {
-        const repoPath = path.join(ownerPath, repo.name);
-        const branches = fs
-          .readdirSync(repoPath, { withFileTypes: true })
-          .filter((e) => e.isDirectory());
-        for (const branch of branches) {
-          const branchPath = path.join(repoPath, branch.name);
-          const repoFiles = walk(branchPath);
-          const repoSize = repoFiles.reduce((sum, f) => sum + f.size, 0);
-          const label = `${owner.name}/${repo.name}@${branch.name}`;
-          console.log(
-            `  ${label.padEnd(44)}${repoFiles.length.toLocaleString().padStart(6)} files  ${fmt(repoSize).padStart(9)}`
-          );
-        }
-      }
-    }
-  }
-
-  if (fs.existsSync(avatarsDir)) {
-    const avatarFiles = walk(avatarsDir);
-    const avatarSize = avatarFiles.reduce((sum, f) => sum + f.size, 0);
-    console.log(
-      `\n  Public avatars            ${avatarFiles.length.toLocaleString().padStart(6)} files  ${fmt(avatarSize).padStart(9)}`
-    );
-  }
-
-  // ── App files (non-repos) ──────────────────────────────────────
-  const appFileCount = totalFiles;
-  const appSize = totalSize;
-  console.log(
-    `\n  Shell files (Next.js build) ${appFileCount.toLocaleString().padStart(6)} files  ${fmt(appSize).padStart(9)}`
-  );
 
   // ── Top file types ─────────────────────────────────────────────
   const byExt = new Map<string, { count: number; size: number }>();
@@ -213,45 +109,6 @@ function main() {
     const rel = path.relative(outDir, f.path);
     const truncated = rel.length > 46 ? '…' + rel.slice(-45) : rel;
     console.log(`  ${truncated.padEnd(46)}  ${fmt(f.size).padStart(9)}`);
-  }
-
-  // ── Hosting cost estimates ─────────────────────────────────────
-  const totalGB = totalSize / (1024 * 1024 * 1024);
-
-  console.log('\n  HOSTING COST ESTIMATE  (storage + egress, 2025 rates)');
-  console.log('  ' + '─'.repeat(56));
-  console.log(`  Build size: ${fmt(totalSize)}  (${totalGB.toFixed(3)} GB)\n`);
-
-  const nameWidth = Math.max(...PROVIDERS.map((p) => p.name.length));
-  console.log(`  ${'Provider'.padEnd(nameWidth)}   Storage/mo  Egress/GB   Notes`);
-  console.log('  ' + '─'.repeat(56));
-  for (const p of PROVIDERS) {
-    const storageCost = totalGB * p.storagePerGBMonth;
-    const egress = p.egressPerGB === 0 ? 'free    ' : `$${p.egressPerGB.toFixed(3)}/GB`;
-    console.log(
-      `  ${p.name.padEnd(nameWidth)}   $${storageCost.toFixed(3).padStart(8)}  ${egress.padStart(10)}   ${p.notes}`
-    );
-  }
-
-  console.log(
-    `\n  TRAFFIC ESTIMATE  (~${AVG_MB_PER_VISITOR} MB avg + ${AVG_REQUESTS_PER_VISITOR} req/visitor)`
-  );
-  console.log('  ' + '─'.repeat(56));
-
-  const header = '  Visitors/mo  ' + PROVIDERS.map((p) => p.name.padStart(nameWidth)).join('  ');
-  console.log(header);
-  console.log('  ' + '─'.repeat(56));
-
-  for (const [label, visitors] of TRAFFIC_TIERS) {
-    const egressGB = (visitors * AVG_MB_PER_VISITOR) / 1024;
-    const reqs = (visitors * AVG_REQUESTS_PER_VISITOR) / 1_000_000;
-    const costs = PROVIDERS.map((p) => {
-      const storage = totalGB * p.storagePerGBMonth;
-      const egress = egressGB * p.egressPerGB;
-      const reads = reqs * p.readsPerMillion;
-      return `$${(storage + egress + reads).toFixed(2)}`.padStart(nameWidth);
-    });
-    console.log(`  ${label.padEnd(12)}  ${costs.join('  ')}`);
   }
 
   console.log('\n' + '═'.repeat(60) + '\n');

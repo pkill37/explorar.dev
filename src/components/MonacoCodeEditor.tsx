@@ -101,6 +101,106 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
   }, [filePath, getMonacoLanguage]);
 
+  const getAutoFoldRanges = useCallback((): Array<{ start: number; end: number; kind?: string }> => {
+    if (!content) {
+      return [];
+    }
+
+    const fileName = filePath.toLowerCase();
+    const isCLike =
+      language === 'c' ||
+      language === 'cpp' ||
+      fileName.endsWith('.h') ||
+      fileName.endsWith('.hpp') ||
+      fileName.endsWith('.hh') ||
+      fileName.endsWith('.hxx') ||
+      fileName.endsWith('.S');
+
+    const lines = content.split('\n');
+    const ranges: Array<{ start: number; end: number; kind?: string }> = [];
+
+    let current = 0;
+    while (current < lines.length && lines[current].trim() === '') {
+      current++;
+    }
+
+    const firstCodeLine = current + 1;
+
+    if (current < lines.length) {
+      const first = lines[current].trim();
+      if (first.startsWith('/*') || first.startsWith('/**')) {
+        let end = current;
+        const sawBlockStart = first.startsWith('/*');
+
+        if (sawBlockStart && !first.includes('*/')) {
+          for (let i = current + 1; i < lines.length; i++) {
+            end = i;
+            if (lines[i].includes('*/')) {
+              break;
+            }
+          }
+        }
+
+        if (end > current) {
+          ranges.push({ start: 1, end: end + 1, kind: 'comment' });
+        }
+      }
+    }
+
+    if (isCLike) {
+      let includeStart = -1;
+      let includeEnd = -1;
+      let inTopBlock = true;
+
+      for (let i = firstCodeLine - 1; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        if (trimmed === '') {
+          if (includeStart !== -1) {
+            break;
+          }
+          continue;
+        }
+
+        if (trimmed.startsWith('#pragma once') || trimmed.startsWith('#pragma')) {
+          if (includeStart !== -1) {
+            includeEnd = i + 1;
+            continue;
+          }
+          continue;
+        }
+
+        if (trimmed.startsWith('#include')) {
+          if (includeStart === -1) {
+            includeStart = i + 1;
+          }
+          includeEnd = i + 1;
+          continue;
+        }
+
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+          if (includeStart !== -1) {
+            break;
+          }
+          continue;
+        }
+
+        if (inTopBlock && includeStart !== -1) {
+          break;
+        }
+
+        inTopBlock = false;
+      }
+
+      if (includeStart !== -1 && includeEnd > includeStart) {
+        ranges.push({ start: includeStart, end: includeEnd, kind: 'imports' });
+      }
+    }
+
+    return ranges;
+  }, [content, filePath, language]);
+
   // Force Monaco to relayout whenever its flex container changes size.
   useEffect(() => {
     const layoutEditor = () => {
@@ -592,6 +692,29 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         registerLSPProviders(language);
       }
 
+      const foldingRanges = getAutoFoldRanges();
+      if (foldingRanges.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (monaco as any).languages.registerFoldingRangeProvider(language, {
+          provideFoldingRanges: () =>
+            foldingRanges.map((range) => ({
+              start: range.start,
+              end: range.end,
+              kind:
+                range.kind === 'comment'
+                  ? (monaco as any).languages.FoldingRangeKind.Comment
+                  : (monaco as any).languages.FoldingRangeKind.Imports,
+            })),
+        });
+
+        if (language === 'c' || language === 'cpp') {
+          requestAnimationFrame(() => {
+            // Fold top-of-file block comments by default; users can still unfold them normally.
+            (editor as any).getAction('editor.foldAllBlockComments')?.run();
+          });
+        }
+      }
+
       // Add Ctrl+Click to go to definition
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (editor as any).onMouseDown((e: any) => {
@@ -630,7 +753,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         });
       });
     },
-    [language, onCursorChange]
+    [getAutoFoldRanges, language, onCursorChange]
   );
 
   if (isLoading && !content) {

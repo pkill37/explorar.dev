@@ -2,21 +2,15 @@
 
 import React from 'react';
 import { EditorTab } from '@/types';
-import {
-  getFileSourceModeLabel,
-  setFileSourceMode,
-  type FileSourceMode,
-} from '@/lib/curated-content-url';
 
 interface TabBarProps {
   tabs: EditorTab[];
   activeTabId: string | null;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
-  fileSourceMode: FileSourceMode;
 }
 
-const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose, fileSourceMode }) => {
+const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
   const getFileIcon = (path: string): string => {
     const extension = path.split('.').pop()?.toLowerCase();
     switch (extension) {
@@ -68,15 +62,6 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose, fileSour
     }
   };
 
-  const handleSourceModeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    setFileSourceMode(event.target.value as FileSourceMode);
-    window.location.reload();
-  };
-
   return (
     <div className="vscode-tab-bar">
       <div className="vscode-tab-strip">
@@ -111,24 +96,6 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose, fileSour
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="vscode-tab-actions">
-        <label
-          className="vscode-source-select-wrap"
-          title={`Current source: ${getFileSourceModeLabel(fileSourceMode)}`}
-        >
-          <span className="vscode-source-select-label">Source</span>
-          <select
-            className="vscode-source-select"
-            value={fileSourceMode}
-            onChange={handleSourceModeChange}
-          >
-            <option value="local-filesystem">Local filesystem</option>
-            <option value="github-api">api.github.com</option>
-            <option value="r2-bucket">R2 bucket</option>
-          </select>
-        </label>
       </div>
     </div>
   );

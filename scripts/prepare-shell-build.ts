@@ -10,12 +10,12 @@ function removeIfPresent(target: string): void {
   }
 
   fs.rmSync(target, { recursive: true, force: true });
-  console.log(`🧹 Removed ${target}`);
+  console.log(`Removed ${target}`);
 }
 
 function main(): void {
   removeIfPresent(PUBLIC_REPOS_DIR);
-  console.log('✅ Public repo corpus cleared for shell-only Next build. Avatars retained.');
+  console.log('Public repo corpus cleared for shell-only Next build. Avatars retained.');
 }
 
 main();

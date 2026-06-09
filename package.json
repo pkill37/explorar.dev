@@ -13,7 +13,6 @@
     "dev": "next dev --turbopack --port 3000",
     "build": "tsx scripts/build.ts",
     "deploy:r2": "tsx scripts/deploy-r2.ts",
-    "deploy:pages": "tsx scripts/deploy-pages.ts",
     "deploy": "npm run build && tsx scripts/deploy.ts",
     "start": "next start",
     "serve": "serve -l 3000 out -c",

@@ -806,7 +806,6 @@ export default function KernelExplorer({
             activeTabId={activeTabId}
             onTabSelect={onTabSelect}
             onTabClose={onTabClose}
-            fileSourceMode={fileSourceMode}
           />
           {activeTab ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>

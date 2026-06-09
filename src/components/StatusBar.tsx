@@ -1,13 +1,6 @@
 'use client';
 
-import React, { useSyncExternalStore } from 'react';
-import {
-  getFileSourceMode,
-  getFileSourceModeServerSnapshot,
-  getFileSourceModeLabel,
-  subscribeToFileSourceMode,
-  type FileSourceMode,
-} from '@/lib/curated-content-url';
+import React from 'react';
 import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 
 interface StatusBarProps {
@@ -25,12 +18,12 @@ interface StatusBarProps {
 function formatDebugLabel(debugInfo: FileFetchDebugInfo): string {
   const source =
     debugInfo.source === 'r2-bucket'
-      ? 'R2'
+      ? '🛰 R2'
       : debugInfo.source === 'local-filesystem'
-        ? 'LOCAL'
-        : 'GITHUB';
+        ? '💾 LOCAL'
+        : '🌐 GITHUB';
   const cacheStatus = debugInfo.cacheStatus ? ` ${debugInfo.cacheStatus}` : '';
-  return `SRC ${source}${cacheStatus}`;
+  return `${source}${cacheStatus}`;
 }
 
 function formatDebugTitle(debugInfo: FileFetchDebugInfo): string {
@@ -67,12 +60,6 @@ const StatusBar: React.FC<StatusBarProps> = ({
   branch,
   fileFetchDebugInfo,
 }) => {
-  const fileSourceMode: FileSourceMode = useSyncExternalStore(
-    subscribeToFileSourceMode,
-    getFileSourceMode,
-    getFileSourceModeServerSnapshot
-  );
-
   return (
     <div className="cursor-statusbar">
       <div className="cursor-statusbar-left">
@@ -125,10 +112,6 @@ const StatusBar: React.FC<StatusBarProps> = ({
         )}
       </div>
       <div className="cursor-statusbar-right">
-        <div className="cursor-statusbar-item" title={getFileSourceModeLabel(fileSourceMode)}>
-          <span className="cursor-statusbar-text">{getFileSourceModeLabel(fileSourceMode)}</span>
-        </div>
-        <div className="cursor-statusbar-divider" />
         {fileFetchDebugInfo?.enabled && (
           <>
             <div className="cursor-statusbar-item" title={formatDebugTitle(fileFetchDebugInfo)}>

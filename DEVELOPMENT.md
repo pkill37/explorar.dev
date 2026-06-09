@@ -66,7 +66,6 @@ npm run build            # Build static export to out/ (runs prebuild first)
 npm run prebuild         # Download curated repos at build time
 npm run deploy           # Build + sync corpus assets to R2
 npm run deploy:r2        # Sync corpus repos/avatars to R2
-npm run deploy:pages     # Deploy trimmed shell to Cloudflare Pages only
 npm run clean            # Remove build artifacts and downloaded repos
 
 # Code Quality
@@ -127,12 +126,12 @@ BASE_URL=http://localhost:3000 npm test
 
 ## Deployment
 
-You can still deploy the static `out/` directory to any static host, but production now uses split Cloudflare infra:
+Production uses manual R2 sync for the corpus assets:
 
-- `R2` receives only the separate corpus repo assets (`repos/`)
-- `Cloudflare Pages` publishes the shell from the existing git-driven setup
+- `R2` receives the separate corpus repo assets (`repos/`)
+- the static shell can still be deployed to any host from `out/` if needed
 
-### First-Time Deploy In The New Infra
+### First-Time Deploy
 
 1. Create a local deploy env file:
 
@@ -146,8 +145,6 @@ cp .env.deploy.example .env.deploy.local
 - `CLOUDFLARE_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
-- `CLOUDFLARE_API_TOKEN`
-- optional `CLOUDFLARE_PAGES_PROJECT` if the Pages project is not `explorar-dev`
 
 3. Run the production deploy:
 
@@ -175,17 +172,15 @@ Shell-exported variables still take precedence over file values.
 
 ```bash
 npm run deploy:r2
-npm run deploy:pages
 ```
 
-Use `deploy:r2` when you only need to refresh bucket-backed corpus assets. Use `deploy:pages` when bucket contents are already correct and you only changed the site shell.
+Use `deploy:r2` when you only need to refresh bucket-backed corpus assets.
 
 ### Tooling Notes
 
 - `deploy:r2` requires an `aws` CLI on your machine.
-- `deploy:pages` uses local `wrangler` if installed, otherwise falls back to `npx wrangler@4`.
 
-The R2 bucket is the canonical mirror for corpus artifacts, while Cloudflare Pages serves the git-driven shell deployment.
+The R2 bucket is the canonical mirror for corpus artifacts.
 
 ---
 

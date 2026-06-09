@@ -2,7 +2,6 @@
 /**
  * Deploy production artifacts to the bucket-backed production infra:
  * - curated corpus assets -> R2
- * - Cloudflare Pages is published separately by the existing git-driven setup
  */
 
 import { fileURLToPath } from 'url';
@@ -19,9 +18,6 @@ async function main(): Promise<void> {
   }
 
   await runAwsSync(r2Env);
-  console.log(
-    '\nℹ️  Skipping Cloudflare Pages deploy. Pages will publish from the existing git-driven setup.'
-  );
   console.log('\n✅ Production deployment complete.');
 }
 
