@@ -29,6 +29,7 @@ import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
 import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 import {
   getFileSourceMode,
+  isStaticFileSourceMode,
   setFileSourceMode,
   subscribeToFileSourceMode,
   type FileSourceMode,
@@ -257,8 +258,17 @@ export default function KernelExplorer({
         // For curated repos, check static files; for others, check IndexedDB
         let treeExists = false;
         if (isCurated) {
-          const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
-          treeExists = staticTree !== null && staticTree.length > 0;
+          if (isStaticFileSourceMode(fileSourceMode)) {
+            const staticTree = await getTreeStructureFromStatic(
+              owner,
+              repo,
+              branchToUse,
+              fileSourceMode
+            );
+            treeExists = staticTree !== null && staticTree.length > 0;
+          } else {
+            treeExists = await hasTreeStructure('github', identifier, branchToUse);
+          }
         } else {
           treeExists = await hasTreeStructure('github', identifier, branchToUse);
         }
@@ -323,7 +333,7 @@ export default function KernelExplorer({
         treeCheckTimeoutRef.current = null;
       }
     };
-  }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch]);
+  }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch, fileSourceMode]);
 
   useEffect(() => {
     // Use setTimeout to avoid synchronous setState in effect

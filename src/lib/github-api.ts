@@ -315,31 +315,32 @@ export async function fetchFullTreeMetadata(
   branch: string
 ): Promise<FileNode[]> {
   try {
-    // First, get the branch SHA
-    const branchUrl = `${currentConfig.apiBase}/${owner}/${repo}/branches/${encodeURIComponent(branch)}`;
+    // Resolve the ref through the commits endpoint so pinned SHAs, tags, and branch
+    // names all work. The branches endpoint only accepts named branches.
+    const commitUrl = `${currentConfig.apiBase}/${owner}/${repo}/commits/${encodeURIComponent(branch)}`;
     const headers = buildGitHubHeaders();
 
-    let branchResponse: Response;
+    let commitResponse: Response;
     if (isWebPlatform()) {
       try {
         const httpClient = getHttpClient();
-        branchResponse = await httpClient.get(branchUrl, headers as Record<string, string>);
+        commitResponse = await httpClient.get(commitUrl, headers as Record<string, string>);
       } catch {
-        branchResponse = await fetch(branchUrl, { headers });
+        commitResponse = await fetch(commitUrl, { headers });
       }
     } else {
-      branchResponse = await fetch(branchUrl, { headers });
+      commitResponse = await fetch(commitUrl, { headers });
     }
 
-    if (!branchResponse.ok) {
+    if (!commitResponse.ok) {
       throw new GitHubApiError(
-        `Failed to fetch branch: ${branchResponse.statusText}`,
-        branchResponse.status
+        `Failed to fetch commit: ${commitResponse.statusText}`,
+        commitResponse.status
       );
     }
 
-    const branchData = await branchResponse.json();
-    const treeSha = branchData.commit?.sha;
+    const commitData = await commitResponse.json();
+    const treeSha = commitData.commit?.tree?.sha;
 
     if (!treeSha) {
       throw new GitHubApiError('Failed to get tree SHA from branch', 500);
