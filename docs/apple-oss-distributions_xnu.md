@@ -5,7 +5,16 @@ defaultBranch: xnu-12377.1.9
 guideId: xnu-kernel-guide
 name: XNU Kernel In The Mind
 description: Understanding Apple's Hybrid Kernel Before Code
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9']
+defaultOpenIds:
+  - ch1
+  - ch2
+  - ch3
+  - ch4
+  - ch5
+  - ch6
+  - ch7
+  - ch8
+  - ch9
 ---
 
 # XNU Kernel In The Mind
@@ -20,18 +29,22 @@ Each chapter is a self-contained reflection on kernel behavior — how XNU enfor
 id: ch1
 title: Chapter 1 — A Kernel of Three Minds
 fileRecommendations:
-  source:
-    - path: osfmk/kern/startup.c
-      description: Kernel startup — Mach subsystem initialization sequence
-    - path: bsd/kern/bsd_init.c
-      description: BSD layer initialization — POSIX personality brought online
-    - path: iokit/Kernel/IOStartIOKit.cpp
-      description: I/O Kit startup — C++ runtime and driver matching begins
-    - path: osfmk/kern/task.c
-      description: Mach task — the fundamental unit of resource ownership
-  docs:
+  readingOrder:
     - path: osfmk/mach/mach_types.h
       description: Mach type definitions visible to user space
+      type: docs
+    - path: osfmk/kern/startup.c
+      description: Kernel startup — Mach subsystem initialization sequence
+      type: source
+    - path: bsd/kern/bsd_init.c
+      description: BSD layer initialization — POSIX personality brought online
+      type: source
+    - path: iokit/Kernel/IOStartIOKit.cpp
+      description: I/O Kit startup — C++ runtime and driver matching begins
+      type: source
+    - path: osfmk/kern/task.c
+      description: Mach task — the fundamental unit of resource ownership
+      type: source
 ---
 
 XNU stands for "X is Not Unix." The name is accurate in the ways that matter: the kernel's core is Mach, not Unix. BSD is layered on top. Drivers live in a separate C++ framework called I/O Kit. All three run in the same address space, at the same privilege level — this is why Apple calls it a hybrid kernel.
@@ -46,26 +59,34 @@ This layering shows up everywhere in the source: `osfmk/` holds Mach, `bsd/` hol
 id: ch2
 title: Chapter 2 — Mach Primitives
 fileRecommendations:
-  source:
-    - path: osfmk/kern/task.c
-      description: task_create(), task_terminate() — Mach task lifecycle
-    - path: osfmk/kern/thread.c
-      description: thread_create(), thread_terminate() — Mach thread lifecycle
-    - path: osfmk/ipc/ipc_port.c
-      description: Port allocation, rights management, and port destruction
-    - path: osfmk/ipc/mach_msg.c
-      description: mach_msg() — the fundamental IPC primitive
-    - path: osfmk/kern/ipc_tt.c
-      description: Task/thread IPC state — how tasks own their port namespaces
-  docs:
+  readingOrder:
     - path: osfmk/kern/task.h
       description: Mach task API
+      type: docs
     - path: osfmk/kern/thread.h
       description: Mach thread activation API
+      type: docs
     - path: osfmk/mach/port.h
       description: Port right types and semantics
+      type: docs
     - path: osfmk/mach/message.h
       description: Mach message header layout
+      type: docs
+    - path: osfmk/kern/task.c
+      description: task_create(), task_terminate() — Mach task lifecycle
+      type: source
+    - path: osfmk/kern/thread.c
+      description: thread_create(), thread_terminate() — Mach thread lifecycle
+      type: source
+    - path: osfmk/ipc/ipc_port.c
+      description: Port allocation, rights management, and port destruction
+      type: source
+    - path: osfmk/ipc/mach_msg.c
+      description: mach_msg() — the fundamental IPC primitive
+      type: source
+    - path: osfmk/kern/ipc_tt.c
+      description: Task/thread IPC state — how tasks own their port namespaces
+      type: source
 ---
 
 In Mach, the two fundamental abstractions are tasks and threads. A **task** is a container for resources: an address space, a set of port rights, and a collection of threads. It corresponds roughly to a Unix process, but it has no executable context on its own — threads do the executing. A **thread** is the schedulable unit; it carries register state and a kernel stack, and always lives inside exactly one task.
@@ -80,24 +101,31 @@ This design makes Mach IPC a security boundary. A service that only holds a SEND
 id: ch3
 title: Chapter 3 — Virtual Memory as a Mach Contract
 fileRecommendations:
-  source:
-    - path: osfmk/vm/vm_map.c
-      description: vm_map_enter(), vm_map_remove() — virtual address range management
-    - path: osfmk/vm/vm_fault.c
-      description: vm_fault() — page fault resolution and pager dispatch
-    - path: osfmk/vm/memory_object.c
-      description: Memory object protocol — the pager interface
-    - path: osfmk/vm/vm_object.c
-      description: vm_object — the unit of backing store
-    - path: osfmk/vm/vm_pageout.c
-      description: Pageout daemon — memory pressure and eviction
-  docs:
+  readingOrder:
     - path: osfmk/mach/vm_prot.h
       description: VM protection flags
+      type: docs
     - path: osfmk/mach/vm_statistics.h
       description: VM statistics counters
+      type: docs
     - path: osfmk/vm/vm_shared_region.h
       description: Shared memory region (dyld shared cache)
+      type: docs
+    - path: osfmk/vm/vm_map.c
+      description: vm_map_enter(), vm_map_remove() — virtual address range management
+      type: source
+    - path: osfmk/vm/vm_fault.c
+      description: vm_fault() — page fault resolution and pager dispatch
+      type: source
+    - path: osfmk/vm/memory_object.c
+      description: Memory object protocol — the pager interface
+      type: source
+    - path: osfmk/vm/vm_object.c
+      description: vm_object — the unit of backing store
+      type: source
+    - path: osfmk/vm/vm_pageout.c
+      description: Pageout daemon — memory pressure and eviction
+      type: source
 ---
 
 XNU's virtual memory system is pure Mach. Every task has a `vm_map_t` — a sorted list of `vm_map_entry` objects, each describing a range of virtual addresses with associated protections and a backing `vm_object`. The `vm_object` is the unit of backing store: it holds a list of resident pages and a pointer to a **memory object** (pager) that can supply or reclaim pages on demand.
@@ -112,24 +140,31 @@ Copy-on-write is implemented at the `vm_object` level. When a task forks, child 
 id: ch4
 title: Chapter 4 — BSD Over Mach
 fileRecommendations:
-  source:
-    - path: bsd/kern/kern_proc.c
-      description: BSD proc structure — POSIX process state anchored to a Mach task
-    - path: bsd/kern/kern_fork.c
-      description: fork() — creates a new BSD proc and duplicates the Mach task
-    - path: bsd/kern/kern_exec.c
-      description: execve() — loads a new image into an existing task
-    - path: bsd/kern/sys_generic.c
-      description: read(), write(), select() — generic BSD syscall implementations
-    - path: bsd/kern/kern_exit.c
-      description: exit() — process teardown across both BSD and Mach layers
-  docs:
+  readingOrder:
     - path: bsd/sys/proc.h
       description: struct proc — BSD process descriptor
+      type: docs
     - path: bsd/sys/proc_internal.h
       description: Internal proc fields
+      type: docs
     - path: bsd/sys/filedesc.h
       description: File descriptor table
+      type: docs
+    - path: bsd/kern/kern_proc.c
+      description: BSD proc structure — POSIX process state anchored to a Mach task
+      type: source
+    - path: bsd/kern/kern_fork.c
+      description: fork() — creates a new BSD proc and duplicates the Mach task
+      type: source
+    - path: bsd/kern/kern_exec.c
+      description: execve() — loads a new image into an existing task
+      type: source
+    - path: bsd/kern/sys_generic.c
+      description: read(), write(), select() — generic BSD syscall implementations
+      type: source
+    - path: bsd/kern/kern_exit.c
+      description: exit() — process teardown across both BSD and Mach layers
+      type: source
 ---
 
 Every Unix process in XNU has a dual identity. At the Mach level it is a **task** — an address space and a set of threads. At the BSD level it is a **proc** — a POSIX process with a PID, a parent, file descriptors, signal state, and credentials. The two are linked: `proc->task` points to the Mach task; the Mach task carries a back-pointer to the BSD proc. Neither layer owns the other; they are peers that were designed to interoperate.
@@ -144,24 +179,31 @@ File descriptors live entirely in the BSD layer (`filedesc.h`). The fd table map
 id: ch5
 title: Chapter 5 — VFS and the Vnode
 fileRecommendations:
-  source:
-    - path: bsd/vfs/vfs_vnops.c
-      description: vn_read(), vn_write() — vnode read/write dispatch
-    - path: bsd/vfs/vfs_syscalls.c
-      description: open(), read(), stat() — VFS syscall entry points
-    - path: bsd/vfs/vfs_lookup.c
-      description: namei() — path resolution to a vnode
-    - path: bsd/vfs/vfs_cache.c
-      description: Name cache (dnlc) — directory entry lookup cache
-    - path: bsd/vfs/kpi_vfs.c
-      description: KPI — the filesystem plugin interface
-  docs:
+  readingOrder:
     - path: bsd/sys/vnode.h
       description: struct vnode and vnode operations table
+      type: docs
     - path: bsd/sys/vnode_internal.h
       description: Internal vnode fields
+      type: docs
     - path: bsd/sys/mount.h
       description: mount structure — per-filesystem state
+      type: docs
+    - path: bsd/vfs/vfs_vnops.c
+      description: vn_read(), vn_write() — vnode read/write dispatch
+      type: source
+    - path: bsd/vfs/vfs_syscalls.c
+      description: open(), read(), stat() — VFS syscall entry points
+      type: source
+    - path: bsd/vfs/vfs_lookup.c
+      description: namei() — path resolution to a vnode
+      type: source
+    - path: bsd/vfs/vfs_cache.c
+      description: Name cache (dnlc) — directory entry lookup cache
+      type: source
+    - path: bsd/vfs/kpi_vfs.c
+      description: KPI — the filesystem plugin interface
+      type: source
 ---
 
 XNU's Virtual File System layer follows the same VFS abstraction pioneered in SunOS: a uniform `vnode` interface over heterogeneous filesystems. Every file, directory, device node, and named pipe is represented by a `vnode`. A vnode is a kernel object with an operations table (`vnode_op_desc`) — a vtable of function pointers the concrete filesystem fills in for `read`, `write`, `lookup`, `create`, `rename`, `fsync`, and so on.
@@ -176,26 +218,34 @@ Unified Buffer Cache integrates VM and VFS: file data is cached in `vm_object` p
 id: ch6
 title: Chapter 6 — I/O Kit and the Driver Model
 fileRecommendations:
-  source:
-    - path: iokit/Kernel/IOService.cpp
-      description: IOService — base class for every I/O Kit driver
-    - path: iokit/Kernel/IORegistryEntry.cpp
-      description: IORegistryEntry — the node in the hardware device graph
-    - path: iokit/Kernel/IOMemoryDescriptor.cpp
-      description: IOMemoryDescriptor — DMA-safe memory abstraction
-    - path: iokit/Kernel/IOInterruptEventSource.cpp
-      description: Interrupt event source — wires hardware IRQs into the workloop
-    - path: iokit/Kernel/IOWorkLoop.cpp
-      description: IOWorkLoop — single-threaded serialization for a driver stack
-  docs:
+  readingOrder:
     - path: iokit/IOKit/IOService.h
       description: IOService public interface
+      type: docs
     - path: iokit/IOKit/IORegistryEntry.h
       description: IORegistryEntry interface
+      type: docs
     - path: iokit/IOKit/IOMemoryDescriptor.h
       description: IOMemoryDescriptor interface
+      type: docs
     - path: libkern/libkern/c++/OSObject.h
       description: OSObject — root of the I/O Kit class hierarchy
+      type: docs
+    - path: iokit/Kernel/IOService.cpp
+      description: IOService — base class for every I/O Kit driver
+      type: source
+    - path: iokit/Kernel/IORegistryEntry.cpp
+      description: IORegistryEntry — the node in the hardware device graph
+      type: source
+    - path: iokit/Kernel/IOMemoryDescriptor.cpp
+      description: IOMemoryDescriptor — DMA-safe memory abstraction
+      type: source
+    - path: iokit/Kernel/IOInterruptEventSource.cpp
+      description: Interrupt event source — wires hardware IRQs into the workloop
+      type: source
+    - path: iokit/Kernel/IOWorkLoop.cpp
+      description: IOWorkLoop — single-threaded serialization for a driver stack
+      type: source
 ---
 
 I/O Kit is the driver framework, and it is unusual: it is written in a restricted subset of C++ and runs entirely in kernel space. The restriction matters — no exceptions, no RTTI (replaced by a custom dynamic cast system in `libkern`), and no dynamic memory allocation in interrupt context. Drivers are loadable kernel extensions (kexts) that link against the I/O Kit C++ framework at runtime.
@@ -212,22 +262,28 @@ The **IOWorkLoop** is a single dedicated thread that serializes all driver activ
 id: ch7
 title: Chapter 7 — Entering XNU
 fileRecommendations:
-  source:
-    - path: osfmk/arm64/sleh.c
-      description: Synchronous/async exception handler — all arm64 kernel entries
-    - path: bsd/kern/syscalls.master
-      description: BSD syscall table — number-to-function mapping
-    - path: osfmk/kern/syscall_sw.c
-      description: Mach trap table — Mach trap number-to-function mapping
-    - path: osfmk/kern/ipc_mig.c
-      description: MIG-generated IPC dispatch — translates port messages to C calls
-    - path: bsd/kern/kdebug.c
-      description: Kernel debug tracing — the ktrace/kdebug infrastructure
-  docs:
+  readingOrder:
     - path: osfmk/mach/syscall_sw.h
       description: Mach trap numbers
+      type: docs
     - path: bsd/sys/sysent.h
       description: BSD syscall entry table — number-to-handler mapping
+      type: docs
+    - path: osfmk/arm64/sleh.c
+      description: Synchronous/async exception handler — all arm64 kernel entries
+      type: source
+    - path: bsd/kern/syscalls.master
+      description: BSD syscall table — number-to-function mapping
+      type: source
+    - path: osfmk/kern/syscall_sw.c
+      description: Mach trap table — Mach trap number-to-function mapping
+      type: source
+    - path: osfmk/kern/ipc_mig.c
+      description: MIG-generated IPC dispatch — translates port messages to C calls
+      type: source
+    - path: bsd/kern/kdebug.c
+      description: Kernel debug tracing — the ktrace/kdebug infrastructure
+      type: source
 ---
 
 XNU has two separate system call tables. BSD syscalls use small positive numbers (0–550) and enter through the platform's exception vector into `unix_syscall64()` in `bsd/dev/arm64/`. Mach traps use small negative numbers and dispatch through `mach_call_munger64()` into the trap table in `osfmk/kern/syscall_sw.c`. From user space the calling convention is identical — a `svc #0x80` instruction on arm64 — but the sign of the syscall number determines which table is consulted.
@@ -242,22 +298,28 @@ MIG (Mach Interface Generator) generates the glue code that converts an incoming
 id: ch8
 title: Chapter 8 — Security Architecture
 fileRecommendations:
-  source:
-    - path: bsd/kern/kern_credential.c
-      description: Credential management — UID, GID, entitlements
-    - path: security/mac_base.c
-      description: MAC framework dispatch — the hook layer for security policies
-    - path: osfmk/kern/cs_blobs.h
-      description: Code signing blobs — validation and attachment to tasks
-    - path: bsd/kern/kern_codesigning.c
-      description: Page-level code signing enforcement
-    - path: osfmk/kern/task_policy.c
-      description: Task security policy — sandboxing state per task
-  docs:
+  readingOrder:
     - path: osfmk/mach/task_policy.h
       description: Task policy flavor definitions
+      type: docs
     - path: bsd/sys/codesign.h
       description: Code signing flags and structures
+      type: docs
+    - path: bsd/kern/kern_credential.c
+      description: Credential management — UID, GID, entitlements
+      type: source
+    - path: security/mac_base.c
+      description: MAC framework dispatch — the hook layer for security policies
+      type: source
+    - path: osfmk/kern/cs_blobs.h
+      description: Code signing blobs — validation and attachment to tasks
+      type: source
+    - path: bsd/kern/kern_codesigning.c
+      description: Page-level code signing enforcement
+      type: source
+    - path: osfmk/kern/task_policy.c
+      description: Task security policy — sandboxing state per task
+      type: source
 ---
 
 XNU enforces security at multiple layers, and those layers are largely independent — a failure in one does not automatically compromise another.
@@ -274,24 +336,31 @@ The **MAC (Mandatory Access Control) framework** (`security/mac_base.c`) is an i
 id: ch9
 title: Chapter 9 — Reading XNU
 fileRecommendations:
-  source:
-    - path: osfmk/kern/startup.c
-      description: Kernel entry — read top-to-bottom for the init sequence
-    - path: bsd/kern/kern_fork.c
-      description: fork() — best cross-layer example (Mach task + BSD proc)
-    - path: osfmk/ipc/mach_msg.c
-      description: mach_msg() — the IPC core
-    - path: osfmk/vm/vm_fault.c
-      description: vm_fault() — VM fault resolution and code signing enforcement
-    - path: iokit/Kernel/IOService.cpp
-      description: IOService::probe/start/stop — driver lifecycle in full
-  docs:
+  readingOrder:
     - path: osfmk/kern/
       description: Mach kernel core — scheduler, IPC, VM
+      type: docs
     - path: bsd/kern/
       description: BSD subsystem core — process, file, socket management
+      type: docs
     - path: iokit/Kernel/
       description: I/O Kit framework implementation
+      type: docs
+    - path: osfmk/kern/startup.c
+      description: Kernel entry — read top-to-bottom for the init sequence
+      type: source
+    - path: bsd/kern/kern_fork.c
+      description: fork() — best cross-layer example (Mach task + BSD proc)
+      type: source
+    - path: osfmk/ipc/mach_msg.c
+      description: mach_msg() — the IPC core
+      type: source
+    - path: osfmk/vm/vm_fault.c
+      description: vm_fault() — VM fault resolution and code signing enforcement
+      type: source
+    - path: iokit/Kernel/IOService.cpp
+      description: IOService::probe/start/stop — driver lifecycle in full
+      type: source
 ---
 
 The three directories — `osfmk/`, `bsd/`, `iokit/` — are the three minds of XNU. Each has a coherent internal structure; the cross-layer calls are the interesting part.

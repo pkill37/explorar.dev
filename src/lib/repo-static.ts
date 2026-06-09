@@ -105,7 +105,8 @@ function expandManifestNodes(nodes: ManifestNode[], parentPath: string = ''): Fi
 export async function getTreeStructureFromStatic(
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
+  source: StaticFileSourceMode = 'local-filesystem'
 ): Promise<FileNode[] | null> {
   // Only try to fetch manifest for curated repos
   if (!isCuratedRepo(owner, repo)) {
@@ -114,8 +115,8 @@ export async function getTreeStructureFromStatic(
 
   // Try new manifest name first (repo-manifest.json), then fall back to old name (.repo-manifest.json)
   const manifestPaths = [
-    getStaticFilePath(owner, repo, branch, 'repo-manifest.json'),
-    getStaticFilePath(owner, repo, branch, '.repo-manifest.json'),
+    getStaticFilePath(owner, repo, branch, 'repo-manifest.json', source),
+    getStaticFilePath(owner, repo, branch, '.repo-manifest.json', source),
   ];
 
   for (const manifestPath of manifestPaths) {

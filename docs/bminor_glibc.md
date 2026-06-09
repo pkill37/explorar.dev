@@ -5,7 +5,11 @@ defaultBranch: glibc-2.39
 guideId: glibc-guide
 name: GNU C Library (glibc) In The Mind
 description: Understanding glibc Before Code
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+defaultOpenIds:
+  - ch1
+  - ch2
+  - ch3
+  - ch4
 ---
 
 # GNU C Library (glibc) In The Mind
@@ -24,24 +28,29 @@ Every time you call `printf()`, `malloc()`, `pthread_create()`, or even `main()`
 id: ch1
 title: Chapter 1 — Introduction to glibc
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: manual/
       description: glibc manual source
+      type: docs
     - path: INSTALL
       description: Build and installation instructions
-  source:
+      type: docs
     - path: sysdeps/x86_64/start.S
       description: Program startup — _start assembly entry point
+      type: source
     - path: csu/libc-start.c
       description: __libc_start_main — sets up runtime and calls main()
+      type: source
     - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
       description: x86-64 syscall assembly wrapper
+      type: source
     - path: stdio-common/vfprintf-internal.c
       description: Core printf formatting (~1,570 lines)
+      type: source
     - path: elf/rtld.c
       description: Dynamic linker / runtime loader (~3,000 lines)
+      type: source
 ---
-
 
 ### The Bridge Between User Space and Kernel
 
@@ -194,17 +203,20 @@ printf("Test\n");      // Immediately writes (no buffer)
 id: ch2
 title: Chapter 2 — System Call Interface
 fileRecommendations:
-  source:
+  readingOrder:
     - path: sysdeps/unix/sysv/linux/syscalls.list
       description: List of all Linux syscall wrappers
+      type: source
     - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
       description: x86-64 syscall assembly implementation
+      type: source
     - path: sysdeps/unix/syscall-template.S
       description: Template for generated syscall wrappers
+      type: source
     - path: sysdeps/unix/sysv/linux/read.c
       description: Example: read() syscall wrapper
+      type: source
 ---
-
 
 glibc provides the interface between user programs and the Linux kernel through system calls.
 
@@ -224,17 +236,20 @@ glibc provides the interface between user programs and the Linux kernel through 
 id: ch3
 title: Chapter 3 — Memory Management Deep Dive
 fileRecommendations:
-  source:
+  readingOrder:
     - path: malloc/malloc.c
       description: Main allocator (~6,000 lines) — the whole implementation
+      type: source
     - path: malloc/arena.c
       description: Per-thread arena management
+      type: source
     - path: malloc/malloc-internal.h
       description: Internal macros, chunk structure, bin definitions
+      type: source
     - path: malloc/hooks.c
       description: malloc hooks for debugging and instrumentation
+      type: source
 ---
-
 
 glibc's malloc is one of the most sophisticated memory allocators in existence. Understanding it reveals fundamental concepts in systems programming: memory organization, performance optimization, thread safety, and fragmentation management.
 
@@ -601,19 +616,23 @@ gdb ./program
 id: ch4
 title: Chapter 4 — String and Memory Functions
 fileRecommendations:
-  source:
+  readingOrder:
     - path: string/strlen.c
       description: Generic (portable) strlen implementation
+      type: source
     - path: sysdeps/x86_64/multiarch/strlen-avx2.S
       description: AVX2-optimized strlen — processes 32 bytes per cycle
+      type: source
     - path: sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
       description: AVX memcpy/memmove for unaligned buffers (includes memmove-vec-unaligned-erms.S)
+      type: source
     - path: sysdeps/x86_64/multiarch/ifunc-impl-list.c
       description: IFUNC dispatch table — maps CPU features to implementations
+      type: source
     - path: sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
       description: AVX2 memset using ERMS (Enhanced REP MOVSB)
+      type: source
 ---
-
 
 glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships multiple variants selected at runtime based on the CPU's capabilities.
 

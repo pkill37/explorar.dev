@@ -8,9 +8,10 @@
  * keep in sync.
  *
  * Checks (hard errors → exit 1):
- *   1. fileRecommendations.source[].path   — file or directory exists in repo
- *   2. fileRecommendations.docs[].path     — file or directory exists in repo
- *   3. fileRecommendations.directories[].path — directory exists in repo
+ *   1. fileRecommendations.readingOrder[].path — file or directory exists in repo
+ *   2. fileRecommendations.source[].path   — file or directory exists in repo
+ *   3. fileRecommendations.docs[].path     — file or directory exists in repo
+ *   4. fileRecommendations.directories[].path — directory exists in repo
  *   4. chapter-graph edge paths            — both nodes exist in repo
  *   5. Markdown links  [text](path)        — path exists (when it looks like a repo path)
  *   6. Inline-code paths  `path/file.ext`  — path exists (relative paths only)
@@ -70,6 +71,7 @@ interface FileRef {
 interface Section {
   id: string;
   title: string;
+  readingOrderRefs: FileRef[];
   sourceRefs: FileRef[];
   docsRefs: FileRef[];
   directoryRefs: FileRef[];
@@ -191,6 +193,7 @@ function parseSections(content: string): Section[] {
     const titleMatch = fm.match(/^title:\s*(.+)$/m);
     if (!idMatch) continue; // not a chapter section
 
+    let readingOrderRefs: FileRef[] = [];
     let sourceRefs: FileRef[] = [];
     let docsRefs: FileRef[] = [];
     let directoryRefs: FileRef[] = [];
@@ -208,6 +211,7 @@ function parseSections(content: string): Section[] {
             }))
             .filter((r) => r.refPath.length > 0);
         };
+        readingOrderRefs = toRefs(fr['readingOrder']);
         sourceRefs = toRefs(fr['source']);
         docsRefs = toRefs(fr['docs']);
         directoryRefs = toRefs(fr['directories']);
@@ -229,6 +233,7 @@ function parseSections(content: string): Section[] {
     sections.push({
       id: idMatch[1].trim(),
       title: titleMatch?.[1].trim() ?? '',
+      readingOrderRefs,
       sourceRefs,
       docsRefs,
       directoryRefs,
@@ -256,7 +261,15 @@ function checkGuide(
   for (const section of sections) {
     const label = section.title ? `${section.id} [${section.title}]` : section.id;
 
-    // ── 1. fileRecommendations.source paths ──────────────────────────────────
+    // ── 1. fileRecommendations.readingOrder paths ───────────────────────────
+    for (const ref of section.readingOrderRefs) {
+      if (!refExists(repoRoot, ref.refPath)) {
+        errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.readingOrder)`);
+        continue;
+      }
+    }
+
+    // ── 2. fileRecommendations.source paths ──────────────────────────────────
     for (const ref of section.sourceRefs) {
       if (!refExists(repoRoot, ref.refPath)) {
         errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.source)`);
@@ -292,14 +305,14 @@ function checkGuide(
       }
     }
 
-    // ── 2. fileRecommendations.docs paths ────────────────────────────────────
+    // ── 3. fileRecommendations.docs paths ────────────────────────────────────
     for (const ref of section.docsRefs) {
       if (!refExists(repoRoot, ref.refPath)) {
         errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.docs)`);
       }
     }
 
-    // ── 3. fileRecommendations.directories paths ────────────────────────────
+    // ── 4. fileRecommendations.directories paths ────────────────────────────
     for (const ref of section.directoryRefs) {
       if (!refExists(repoRoot, ref.refPath)) {
         errors.push(

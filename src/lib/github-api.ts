@@ -530,10 +530,34 @@ export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
   try {
     const { owner, repo, branch } = currentConfig;
     const mode = getRepositoryMode(owner, repo);
+    const source = getFileSourceMode();
+
+    if (source === 'github-api') {
+      const identifier = getGitHubRepoIdentifier(owner, repo);
+      let completeTree = await getTreeStructure('github', identifier, branch);
+
+      if (!completeTree || completeTree.length === 0) {
+        try {
+          completeTree = await fetchFullTreeMetadata(owner, repo, branch);
+        } catch (error) {
+          console.error('Failed to fetch full tree metadata:', error);
+          return [];
+        }
+      }
+
+      if (completeTree && completeTree.length > 0) {
+        let subtree = extractSubtree(completeTree, path);
+        await updateFileLoadedStatus(completeTree, owner, repo, branch);
+        subtree = extractSubtree(completeTree, path);
+        return subtree;
+      }
+
+      return [];
+    }
 
     // For curated repos, use static files
     if (mode === 'curated') {
-      const staticTree = await getTreeStructureFromStatic(owner, repo, branch);
+      const staticTree = await getTreeStructureFromStatic(owner, repo, branch, source);
       if (staticTree && staticTree.length > 0) {
         // Extract subtree for requested path
         const subtree = extractSubtree(staticTree, path);

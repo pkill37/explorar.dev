@@ -5,7 +5,13 @@ defaultBranch: a521fe60e1a16d5670fe24b7fca2c5155b3339c4
 guideId: littlekernel-lk-guide
 name: Little Kernel In The Mind
 description: Understanding LK as a compact embedded kernel and second-stage bootloader
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6']
+defaultOpenIds:
+  - ch1
+  - ch2
+  - ch3
+  - ch4
+  - ch5
+  - ch6
 ---
 
 # Little Kernel In The Mind
@@ -20,18 +26,22 @@ This guide is for understanding how **Little Kernel** is shaped: its role as a s
 id: ch1
 title: Chapter 1 — What LK Is and What It Optimizes For
 fileRecommendations:
-  source:
-    - path: README.md
-      description: High-level overview, supported architectures, and the project's stated goals
-    - path: kernel/
-      description: Core kernel subsystem — scheduling, synchronization, timers, and thread lifecycle
-    - path: arch/
-      description: CPU-family code split by architecture
-    - path: app/
-      description: Application layer — this is where the bootloader's product behavior lives
-  docs:
+  readingOrder:
     - path: docs/
       description: Project documentation index and conceptual notes
+      type: docs
+    - path: README.md
+      description: High-level overview, supported architectures, and the project's stated goals
+      type: source
+    - path: kernel/
+      description: Core kernel subsystem — scheduling, synchronization, timers, and thread lifecycle
+      type: source
+    - path: arch/
+      description: CPU-family code split by architecture
+      type: source
+    - path: app/
+      description: Application layer — this is where the bootloader's product behavior lives
+      type: source
 ---
 
 LK occupies a specific position in the boot stack: it is a **second-stage bootloader**. On ARM SoCs (MediaTek, Qualcomm, and others), a ROM bootloader or preloader transfers control to LK, and LK in turn loads and boots Linux. That role shapes every design decision.
@@ -51,18 +61,22 @@ Reading LK purely as a study in kernel design is valid. But the full picture req
 id: ch2
 title: Chapter 2 — The Boot Flow
 fileRecommendations:
-  source:
-    - path: kernel/
-      description: Thread initialization and scheduler — the first thing LK runs after architecture setup
-    - path: arch/
-      description: Early architecture init — cache, MMU, exception vectors, context switch
-    - path: platform/
-      description: Platform bring-up — interrupt controller, UART, clocks, display
-    - path: app/
-      description: App threads — mt_boot, aboot, shell — where execution ends up after init
-  docs:
+  readingOrder:
     - path: top/
       description: Integration glue that sequences the boot stages
+      type: docs
+    - path: kernel/
+      description: Thread initialization and scheduler — the first thing LK runs after architecture setup
+      type: source
+    - path: arch/
+      description: Early architecture init — cache, MMU, exception vectors, context switch
+      type: source
+    - path: platform/
+      description: Platform bring-up — interrupt controller, UART, clocks, display
+      type: source
+    - path: app/
+      description: App threads — mt_boot, aboot, shell — where execution ends up after init
+      type: source
 ---
 
 LK's boot flow follows a layered initialization sequence. Understanding this order is the most important thing for reading the code:
@@ -85,22 +99,28 @@ This sequence is the skeleton. Every subsystem chapter in this guide connects to
 id: ch3
 title: Chapter 3 — The Tree as an Architectural Contract
 fileRecommendations:
-  source:
-    - path: app/
-      description: Application layer — product behavior, fastboot, shell, Android boot
-    - path: dev/
-      description: Device-facing support code — Block I/O, shared hardware abstractions
-    - path: lib/
-      description: Shared support code used across the tree
-    - path: top/
-      description: Top-level boot and integration glue
-  docs:
+  readingOrder:
     - path: platform/
       description: Board/platform ports that bind the kernel to real hardware
+      type: docs
     - path: target/
       description: Target descriptions that choose concrete hardware and configuration
+      type: docs
     - path: project/
       description: Build-time composition units for concrete firmware products
+      type: docs
+    - path: app/
+      description: Application layer — product behavior, fastboot, shell, Android boot
+      type: source
+    - path: dev/
+      description: Device-facing support code — Block I/O, shared hardware abstractions
+      type: source
+    - path: lib/
+      description: Shared support code used across the tree
+      type: source
+    - path: top/
+      description: Top-level boot and integration glue
+      type: source
 ---
 
 LK's directory layout is the main way the kernel separates responsibilities. Each layer has a defined scope.
@@ -121,20 +141,25 @@ When reading LK, the key question for any piece of code is: **"Is this behavior 
 id: ch4
 title: Chapter 4 — Build Composition Is a First-Class Subsystem
 fileRecommendations:
-  source:
-    - path: makefile
-      description: Entry point into LK's build flow
-    - path: engine.mk
-      description: Core build orchestration logic
-    - path: make/
-      description: Build support machinery and reusable make fragments
-    - path: lk_inc.mk.example
-      description: Example of local build configuration override patterns
-  docs:
+  readingOrder:
     - path: project/
       description: Project-level composition inputs
+      type: docs
     - path: target/
       description: Target-level build selection and hardware binding
+      type: docs
+    - path: makefile
+      description: Entry point into LK's build flow
+      type: source
+    - path: engine.mk
+      description: Core build orchestration logic
+      type: source
+    - path: make/
+      description: Build support machinery and reusable make fragments
+      type: source
+    - path: lk_inc.mk.example
+      description: Example of local build configuration override patterns
+      type: source
 ---
 
 In LK, the build system is not just a way to compile code. It is the mechanism that defines which kernel you are actually shipping.
@@ -149,18 +174,22 @@ If you want to understand how an LK image differs between two devices, start fro
 id: ch5
 title: Chapter 5 — Concurrency in a Bootloader Kernel
 fileRecommendations:
-  source:
-    - path: kernel/
-      description: Threading, synchronization, wait queues, timers, and scheduler internals
-    - path: lib/
-      description: Support primitives commonly used by kernel subsystems
-    - path: arch/
-      description: Context-switch and interrupt-sensitive architecture hooks
-    - path: app/
-      description: Application threads — multiple apps run concurrently during boot
-  docs:
+  readingOrder:
     - path: README.md
       description: SMP-aware kernel positioning at the project overview level
+      type: docs
+    - path: kernel/
+      description: Threading, synchronization, wait queues, timers, and scheduler internals
+      type: source
+    - path: lib/
+      description: Support primitives commonly used by kernel subsystems
+      type: source
+    - path: arch/
+      description: Context-switch and interrupt-sensitive architecture hooks
+      type: source
+    - path: app/
+      description: Application threads — multiple apps run concurrently during boot
+      type: source
 ---
 
 LK's threading model is not decorative. The boot flow depends on it structurally.
@@ -179,20 +208,25 @@ Read `kernel/` expecting small, reusable, boot-safe abstractions. In this contex
 id: ch6
 title: Chapter 6 — How to Read LK Effectively
 fileRecommendations:
-  source:
-    - path: README.md
-      description: Re-anchor on the project goals after exploring the tree
-    - path: engine.mk
-      description: Revisit the build engine once the directory roles make more sense
-    - path: top/
-      description: Integration glue that ties the image together
-    - path: rust/
-      description: Emerging Rust support and experimentation in the tree
-  docs:
+  readingOrder:
     - path: docs/
       description: Documentation hub for deeper follow-up reading
+      type: docs
     - path: app/
       description: Product-facing functionality — the visible behavior of LK on a real device
+      type: docs
+    - path: README.md
+      description: Re-anchor on the project goals after exploring the tree
+      type: source
+    - path: engine.mk
+      description: Revisit the build engine once the directory roles make more sense
+      type: source
+    - path: top/
+      description: Integration glue that ties the image together
+      type: source
+    - path: rust/
+      description: Emerging Rust support and experimentation in the tree
+      type: source
 ---
 
 A good LK reading order:

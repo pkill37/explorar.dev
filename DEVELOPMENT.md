@@ -133,20 +133,14 @@ Production uses manual R2 sync for the corpus assets:
 
 ### First-Time Deploy
 
-1. Create a local deploy env file:
-
-```bash
-cp .env.deploy.example .env.deploy.local
-```
-
-2. Fill in:
+1. Put these credentials in `.env.local`:
 
 - `R2_BUCKET_NAME`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 
-3. Run the production deploy:
+2. Run the production deploy:
 
 ```bash
 npm run deploy
@@ -157,12 +151,11 @@ npm run deploy
 1. builds `out/`
 2. syncs the corpus repos to `s3://<bucket>/repos/`
 
-The R2 sync path intentionally relies on `aws s3 sync` against the Cloudflare R2 S3-compatible endpoint. That means only changed files are uploaded and stale remote files are removed with `--delete`, matching normal AWS sync semantics as closely as the CLI provides.
+The R2 sync path intentionally relies on `aws s3 sync --size-only` against the Cloudflare R2 S3-compatible endpoint. That keeps changed files flowing while avoiding false-positive reuploads caused by R2 timestamp drift, and still removes stale remote files with `--delete`.
 
 The deploy scripts auto-load, in order:
 
-- `.env.deploy.local`
-- `.env.deploy`
+- `.env.local`
 - `.env.production.local`
 - `.env.production`
 

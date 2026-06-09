@@ -5,7 +5,8 @@ defaultBranch: v3.12.0
 guideId: cpython-guide
 name: CPython In The Mind
 description: Understanding CPython Before Code
-defaultOpenIds: ['ch1']
+defaultOpenIds:
+  - ch1
 ---
 
 # CPython In The Mind
@@ -24,24 +25,29 @@ This guide is for anyone who wants to build a mental model of how CPython works�
 id: ch1
 title: Chapter 1 — Understanding CPython Before Code
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/
       description: Python C API reference
+      type: docs
     - path: Doc/extending/
       description: Extending Python with C
+      type: docs
     - path: Doc/glossary.rst
       description: GIL and core term definitions
+      type: docs
     - path: Doc/c-api/memory.rst
       description: Memory management overview
-  source:
+      type: docs
     - path: Python/ceval.c
       description: Main evaluation loop — the heart of CPython
+      type: source
     - path: Include/object.h
       description: PyObject struct — foundation of all Python objects
+      type: source
     - path: Modules/gcmodule.c
       description: Cyclic garbage collector
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -79,24 +85,29 @@ See [Doc/c-api/gcsupport.rst](Doc/c-api/gcsupport.rst) for garbage collector sup
 id: ch2
 title: Chapter 2 — Source Code Structure
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/
       description: Official Python documentation source
+      type: docs
     - path: Doc/c-api/veryhigh.rst
       description: High-level compilation API
-  source:
+      type: docs
     - path: Python/ceval.c
       description: Main evaluation loop (~2,800 lines)
+      type: source
     - path: Python/compile.c
       description: Bytecode compiler — AST to bytecode
+      type: source
     - path: Objects/typeobject.c
       description: Type system (~10,600 lines)
+      type: source
     - path: Include/object.h
       description: PyObject and PyTypeObject definitions
+      type: source
     - path: Parser/tokenizer.c
       description: Lexical analysis — source to tokens
+      type: source
 ---
-
 
 ```mermaid
 graph LR
@@ -153,28 +164,35 @@ See [Include/opcode.h](Include/opcode.h) for bytecode instruction definitions an
 id: ch3
 title: Chapter 3 — The Object Model
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/object.rst
       description: Object protocol
+      type: docs
     - path: Doc/c-api/typeobj.rst
       description: Type objects reference
+      type: docs
     - path: Doc/c-api/refcounting.rst
       description: Reference counting API
+      type: docs
     - path: Doc/c-api/gcsupport.rst
       description: Garbage collector support
-  source:
+      type: docs
     - path: Include/object.h
       description: PyObject and PyTypeObject definitions
+      type: source
     - path: Objects/object.c
       description: Base object implementation
+      type: source
     - path: Objects/typeobject.c
       description: Type system (~10,600 lines)
+      type: source
     - path: Modules/gcmodule.c
       description: Cyclic garbage collector
+      type: source
     - path: Objects/abstract.c
       description: Abstract object protocol dispatch
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -236,28 +254,35 @@ Key files:
 id: ch4
 title: Chapter 4 — Built-in Types
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/long.rst
       description: Integer objects C API
+      type: docs
     - path: Doc/c-api/unicode.rst
       description: Unicode string objects
+      type: docs
     - path: Doc/c-api/list.rst
       description: List objects
+      type: docs
     - path: Doc/c-api/dict.rst
       description: Dictionary objects
-  source:
+      type: docs
     - path: Objects/longobject.c
       description: Integer implementation — arbitrary precision
+      type: source
     - path: Objects/unicodeobject.c
       description: Unicode string implementation (~15,000 lines)
+      type: source
     - path: Objects/listobject.c
       description: List — dynamic array implementation
+      type: source
     - path: Objects/dictobject.c
       description: Dictionary — hash table implementation
+      type: source
     - path: Objects/setobject.c
       description: Set implementation
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -318,24 +343,29 @@ Key files:
 id: ch5
 title: Chapter 5 — The Evaluation Loop
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/library/dis.rst
       description: Bytecode disassembler module documentation
+      type: docs
     - path: Doc/c-api/init.rst
       description: Interpreter state and frame objects
-  source:
+      type: docs
     - path: Python/ceval.c
       description: Main evaluation loop — the heart of CPython
+      type: source
     - path: Include/opcode.h
       description: Bytecode opcode definitions
+      type: source
     - path: Python/frame.c
       description: Execution frame management
+      type: source
     - path: Include/frameobject.h
       description: Frame object structure
+      type: source
     - path: Lib/dis.py
       description: Python bytecode disassembler
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -390,22 +420,26 @@ dis.dis(lambda x: x * 2 + 1)
 id: ch6
 title: Chapter 6 — Import System and Modules
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/import.rst
       description: Import system C API
+      type: docs
     - path: Doc/library/importlib.rst
       description: importlib — the import machinery
+      type: docs
     - path: Doc/c-api/module.rst
       description: Module objects
-  source:
+      type: docs
     - path: Python/import.c
       description: Import system implementation
+      type: source
     - path: Objects/moduleobject.c
       description: Module object implementation
+      type: source
     - path: Lib/importlib/
       description: Import library Python implementation
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -449,20 +483,23 @@ Key files:
 id: ch7
 title: Chapter 7 — Exception Handling
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/exceptions.rst
       description: Exception handling and traceback objects
-  source:
+      type: docs
     - path: Python/errors.c
       description: Exception raising and handling machinery
+      type: source
     - path: Objects/exceptions.c
       description: Built-in exception type hierarchy
+      type: source
     - path: Python/traceback.c
       description: Traceback object construction
+      type: source
     - path: Include/pyerrors.h
       description: Exception type declarations
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -508,26 +545,32 @@ Key files:
 id: ch8
 title: Chapter 8 — Advanced Topics
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Doc/c-api/gen.rst
       description: Generator objects C API
+      type: docs
     - path: Doc/c-api/descriptor.rst
       description: Descriptor protocol
+      type: docs
     - path: Doc/c-api/
       description: Complete C API reference
+      type: docs
     - path: Doc/extending/
       description: Extending Python with C
-  source:
+      type: docs
     - path: Objects/genobject.c
       description: Generator and coroutine implementation
+      type: source
     - path: Include/cpython/genobject.h
       description: Generator object definitions
+      type: source
     - path: Objects/descrobject.c
       description: Descriptor protocol implementation
+      type: source
     - path: Include/Python.h
       description: Master C API header
+      type: source
 ---
-
 
 ```mermaid
 graph TD
@@ -578,10 +621,12 @@ Key files:
 See [Doc/extending/](Doc/extending/) for the complete guide to extending Python with C.
 
 ---
-
 ## References
 
 - [Python Developer's Guide](https://devguide.python.org/) — Official Python development guide
 - [CPython Internals: Your Guide to the Python 3 Interpreter](https://realpython.com/cpython-source-code-guide/) — Comprehensive guide to CPython internals
 - [Exploring CPython's Internals](https://devguide.python.org/internals/exploring/) — Official guide to exploring CPython
 - [Python Documentation](https://docs.python.org/) — Official Python documentation
+---
+
+

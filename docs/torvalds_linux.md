@@ -5,7 +5,16 @@ defaultBranch: v6.1
 guideId: linux-kernel-guide
 name: Linux Kernel In The Mind
 description: Understanding Linux Kernel Before Code
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6', 'ch7', 'ch8', 'ch9']
+defaultOpenIds:
+  - ch1
+  - ch2
+  - ch3
+  - ch4
+  - ch5
+  - ch6
+  - ch7
+  - ch8
+  - ch9
 ---
 
 # Linux Kernel In The Mind
@@ -20,22 +29,28 @@ Each chapter is a self-contained reflection on kernel behavior — not on functi
 id: ch1
 title: Chapter 1 — The Kernel Is Not a Process
 fileRecommendations:
-  source:
-    - path: init/main.c
-      description: start_kernel() — the first C function after boot
-    - path: include/linux/sched.h
-      description: task_struct — every process/thread as the kernel sees it (~850 fields)
-    - path: kernel/fork.c
-      description: kernel_clone() — how fork() and clone() create tasks
-    - path: kernel/kthread.c
-      description: Kernel threads — how they differ from user processes
-  docs:
+  readingOrder:
     - path: Documentation/scheduler/sched-design-CFS.rst
       description: Scheduler design and kernel thread management
+      type: docs
     - path: Documentation/core-api/kernel-api.rst
       description: Kernel thread API
+      type: docs
     - path: Documentation/kernel-hacking/hacking.rst
       description: Rules for writing correct kernel code
+      type: docs
+    - path: init/main.c
+      description: start_kernel() — the first C function after boot
+      type: source
+    - path: include/linux/sched.h
+      description: task_struct — every process/thread as the kernel sees it (~850 fields)
+      type: source
+    - path: kernel/fork.c
+      description: kernel_clone() — how fork() and clone() create tasks
+      type: source
+    - path: kernel/kthread.c
+      description: Kernel threads — how they differ from user processes
+      type: source
 ---
 
 The kernel is not a process — it has no PID, no user-space memory, no scheduler slot. It is the framework that gives those things to others.
@@ -50,28 +65,37 @@ This distinction explains three things at once: why kernel code must be non-bloc
 id: ch2
 title: Chapter 2 — Subsystem Map
 fileRecommendations:
-  source:
-    - path: arch/x86/entry/entry_64.S
-      description: SYSCALL/SYSRET and interrupt entry for x86-64
-    - path: mm/mmap.c
-      description: Virtual memory area management — mmap() implementation
-    - path: mm/page_alloc.c
-      description: Buddy allocator — physical page allocation
-    - path: fs/namei.c
-      description: Path lookup — how /a/b/c resolves to an inode
-    - path: net/socket.c
-      description: Socket syscall interface
-  docs:
+  readingOrder:
     - path: Documentation/scheduler/
       description: Scheduler documentation
+      type: docs
     - path: Documentation/mm/
       description: Memory management internals
+      type: docs
     - path: Documentation/filesystems/
       description: VFS and filesystem documentation
+      type: docs
     - path: Documentation/networking/
       description: Networking stack documentation
+      type: docs
     - path: Documentation/driver-api/
       description: Driver development API
+      type: docs
+    - path: arch/x86/entry/entry_64.S
+      description: SYSCALL/SYSRET and interrupt entry for x86-64
+      type: source
+    - path: mm/mmap.c
+      description: Virtual memory area management — mmap() implementation
+      type: source
+    - path: mm/page_alloc.c
+      description: Buddy allocator — physical page allocation
+      type: source
+    - path: fs/namei.c
+      description: Path lookup — how /a/b/c resolves to an inode
+      type: source
+    - path: net/socket.c
+      description: Socket syscall interface
+      type: source
 ---
 
 Six directories account for nearly all kernel behavior.
@@ -94,24 +118,31 @@ Subsystems interact through well-defined interfaces. A `read(2)` syscall enters 
 id: ch3
 title: Chapter 3 — Memory as Responsibility
 fileRecommendations:
-  source:
-    - path: mm/mmap.c
-      description: mmap() implementation — VMA creation and management
-    - path: mm/page_alloc.c
-      description: Physical page allocator — buddy system
-    - path: include/linux/mm_types.h
-      description: mm_struct, vm_area_struct, page — the core data structures
-  docs:
+  readingOrder:
     - path: Documentation/mm/
       description: Memory management overview and internals
+      type: docs
     - path: Documentation/admin-guide/mm/
       description: Memory zones, NUMA, huge pages
+      type: docs
     - path: Documentation/core-api/memory-allocation.rst
       description: Which allocator to use and when
+      type: docs
     - path: Documentation/x86/x86_64/mm.rst
       description: x86-64 virtual address space layout
+      type: docs
     - path: Documentation/virt/
       description: Virtual memory documentation
+      type: docs
+    - path: mm/mmap.c
+      description: mmap() implementation — VMA creation and management
+      type: source
+    - path: mm/page_alloc.c
+      description: Physical page allocator — buddy system
+      type: source
+    - path: include/linux/mm_types.h
+      description: mm_struct, vm_area_struct, page — the core data structures
+      type: source
 ---
 
 The kernel doesn't view memory as a flat map — it tracks it as a responsibility. Every byte of physical RAM is represented by a `struct page`. Every range of a process's virtual address space is a `struct vm_area_struct` (VMA). The process as a whole carries a `struct mm_struct` linking them together.
@@ -126,22 +157,28 @@ Isolation is enforced structurally. Each process has its own `mm_struct` and its
 id: ch4
 title: Chapter 4 — From Power-On to PID 1
 fileRecommendations:
-  source:
-    - path: init/main.c
-      description: start_kernel() — subsystem initialization sequence
-    - path: arch/x86/boot/main.c
-      description: Early x86 boot — real mode setup before protected mode
-    - path: init/init_task.c
-      description: Statically-allocated init process (PID 0 → PID 1)
-  docs:
+  readingOrder:
     - path: Documentation/x86/boot.rst
       description: x86 boot protocol — from BIOS/UEFI to the kernel entry
+      type: docs
     - path: Documentation/admin-guide/kernel-parameters.rst
       description: Every boot parameter the kernel accepts
+      type: docs
     - path: Documentation/admin-guide/binfmt-misc.rst
       description: How the kernel recognizes and loads binary formats
+      type: docs
     - path: Documentation/bpf/
       description: eBPF subsystem — runtime extensibility
+      type: docs
+    - path: init/main.c
+      description: start_kernel() — subsystem initialization sequence
+      type: source
+    - path: arch/x86/boot/main.c
+      description: Early x86 boot — real mode setup before protected mode
+      type: source
+    - path: init/init_task.c
+      description: Statically-allocated init process (PID 0 → PID 1)
+      type: source
 ---
 
 The boot sequence splits into two worlds: architecture-specific and architecture-neutral.
@@ -158,22 +195,28 @@ Running `./hello` from a shell involves the shell calling `execve(2)`, which rea
 id: ch5
 title: Chapter 5 — Entering the Kernel
 fileRecommendations:
-  source:
-    - path: arch/x86/entry/entry_64.S
-      description: SYSCALL entry — where user space crosses into the kernel
-    - path: kernel/sys.c
-      description: Generic system call implementations
-    - path: include/uapi/asm-generic/unistd.h
-      description: Syscall number table
-  docs:
+  readingOrder:
     - path: Documentation/core-api/
       description: System call interface
+      type: docs
     - path: Documentation/core-api/irq/
       description: Interrupt subsystem internals
+      type: docs
     - path: Documentation/virt/kvm/
       description: KVM — guest syscall handling via VMEXIT
+      type: docs
     - path: Documentation/virt/kvm/api.rst
       description: KVM API reference
+      type: docs
+    - path: arch/x86/entry/entry_64.S
+      description: SYSCALL entry — where user space crosses into the kernel
+      type: source
+    - path: kernel/sys.c
+      description: Generic system call implementations
+      type: source
+    - path: include/uapi/asm-generic/unistd.h
+      description: Syscall number table
+      type: source
 ---
 
 There are three paths into the kernel: **syscalls** (intentional, from user space), **hardware interrupts** (asynchronous, from devices), and **exceptions** (synchronous CPU faults — page fault, divide-by-zero, breakpoints). All three converge on `arch/x86/entry/entry_64.S`.
@@ -188,26 +231,34 @@ In virtualization, a guest OS sees its own `entry_64.S` and believes it runs on 
 id: ch6
 title: Chapter 6 — Execution and Contexts
 fileRecommendations:
-  source:
-    - path: kernel/fork.c
-      description: kernel_clone() — complete process/thread creation path
-    - path: kernel/exit.c
-      description: do_exit() — process termination and resource cleanup
-    - path: fs/exec.c
-      description: execve() — loading and starting a new program image
-    - path: kernel/sched/core.c
-      description: schedule() and context_switch() — the core dispatcher
-    - path: kernel/sched/fair.c
-      description: CFS — virtual runtime and the red-black tree
-  docs:
+  readingOrder:
     - path: Documentation/scheduler/
       description: Scheduler documentation
+      type: docs
     - path: Documentation/scheduler/sched-design-CFS.rst
       description: CFS design — virtual runtime, weights, and red-black tree
+      type: docs
     - path: Documentation/locking/
       description: All locking primitives — spinlocks, mutexes, RCU
+      type: docs
     - path: Documentation/core-api/workqueue.rst
       description: Workqueues — deferred work from interrupt context
+      type: docs
+    - path: kernel/fork.c
+      description: kernel_clone() — complete process/thread creation path
+      type: source
+    - path: kernel/exit.c
+      description: do_exit() — process termination and resource cleanup
+      type: source
+    - path: fs/exec.c
+      description: execve() — loading and starting a new program image
+      type: source
+    - path: kernel/sched/core.c
+      description: schedule() and context_switch() — the core dispatcher
+      type: source
+    - path: kernel/sched/fair.c
+      description: CFS — virtual runtime and the red-black tree
+      type: source
 ---
 
 The CPU is stateless — it executes whatever instruction `%rip` points to, regardless of ownership. The kernel supplies all the state: each task gets a `task_struct`, a kernel stack, and a set of page tables. The `current` macro is a per-CPU pointer to the running task's `task_struct`; all kernel code uses it to know whose context it's in.
@@ -222,24 +273,31 @@ Interrupt context is categorically different: there's no `current` task you can 
 id: ch7
 title: Chapter 7 — Communication and Cooperation
 fileRecommendations:
-  source:
-    - path: kernel/signal.c
-      description: Signal generation, queueing, and delivery
-    - path: kernel/futex/core.c
-      description: Fast userspace mutex — kernel-side wait/wake implementation
-    - path: kernel/sched/wait.c
-      description: Wait queues — the general sleep-until-event mechanism
-  docs:
+  readingOrder:
     - path: Documentation/locking/
       description: Locking primitives — spinlocks, mutexes, RCU
+      type: docs
     - path: Documentation/RCU/
       description: Read-Copy-Update synchronization mechanism
+      type: docs
     - path: Documentation/core-api/workqueue.rst
       description: Workqueues — cross-context deferred work
+      type: docs
     - path: Documentation/filesystems/proc.rst
       description: /proc filesystem — the kernel's primary user-space window
+      type: docs
     - path: Documentation/bpf/
       description: eBPF — programmable kernel hooks
+      type: docs
+    - path: kernel/signal.c
+      description: Signal generation, queueing, and delivery
+      type: source
+    - path: kernel/futex/core.c
+      description: Fast userspace mutex — kernel-side wait/wake implementation
+      type: source
+    - path: kernel/sched/wait.c
+      description: Wait queues — the general sleep-until-event mechanism
+      type: source
 ---
 
 Signals are the kernel's oldest delivery mechanism. `kill()` queues a `siginfo_t` on the target task's signal queue. Delivery happens at the next return from kernel mode: `entry_64.S` checks `TIF_SIGPENDING` on every kernel exit and, if set, calls `do_signal()` to dispatch. Signal handlers run in user space — the kernel builds a special stack frame so the handler returns through `sigreturn(2)`.
@@ -254,26 +312,34 @@ The modern kernel provides multiple user-space communication channels: `/proc` e
 id: ch8
 title: Chapter 8 — I/O, Scheduling, and Virtualization
 fileRecommendations:
-  source:
-    - path: kernel/sched/core.c
-      description: schedule() — the core dispatcher
-    - path: kernel/sched/fair.c
-      description: CFS — vruntime, red-black tree, and load balancing
-    - path: block/blk-core.c
-      description: Block I/O core — submit_bio() and request dispatch
-  docs:
+  readingOrder:
     - path: Documentation/block/
       description: Block layer — request queues and I/O schedulers
+      type: docs
     - path: Documentation/core-api/dma-api.rst
       description: DMA API — device memory transfers without the CPU
+      type: docs
     - path: Documentation/core-api/timekeeping.rst
       description: Kernel time sources and timer subsystem
+      type: docs
     - path: Documentation/x86/
       description: x86 architecture documentation
+      type: docs
     - path: Documentation/virt/kvm/
       description: KVM — hardware-assisted virtualization
+      type: docs
     - path: Documentation/virt/kvm/api.rst
       description: KVM API reference
+      type: docs
+    - path: kernel/sched/core.c
+      description: schedule() — the core dispatcher
+      type: source
+    - path: kernel/sched/fair.c
+      description: CFS — vruntime, red-black tree, and load balancing
+      type: source
+    - path: block/blk-core.c
+      description: Block I/O core — submit_bio() and request dispatch
+      type: source
 ---
 
 I/O in the kernel is layered. A `read(2)` on a regular file checks the **page cache** (`mm/filemap.c`) first; on a miss it submits a `bio` (block I/O descriptor) downward through the block layer. The block layer (`block/blk-core.c`) merges and reorders requests via an I/O scheduler, then dispatches to the driver via `submit_bio()`. The driver programs DMA so the device writes directly into kernel memory; an interrupt fires on completion and wakes the sleeping task.
@@ -288,15 +354,19 @@ KVM turns Linux into a Type-1 hypervisor. In VMX root mode the host kernel manag
 id: ch9
 title: Chapter 9 — Where to Go Next
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: Documentation/process/howto.rst
       description: How to contribute patches to the Linux kernel
+      type: docs
     - path: Documentation/admin-guide/
       description: Linux kernel administration documentation
+      type: docs
     - path: Documentation/kernel-hacking/hacking.rst
       description: Kernel hacking guide — rules and patterns for contributors
+      type: docs
     - path: Documentation/kbuild/
       description: Kernel build system — Kconfig, Makefiles, modules
+      type: docs
 ---
 
 The mental model from these chapters — kernel as a reactive system, memory as tracked responsibility, execution as context-switching over shared code — makes the source tree navigable. Each subsystem now has a clear owner and a clear interface.

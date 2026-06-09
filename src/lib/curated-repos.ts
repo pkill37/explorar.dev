@@ -1,12 +1,3 @@
-export type GuideSparseExpansion = 'strict' | 'directory-expanded' | 'subtree';
-
-export interface RepoStaticBuildConfig {
-  guideMode?: 'full' | 'guide-only';
-  guideExpansion?: GuideSparseExpansion;
-  includeDirs?: string[];
-  excludeDirs?: string[];
-}
-
 export interface CuratedRepoConfig {
   owner: string;
   repo: string;
@@ -20,7 +11,6 @@ export interface CuratedRepoConfig {
   gradient?: string;
   category?: string;
   dimmed?: boolean;
-  staticBuild?: RepoStaticBuildConfig;
   /** Filename under /avatars/ (e.g. "gnu.png"). Defaults to "{owner}.png". */
   avatarFile?: string;
   /** URL to fetch the avatar from at build time. Defaults to github.com/{owner}.png */
@@ -99,10 +89,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'open source OS',
     ],
     sitemapPriority: 0.75,
-    staticBuild: {
-      guideMode: 'guide-only',
-      guideExpansion: 'directory-expanded',
-    },
   },
   {
     owner: 'torvalds',
@@ -130,10 +116,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'Linux internals',
     ],
     sitemapPriority: 0.9,
-    staticBuild: {
-      guideMode: 'guide-only',
-      guideExpansion: 'directory-expanded',
-    },
   },
   {
     owner: 'python',
@@ -185,11 +167,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'libc',
     ],
     sitemapPriority: 0.8,
-    staticBuild: {
-      guideMode: 'guide-only',
-      guideExpansion: 'directory-expanded',
-      includeDirs: ['libio'],
-    },
   },
   {
     owner: 'llvm',
@@ -216,10 +193,6 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
       'compiler engineering',
     ],
     sitemapPriority: 0.8,
-    staticBuild: {
-      guideMode: 'guide-only',
-      guideExpansion: 'directory-expanded',
-    },
   },
   {
     owner: 'mrcxlinux',

@@ -77,6 +77,7 @@ interface SectionFrontmatter {
   id: string;
   title: string;
   fileRecommendations?: {
+    readingOrder?: FileRecommendation[];
     docs?: FileRecommendation[];
     source?: FileRecommendation[];
     directories?: FileRecommendation[];
@@ -249,10 +250,12 @@ export function parseGuideMarkdown(
             {reactContent}
           </div>
           {sectionMeta.fileRecommendations &&
-            (sectionMeta.fileRecommendations.docs ||
+            (sectionMeta.fileRecommendations.readingOrder ||
+              sectionMeta.fileRecommendations.docs ||
               sectionMeta.fileRecommendations.source ||
               sectionMeta.fileRecommendations.directories) &&
             createFileRecommendationsComponent(
+              sectionMeta.fileRecommendations.readingOrder || [],
               sectionMeta.fileRecommendations.docs || [],
               sectionMeta.fileRecommendations.source || [],
               sectionMeta.fileRecommendations.directories || [],

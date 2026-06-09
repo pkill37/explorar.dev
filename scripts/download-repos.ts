@@ -7,13 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import matter from 'gray-matter';
-import {
-  CURATED_REPOS,
-  type CuratedRepoConfig,
-  type GuideSparseExpansion,
-  toRepoKey,
-} from '../src/lib/curated-repos';
+import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
 import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
 
@@ -33,7 +27,6 @@ export type CorpusState = {
 };
 
 const REPOS_DIR = CORPUS_REPOS_DIR;
-const DOCS_DIR = path.join(process.cwd(), 'docs');
 
 // Max simultaneous git clones — GitHub allows a few concurrent connections.
 const DOWNLOAD_CONCURRENCY = 3;
@@ -234,7 +227,6 @@ function getBuildSignature(config: CuratedRepoConfig): string {
     owner: config.owner,
     repo: config.repo,
     branch: config.branch,
-    sparsePatterns: buildSparsePatterns(config) ?? [],
   });
 }
 
@@ -293,198 +285,6 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
   };
 }
 
-function normalizeRepoPath(refPath: string): string {
-  return refPath.replace(/^\/+/, '').replace(/\\/g, '/').trim();
-}
-
-function isDirectoryRef(refPath: string): boolean {
-  return normalizeRepoPath(refPath).endsWith('/');
-}
-
-function getAncestorDirectories(refPath: string): string[] {
-  const normalized = normalizeRepoPath(refPath).replace(/\/+$/, '');
-  if (!normalized.includes('/')) {
-    return [];
-  }
-
-  const parts = normalized.split('/');
-  const directories: string[] = [];
-  for (let i = 1; i < parts.length; i++) {
-    directories.push(parts.slice(0, i).join('/'));
-  }
-  return directories;
-}
-
-function toSparsePattern(refPath: string, expansion: GuideSparseExpansion): string[] {
-  const normalized = normalizeRepoPath(refPath);
-  if (!normalized) {
-    return [];
-  }
-
-  const isDir = isDirectoryRef(normalized);
-  const clean = normalized.replace(/\/+$/, '');
-  const ancestors = getAncestorDirectories(clean).map((dir) => `/${dir}/`);
-
-  if (isDir) {
-    if (expansion === 'subtree') {
-      return [...ancestors, `/${clean}/**`];
-    }
-    if (expansion === 'directory-expanded') {
-      return [...ancestors, `/${clean}/*`];
-    }
-    return [...ancestors, `/${clean}/`];
-  }
-
-  if (expansion === 'directory-expanded') {
-    const parentDir = clean.includes('/') ? clean.split('/').slice(0, -1).join('/') : '';
-    if (!parentDir) {
-      return [`/${clean}`];
-    }
-    return [...ancestors, `/${parentDir}/*`];
-  }
-
-  return [...ancestors, `/${clean}`];
-}
-
-function collectGuideReferencePaths(markdown: string): string[] {
-  const refs = new Set<string>();
-  const { content } = matter(markdown);
-  const lines = content.split('\n');
-  let i = 0;
-
-  while (i < lines.length) {
-    if (lines[i].trim() !== '---') {
-      i++;
-      continue;
-    }
-
-    i++;
-    const frontmatterLines: string[] = [];
-    while (i < lines.length && lines[i].trim() !== '---') {
-      frontmatterLines.push(lines[i]);
-      i++;
-    }
-    if (i < lines.length) {
-      i++;
-    }
-
-    const sectionFrontmatter = frontmatterLines.join('\n').trim();
-    if (!sectionFrontmatter) {
-      continue;
-    }
-
-    try {
-      const parsed = matter(`---\n${sectionFrontmatter}\n---\n`).data as {
-        fileRecommendations?: {
-          docs?: Array<{ path?: string }>;
-          source?: Array<{ path?: string }>;
-          directories?: Array<{ path?: string }>;
-        };
-      };
-
-      for (const bucket of ['docs', 'source', 'directories'] as const) {
-        for (const entry of parsed.fileRecommendations?.[bucket] ?? []) {
-          const refPath = normalizeRepoPath(entry.path ?? '');
-          if (refPath) {
-            refs.add(refPath);
-          }
-        }
-      }
-    } catch {
-      // Invalid section YAML is already handled by guide validation.
-    }
-  }
-
-  return Array.from(refs);
-}
-
-let guidePathsByRepoCache: Map<string, string[]> | null = null;
-
-function getGuidePathsByRepo(): Map<string, string[]> {
-  if (guidePathsByRepoCache) {
-    return guidePathsByRepoCache;
-  }
-
-  const guidePathsByRepo = new Map<string, string[]>();
-  const markdownFiles = fs.readdirSync(DOCS_DIR).filter((file) => file.endsWith('.md'));
-
-  for (const file of markdownFiles) {
-    const fullPath = path.join(DOCS_DIR, file);
-    const raw = fs.readFileSync(fullPath, 'utf-8');
-    const { data } = matter(raw);
-    const owner = typeof data.owner === 'string' ? data.owner : '';
-    const repo = typeof data.repo === 'string' ? data.repo : '';
-    if (!owner || !repo) {
-      continue;
-    }
-
-    guidePathsByRepo.set(toRepoKey(owner, repo), collectGuideReferencePaths(raw));
-  }
-
-  guidePathsByRepoCache = guidePathsByRepo;
-  return guidePathsByRepoCache;
-}
-
-function getGuidePathsForRepo(config: CuratedRepoConfig): string[] {
-  return getGuidePathsByRepo().get(toRepoKey(config.owner, config.repo)) ?? [];
-}
-
-function buildSparsePatterns(config: CuratedRepoConfig): string[] | null {
-  const buildConfig = config.staticBuild;
-  if (!buildConfig) {
-    return null;
-  }
-
-  const includePatterns = new Set<string>();
-  const excludePatterns = new Set<string>();
-  const needsGuidePaths = buildConfig.guideMode === 'guide-only';
-  const hasIncludes = (buildConfig.includeDirs?.length ?? 0) > 0;
-  const hasExcludes = (buildConfig.excludeDirs?.length ?? 0) > 0;
-
-  if (!needsGuidePaths && !hasIncludes && !hasExcludes) {
-    return null;
-  }
-
-  const expansion = buildConfig.guideExpansion ?? 'directory-expanded';
-
-  if (!needsGuidePaths && !hasIncludes) {
-    includePatterns.add('/*');
-  }
-
-  if (needsGuidePaths) {
-    const guidePaths = getGuidePathsForRepo(config);
-    if (guidePaths.length === 0 && !hasIncludes) {
-      throw new Error(
-        `Guide-only sparse build requested for ${config.owner}/${config.repo}, but no guide references were found.`
-      );
-    }
-    for (const refPath of guidePaths) {
-      for (const pattern of toSparsePattern(refPath, expansion)) {
-        includePatterns.add(pattern);
-      }
-    }
-  }
-
-  for (const includeDir of buildConfig.includeDirs ?? []) {
-    const clean = normalizeRepoPath(includeDir).replace(/\/+$/, '');
-    if (!clean) continue;
-    for (const ancestor of getAncestorDirectories(clean)) {
-      includePatterns.add(`/${ancestor}/`);
-    }
-    includePatterns.add(`/${clean}/**`);
-  }
-
-  for (const excludeDir of buildConfig.excludeDirs ?? []) {
-    const clean = normalizeRepoPath(excludeDir).replace(/\/+$/, '');
-    if (!clean) continue;
-    excludePatterns.add(`!/${clean}/`);
-    excludePatterns.add(`!/${clean}/**`);
-  }
-
-  const patterns = [...includePatterns, ...excludePatterns];
-  return patterns.length > 0 ? patterns : null;
-}
-
 function pruneStaleBranchDownloads(repos: CuratedRepoConfig[]): void {
   const allowedBranchesByRepo = new Map<string, Set<string>>();
 
@@ -537,21 +337,11 @@ async function gitCloneShallow(
   fs.mkdirSync(parentDir, { recursive: true });
 
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
-  const sparsePatterns = buildSparsePatterns(config);
 
   if (isCommitSha(branch)) {
     fs.mkdirSync(repoDir, { recursive: true });
     await runCommand('git', ['init'], repoDir);
     await runCommand('git', ['remote', 'add', 'origin', repoUrl], repoDir);
-
-    if (sparsePatterns) {
-      await runCommand(
-        'git',
-        ['sparse-checkout', 'set', '--no-cone', '--stdin'],
-        repoDir,
-        [...sparsePatterns, ''].join('\n')
-      );
-    }
 
     await runCommand(
       'git',
@@ -583,20 +373,7 @@ async function gitCloneShallow(
     repoDir,
   ];
 
-  if (sparsePatterns) {
-    cloneArgs.splice(4, 0, '--sparse');
-  }
-
   await runCommand('git', cloneArgs);
-
-  if (sparsePatterns) {
-    await runCommand(
-      'git',
-      ['sparse-checkout', 'set', '--no-cone', '--stdin'],
-      repoDir,
-      [...sparsePatterns, ''].join('\n')
-    );
-  }
 
   // Capture SHA before deleting .git — used for future staleness checks.
   const sha = await getLocalSHA(repoDir);
@@ -720,13 +497,9 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
 async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promise<void> {
   const { owner, repo, branch } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, branch);
-  const sparsePatterns = buildSparsePatterns(config);
   const buildSignature = getBuildSignature(config);
 
   console.log(`\nRepo ${owner}/${repo}@${branch}`);
-  if (sparsePatterns) {
-    console.log(`   Sparse checkout enabled (${sparsePatterns.length} patterns)`);
-  }
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
@@ -863,11 +636,7 @@ async function main() {
 
   console.log('\nFinal curated repo plan:');
   for (const repo of finalRepos) {
-    const sparsePatterns = buildSparsePatterns(repo);
-    console.log(
-      `   - ${repo.owner}/${repo.repo}@${repo.branch}` +
-        (sparsePatterns ? ` [sparse:${sparsePatterns.length}]` : ' [full]')
-    );
+    console.log(`   - ${repo.owner}/${repo.repo}@${repo.branch}`);
   }
 
   let completedRepos = 0;

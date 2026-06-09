@@ -27,6 +27,12 @@ import {
 import { downloadDirectoryContents } from '@/lib/github-archive';
 import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
 import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
+import {
+  getFileSourceMode,
+  setFileSourceMode,
+  subscribeToFileSourceMode,
+  type FileSourceMode,
+} from '@/lib/curated-content-url';
 import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -133,6 +139,9 @@ export default function KernelExplorer({
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
   const [fileFetchDebugInfo, setFileFetchDebugInfo] = useState<FileFetchDebugInfo | null>(null);
+  const [fileSourceMode, setFileSourceModeState] = useState<FileSourceMode>(() =>
+    getFileSourceMode()
+  );
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -151,6 +160,13 @@ export default function KernelExplorer({
 
   // Check if mobile on mount and resize
   // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
+  useEffect(() => {
+    return subscribeToFileSourceMode(() => {
+      setFileSourceModeState(getFileSourceMode());
+      setFileFetchDebugInfo(null);
+    });
+  }, []);
+
   useEffect(() => {
     const checkViewport = () => {
       if (typeof window !== 'undefined') {
@@ -749,6 +765,7 @@ export default function KernelExplorer({
           )}
           <div className="vscode-sidebar-content">
             <FileTree
+              key={`tree-${repoLabel}-${selectedVersion}-${fileSourceMode}`}
               onFileSelect={(filePath: string) => {
                 openFileInTab(filePath);
                 // On mobile, switch to editor view when file is selected
@@ -759,6 +776,10 @@ export default function KernelExplorer({
               selectedFile={selectedFile}
               listDirectory={buildFileTree}
               titleLabel={repoLabel}
+              sourceMode={fileSourceMode}
+              onSourceModeChange={(mode) => {
+                setFileSourceMode(mode);
+              }}
               expandDirectoryRequest={directoryExpandRequest}
               onDirectoryExpand={(path: string) => {
                 setSelectedFile(path);
@@ -792,6 +813,7 @@ export default function KernelExplorer({
           {activeTab ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <CodeEditorContainer
+                key={`editor-${activeTab.id}-${fileSourceMode}`}
                 filePath={activeTab.path}
                 onContentLoad={onEditorContentLoad}
                 fetchFile={fetchFileContent}

@@ -14,6 +14,7 @@ export interface GuideSection {
   title: string;
   body: React.ReactNode;
   fileRecommendations?: {
+    readingOrder?: FileRecommendation[];
     docs?: FileRecommendation[];
     source?: FileRecommendation[];
     directories?: FileRecommendation[];
@@ -47,130 +48,39 @@ export interface ProjectConfig {
 
 // Helper to create file recommendations component
 export function createFileRecommendationsComponent(
+  readingOrder: FileRecommendation[] = [],
   docs: FileRecommendation[] = [],
   source: FileRecommendation[] = [],
   directories: FileRecommendation[] = [],
   onFileClick: (path: string) => void
 ) {
   const normalizeDirectoryPath = (path: string) => (path.endsWith('/') ? path : `${path}/`);
+  const orderedItems =
+    readingOrder.length > 0
+      ? readingOrder
+      : [
+          ...docs.map((file) => ({ ...file, type: 'docs' as const })),
+          ...source.map((file) => ({ ...file, type: 'source' as const })),
+          ...directories.map((file) => ({ ...file, type: 'directory' as const })),
+        ];
+
+  const getItemPath = (file: FileRecommendation) =>
+    file.type === 'directory' ? normalizeDirectoryPath(file.path) : file.path;
+
+  const getItemBadge = (file: FileRecommendation) => {
+    switch (file.type) {
+      case 'docs':
+        return 'DOC';
+      case 'directory':
+        return 'DIR';
+      default:
+        return 'FILE';
+    }
+  };
 
   return (
     <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-      {docs.length > 0 && (
-        <div style={{ marginBottom: '12px' }}>
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--vscode-textLink-foreground)',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            📚 Documentation
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {docs.map((file) => (
-              <button
-                key={file.path}
-                onClick={() => onFileClick(file.path)}
-                style={{
-                  textAlign: 'left',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  background: 'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.1))',
-                  border: '1px solid var(--vscode-textBlockQuote-border, rgba(100, 150, 200, 0.2))',
-                  borderRadius: '4px',
-                  color: 'var(--vscode-textLink-foreground, #4a9eff)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background =
-                    'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.2))';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background =
-                    'var(--vscode-textBlockQuote-background, rgba(100, 150, 200, 0.1))';
-                }}
-              >
-                <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{file.path}</div>
-                {file.description && (
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--vscode-descriptionForeground, #999)',
-                      marginTop: '2px',
-                    }}
-                  >
-                    {file.description}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {directories.length > 0 && (
-        <div style={{ marginBottom: '12px' }}>
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--vscode-symbolIcon-folderForeground, #d7ba7d)',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            📁 Directories
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {directories.map((file) => (
-              <button
-                key={file.path}
-                onClick={() => onFileClick(normalizeDirectoryPath(file.path))}
-                style={{
-                  textAlign: 'left',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  background: 'var(--vscode-editor-background, #1e1e1e)',
-                  border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                  borderRadius: '4px',
-                  color: 'var(--vscode-foreground, #d4d4d4)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-list-hoverBackground, #2a2d2e)';
-                  e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-editor-background, #1e1e1e)';
-                  e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
-                }}
-              >
-                <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>
-                  {normalizeDirectoryPath(file.path)}
-                </div>
-                {file.description && (
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--vscode-descriptionForeground, #999)',
-                      marginTop: '2px',
-                    }}
-                  >
-                    {file.description}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {source.length > 0 && (
+      {orderedItems.length > 0 && (
         <div>
           <div
             style={{
@@ -182,13 +92,13 @@ export function createFileRecommendationsComponent(
               letterSpacing: '0.5px',
             }}
           >
-            💻 Source Code
+            Reading Order
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {source.map((file) => (
+            {orderedItems.map((file, index) => (
               <button
-                key={file.path}
-                onClick={() => onFileClick(file.path)}
+                key={`${index + 1}-${file.path}`}
+                onClick={() => onFileClick(getItemPath(file))}
                 style={{
                   textAlign: 'left',
                   padding: '6px 10px',
@@ -209,13 +119,47 @@ export function createFileRecommendationsComponent(
                   e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
                 }}
               >
-                <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{file.path}</div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span
+                    style={{
+                      minWidth: '20px',
+                      color: 'var(--vscode-descriptionForeground, #999)',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {index + 1}.
+                  </span>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>
+                    {getItemPath(file)}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      color: 'var(--vscode-descriptionForeground, #999)',
+                      border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                      borderRadius: '999px',
+                      padding: '1px 6px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {getItemBadge(file)}
+                  </span>
+                </div>
                 {file.description && (
                   <div
                     style={{
                       fontSize: '11px',
                       color: 'var(--vscode-descriptionForeground, #999)',
                       marginTop: '2px',
+                      marginLeft: '28px',
                     }}
                   >
                     {file.description}

@@ -5,7 +5,11 @@ defaultBranch: llvmorg-18.1.0
 guideId: llvm-guide
 name: LLVM Compiler Infrastructure In The Mind
 description: Understanding LLVM Before Code
-defaultOpenIds: ['ch1', 'ch2', 'ch3', 'ch4']
+defaultOpenIds:
+  - ch1
+  - ch2
+  - ch3
+  - ch4
 ---
 
 # LLVM Compiler Infrastructure In The Mind
@@ -24,24 +28,29 @@ Understanding LLVM means understanding the architecture of modern compilation: h
 id: ch1
 title: Chapter 1 — Introduction to LLVM
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: llvm/docs/LangRef.rst
       description: LLVM Language Reference Manual
+      type: docs
     - path: llvm/docs/WritingAnLLVMPass.rst
       description: How to write LLVM passes
+      type: docs
     - path: llvm/docs/CodeGenerator.rst
       description: LLVM Code Generator reference
-  source:
+      type: docs
     - path: llvm/include/llvm/IR/Value.h
       description: Base class for all LLVM IR values
+      type: source
     - path: llvm/include/llvm/IR/Instruction.h
       description: LLVM IR instruction base class
+      type: source
     - path: llvm/include/llvm/IR/Function.h
       description: LLVM IR function representation
+      type: source
     - path: llvm/lib/IR/Verifier.cpp
       description: IR validity checking — learn the rules here
+      type: source
 ---
-
 
 ### The Philosophy: Separation of Concerns Through IR
 
@@ -178,20 +187,23 @@ Backend phases:
 id: ch2
 title: Chapter 2 — LLVM IR and Code Generation
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: llvm/docs/LangRef.rst
       description: Complete LLVM IR language reference
-  source:
+      type: docs
     - path: llvm/lib/IR/Instructions.cpp
       description: All IR instruction types (~4,000 lines)
+      type: source
     - path: llvm/lib/IR/Verifier.cpp
       description: IR validity checking — the rules of valid IR
+      type: source
     - path: llvm/lib/CodeGen/SelectionDAG/
       description: Instruction selection via SelectionDAG
+      type: source
     - path: llvm/lib/Target/X86/X86ISelLowering.cpp
       description: x86 IR lowering (~50,000 lines!)
+      type: source
 ---
-
 
 The LLVM Intermediate Representation (IR) is a low-level programming language similar to assembly, but with higher-level type information and a consistent three-address code representation. It serves as the universal language that enables LLVM's modular architecture.
 
@@ -330,24 +342,29 @@ Key CodeGen files:
 id: ch3
 title: Chapter 3 — Clang Frontend
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: clang/docs/IntroductionToTheClangAST.rst
       description: Introduction to the Clang AST
+      type: docs
     - path: clang/docs/InternalsManual.rst
       description: Clang internals manual
-  source:
+      type: docs
     - path: clang/include/clang/AST/Decl.h
       description: Declaration AST nodes
+      type: source
     - path: clang/include/clang/AST/Expr.h
       description: Expression AST nodes
+      type: source
     - path: clang/lib/Sema/SemaDecl.cpp
       description: Semantic analysis for declarations
+      type: source
     - path: clang/lib/CodeGen/CodeGenModule.cpp
       description: Module-level LLVM IR generation
+      type: source
     - path: clang/lib/Parse/ParseDecl.cpp
       description: Parser for declarations
+      type: source
 ---
-
 
 Clang is the C/C++/Objective-C compiler frontend for LLVM. It parses source code, performs semantic analysis, and generates LLVM IR. Unlike GCC, Clang was designed from the ground up to be a library—enabling tools like clang-tidy, clang-format, and clangd to reuse the same parsing infrastructure.
 
@@ -497,24 +514,29 @@ Key CodeGen files:
 id: ch4
 title: Chapter 4 — Optimization Passes
 fileRecommendations:
-  docs:
+  readingOrder:
     - path: llvm/docs/WritingAnLLVMPass.rst
       description: How to write an LLVM optimization pass
+      type: docs
     - path: llvm/docs/Passes.rst
       description: Built-in LLVM passes reference
-  source:
+      type: docs
     - path: llvm/lib/Transforms/Scalar/DCE.cpp
       description: Dead Code Elimination — simplest transform pass
+      type: source
     - path: llvm/lib/Transforms/Scalar/SCCP.cpp
       description: Sparse Conditional Constant Propagation
+      type: source
     - path: llvm/lib/Transforms/Utils/Mem2Reg.cpp
       description: Promote stack allocas to SSA registers
+      type: source
     - path: llvm/lib/Transforms/InstCombine/
       description: Instruction combining (~50,000 lines of peepholes)
+      type: source
     - path: llvm/include/llvm/IR/PassManager.h
       description: New Pass Manager infrastructure
+      type: source
 ---
-
 
 LLVM's optimizer consists of a series of passes that transform IR to improve code quality. The pass framework is one of LLVM's most powerful features—it makes optimizations composable, testable, and reusable.
 
@@ -697,7 +719,6 @@ opt -O2 -debug-pass-manager input.ll 2>&1 | grep "Running pass"
 ```
 
 ---
-
 ## References
 
 - [LLVM Language Reference](https://llvm.org/docs/LangRef.html) — Complete IR specification
@@ -705,3 +726,6 @@ opt -O2 -debug-pass-manager input.ll 2>&1 | grep "Running pass"
 - [LLVM Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/) — Build a JIT compiler from scratch
 - [LLVM Programmer's Manual](https://llvm.org/docs/ProgrammersManual.html) — Core API guide
 - [Clang Internals Manual](https://clang.llvm.org/docs/InternalsManual.html) — Clang architecture deep dive
+---
+
+

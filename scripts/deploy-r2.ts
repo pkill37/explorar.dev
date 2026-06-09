@@ -26,6 +26,9 @@ type DeployEnv = {
 };
 
 const R2_SYNC_CONCURRENCY = 2;
+const DEFAULT_R2_RETRY_ATTEMPTS = 3;
+const DEFAULT_R2_RETRY_BASE_DELAY_MS = 2_000;
+const R2_SYNC_COMPARISON_ARGS = ['--size-only'] as const;
 
 export function fail(message: string): never {
   console.error(`\nERROR: ${message}\n`);
@@ -114,6 +117,65 @@ function runAwsCommandAsync(args: string[], env: DeployEnv, failureContext: stri
   });
 }
 
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name]?.trim();
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    fail(`Invalid ${name}: expected a positive integer, received "${rawValue}"`);
+  }
+
+  return parsed;
+}
+
+function getRetryAttempts(): number {
+  return readPositiveIntEnv('R2_DEPLOY_RETRY_ATTEMPTS', DEFAULT_R2_RETRY_ATTEMPTS);
+}
+
+function getRetryBaseDelayMs(): number {
+  return readPositiveIntEnv('R2_DEPLOY_RETRY_BASE_DELAY_MS', DEFAULT_R2_RETRY_BASE_DELAY_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function runWithRetries<T>(
+  label: string,
+  operation: () => Promise<T>,
+  attempts: number,
+  baseDelayMs: number
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) {
+        break;
+      }
+
+      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `   ${label} failed on attempt ${attempt}/${attempts}: ${message}. Retrying in ${(
+          delayMs / 1000
+        ).toFixed(delayMs >= 10_000 ? 0 : 1)}s...`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function runWithConcurrency(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
   const queue = [...tasks];
 
@@ -179,9 +241,12 @@ function runBucketAccessPreflight(env: DeployEnv): void {
 
 async function syncCorpusRepos(env: DeployEnv): Promise<void> {
   let completed = 0;
+  const retryAttempts = getRetryAttempts();
+  const retryBaseDelayMs = getRetryBaseDelayMs();
 
   const tasks = CURATED_REPOS.map((repo) => async () => {
     const repoDir = path.join(CORPUS_REPOS_DIR, repo.owner, repo.repo, repo.branch);
+    const bucketPrefix = `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.branch}/`;
     ensureCorpusDir(repoDir, `${repo.owner}/${repo.repo}@${repo.branch}`);
 
     const fileCount = countFiles(repoDir);
@@ -190,18 +255,29 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
     await runPhase(
       `📦 Sync ${repo.owner}/${repo.repo}`,
       async () => {
-        await runAwsCommandAsync(
-          [
-            's3',
-            'sync',
-            `${repoDir}/`,
-            `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.branch}/`,
-            '--delete',
-            '--no-progress',
-          ],
-          env,
-          `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.branch}`
+        await runWithRetries(
+          `${repo.owner}/${repo.repo}@${repo.branch} sync`,
+          () =>
+            runAwsCommandAsync(
+              [
+                's3',
+                'sync',
+                `${repoDir}/`,
+                bucketPrefix,
+                '--delete',
+                '--no-progress',
+                ...R2_SYNC_COMPARISON_ARGS,
+              ],
+              env,
+              `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.branch}`
+            ),
+          retryAttempts,
+          retryBaseDelayMs
         );
+
+        // R2's S3-compatible sync metadata can remain unstable immediately after writes.
+        // Trust the sync exit status and retry policy instead of a dry-run recheck that
+        // can produce false upload/delete churn for unchanged objects.
       },
       `${fileCount} files · ${formatBytes(size)}`
     );
@@ -219,7 +295,10 @@ export async function runAwsSync(env: DeployEnv): Promise<void> {
   console.log(`Endpoint: https://${env.accountId}.r2.cloudflarestorage.com`);
   console.log(`Corpus root: ${CORPUS_REPOS_DIR}`);
   console.log(
-    'Sync strategy: rely on `aws s3 sync` diffing so only changed files are transferred.'
+    'Sync strategy: rely on `aws s3 sync --size-only` diffing so R2 timestamp drift does not trigger false updates.'
+  );
+  console.log(
+    `Retry policy: ${getRetryAttempts()} attempt(s) with exponential backoff from ${getRetryBaseDelayMs()}ms.`
   );
 
   ensureCorpusDir(CORPUS_REPOS_DIR, 'corpus repos');

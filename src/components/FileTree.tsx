@@ -10,6 +10,7 @@ import {
   getCurrentRepoLabel,
   getCurrentBranch,
 } from '@/lib/github-api';
+import { type FileSourceMode } from '@/lib/curated-content-url';
 import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
 import { getTreeStructure, getGitHubRepoIdentifier } from '@/lib/repo-storage';
 
@@ -18,6 +19,8 @@ interface FileTreeProps {
   selectedFile?: string;
   listDirectory?: (path: string) => Promise<FileNode[]>;
   titleLabel?: string;
+  sourceMode?: FileSourceMode;
+  onSourceModeChange?: (mode: FileSourceMode) => void;
   onDirectoryExpand?: (path: string) => void;
   expandDirectoryRequest?: { path: string; id: number } | null;
 }
@@ -163,6 +166,9 @@ const FileTree: React.FC<FileTreeProps> = ({
   onFileSelect,
   selectedFile,
   listDirectory,
+  titleLabel,
+  sourceMode,
+  onSourceModeChange,
   onDirectoryExpand,
   expandDirectoryRequest,
 }) => {
@@ -495,20 +501,84 @@ const FileTree: React.FC<FileTreeProps> = ({
   }
 
   return (
-    <div ref={treeContainerRef} className="vscode-file-tree">
-      {sortFileNodes(rootNodes).map((node) => (
-        <FileTreeItem
-          key={node.path}
-          node={node}
-          level={0}
-          onFileSelect={onFileSelect}
-          selectedFile={selectedFile}
-          listDirectory={listDirectory}
-          onDirectoryExpand={onDirectoryExpand}
-          expandedPaths={expandedPaths}
-          onToggleExpand={handleToggleExpand}
-        />
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+      {(titleLabel || onSourceModeChange) && (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderBottom: '1px solid var(--vscode-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: 'var(--vscode-text-muted, #999)',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={titleLabel}
+          >
+            {titleLabel || 'Explorer'}
+          </div>
+          {onSourceModeChange && sourceMode && (
+            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+              {[
+                ['local-filesystem', 'Local'],
+                ['r2-bucket', 'R2'],
+                ['github-api', 'GitHub'],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onSourceModeChange(mode as FileSourceMode)}
+                  style={{
+                    border: '1px solid var(--vscode-border)',
+                    background:
+                      sourceMode === mode
+                        ? 'var(--vscode-text-accent, #0078d4)'
+                        : 'var(--vscode-editor-background, #1e1e1e)',
+                    color:
+                      sourceMode === mode
+                        ? 'var(--vscode-button-foreground, #fff)'
+                        : 'var(--vscode-foreground, #d4d4d4)',
+                    borderRadius: '4px',
+                    padding: '2px 6px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div ref={treeContainerRef} className="vscode-file-tree" style={{ flex: 1, minHeight: 0 }}>
+        {sortFileNodes(rootNodes).map((node) => (
+          <FileTreeItem
+            key={node.path}
+            node={node}
+            level={0}
+            onFileSelect={onFileSelect}
+            selectedFile={selectedFile}
+            listDirectory={listDirectory}
+            onDirectoryExpand={onDirectoryExpand}
+            expandedPaths={expandedPaths}
+            onToggleExpand={handleToggleExpand}
+          />
+        ))}
+      </div>
     </div>
   );
 };

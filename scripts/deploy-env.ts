@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const ENV_FILES = ['.env.deploy.local', '.env.deploy', '.env.production.local', '.env.production'];
+const ENV_FILES = ['.env.local', '.env.production.local', '.env.production'];
 
 function stripWrappingQuotes(value: string): string {
   if (
