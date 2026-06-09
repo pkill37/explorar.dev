@@ -7,6 +7,7 @@ import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { CURATED_REPOS, type CuratedRepoConfig } from '@/lib/curated-repos';
+import { isCuratedRepo } from '@/lib/repo-static';
 
 // Icon Components
 const DiscordIcon = ({ className }: { className?: string }) => (
@@ -137,9 +138,15 @@ export default function Home() {
         throw new Error('No branch selected');
       }
 
-      await downloadBranch(githubRepo.owner, githubRepo.repo, selectedBranch, setDownloadProgress);
-
-      await loadData();
+      if (!isCuratedRepo(githubRepo.owner, githubRepo.repo)) {
+        await downloadBranch(
+          githubRepo.owner,
+          githubRepo.repo,
+          selectedBranch,
+          setDownloadProgress
+        );
+        await loadData();
+      }
 
       await setRepository('github', identifier, githubRepo.displayName);
       router.push(`/${githubRepo.owner}/${githubRepo.repo}`);
