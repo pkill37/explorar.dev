@@ -90,6 +90,9 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       case 'cc':
       case 'cxx':
         return 'cpp';
+      case 'cs':
+      case 'csx':
+        return 'csharp';
       case 's':
       case 'S':
         return 'asm';

@@ -29,6 +29,7 @@ import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
 import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 import {
   getFileSourceMode,
+  getFileSourceModeServerSnapshot,
   isStaticFileSourceMode,
   setFileSourceMode,
   subscribeToFileSourceMode,
@@ -141,7 +142,7 @@ export default function KernelExplorer({
   const [editorFileSize, setEditorFileSize] = useState<string>('');
   const [fileFetchDebugInfo, setFileFetchDebugInfo] = useState<FileFetchDebugInfo | null>(null);
   const [fileSourceMode, setFileSourceModeState] = useState<FileSourceMode>(() =>
-    getFileSourceMode()
+    getFileSourceModeServerSnapshot()
   );
 
   // Mobile panel state
@@ -162,6 +163,8 @@ export default function KernelExplorer({
   // Check if mobile on mount and resize
   // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
   useEffect(() => {
+    setFileSourceModeState(getFileSourceMode());
+
     return subscribeToFileSourceMode(() => {
       setFileSourceModeState(getFileSourceMode());
       setFileFetchDebugInfo(null);
@@ -647,6 +650,7 @@ export default function KernelExplorer({
         cpp: 'cpp',
         cc: 'cpp',
         cxx: 'cpp',
+        cs: 'csharp',
         s: 'asm',
         S: 'asm',
         py: 'python',
