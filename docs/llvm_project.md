@@ -1,7 +1,8 @@
 ---
+curatedRepoId: llvm-18.1.0
 owner: llvm
 repo: llvm-project
-defaultBranch: llvmorg-18.1.0
+revision: llvmorg-18.1.0
 guideId: llvm-guide
 name: LLVM Compiler Infrastructure In The Mind
 description: Understanding LLVM Before Code
@@ -727,5 +728,4 @@ opt -O2 -debug-pass-manager input.ll 2>&1 | grep "Running pass"
 - [LLVM Programmer's Manual](https://llvm.org/docs/ProgrammersManual.html) — Core API guide
 - [Clang Internals Manual](https://clang.llvm.org/docs/InternalsManual.html) — Clang architecture deep dive
 ---
-
 

@@ -20,6 +20,7 @@ export interface FileNodeData extends Record<string, unknown> {
   sectionLabel: string;
   sectionIndex: number;
   color: string;
+  isDirectory: boolean;
   isDocumentation: boolean;
   pedagogicalOrder: number;
   pedagogicalOrderLabel: string;
@@ -299,6 +300,10 @@ function isFilePath(path: string): boolean {
 }
 
 function isGuideRecommendedFile(filePath: string, includeDocs: boolean): boolean {
+  if (filePath.endsWith('/')) {
+    return !filePath.startsWith('http') && !filePath.startsWith('#');
+  }
+
   const parts = filePath.split('/');
   const fileName = parts[parts.length - 1];
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -319,6 +324,22 @@ function isGuideRecommendedFile(filePath: string, includeDocs: boolean): boolean
   if (!includeDocs) return false;
 
   return DOC_FILENAME_RE.test(fileName) || TEXTUAL_DOC_EXTENSIONS.has(ext);
+}
+
+function getDisplayName(filePath: string): string {
+  const trimmed = filePath.endsWith('/') ? filePath.slice(0, -1) : filePath;
+  return trimmed.split('/').pop() ?? trimmed;
+}
+
+function isDocumentationPath(filePath: string): boolean {
+  if (filePath.endsWith('/')) {
+    return NON_CORE_DIR_RE.test('/' + filePath);
+  }
+  return !isCoreSourceFile(filePath);
+}
+
+function getSectionNarrativePaths(section: GuideSection, includeDocs: boolean): string[] {
+  return (section.narrativePaths ?? []).filter((path) => isGuideRecommendedFile(path, includeDocs));
 }
 
 function buildGraphDataFromFileEntries(files: GraphFileEntry[]): {
@@ -357,12 +378,13 @@ function buildGraphDataFromFileEntries(files: GraphFileEntry[]): {
       position: { x: 0, y: 0 }, // dagre will set this
       data: {
         filePath: f.filePath,
-        fileName: f.filePath.split('/').pop() ?? f.filePath,
+        fileName: getDisplayName(f.filePath),
         language: getLang(f.filePath),
         sectionLabel: f.sectionLabel,
         sectionIndex: f.sectionIndex,
         color,
-        isDocumentation: f.isDocumentation,
+        isDirectory: f.filePath.endsWith('/'),
+        isDocumentation: isDocumentationPath(f.filePath),
         pedagogicalOrder: f.pedagogicalOrder,
         pedagogicalOrderLabel: f.pedagogicalOrderLabel,
       },
@@ -382,6 +404,29 @@ function buildGraphDataFromFileEntries(files: GraphFileEntry[]): {
         style: { stroke: color, strokeOpacity: 0.35, strokeWidth: 1.5 },
       });
     }
+  }
+
+  const orderedSections = [...bySection.entries()].sort(
+    (a, b) => a[1][0].sectionIndex - b[1][0].sectionIndex
+  );
+  for (let i = 0; i < orderedSections.length - 1; i++) {
+    const currentFiles = orderedSections[i][1];
+    const nextFiles = orderedSections[i + 1][1];
+    const currentLast = currentFiles[currentFiles.length - 1];
+    const nextFirst = nextFiles[0];
+    if (!currentLast || !nextFirst) continue;
+    edges.push({
+      id: `bridge-${currentLast.filePath}→${nextFirst.filePath}`,
+      source: currentLast.filePath,
+      target: nextFirst.filePath,
+      type: 'smoothstep',
+      style: {
+        stroke: '#6b7280',
+        strokeOpacity: 0.28,
+        strokeWidth: 1.2,
+        strokeDasharray: '4 4',
+      },
+    });
   }
 
   // Dagre layout
@@ -461,13 +506,8 @@ export function buildGraphDataFromSections(
 
   guideSections.forEach((section, index) => {
     const sectionLabel = section.title.replace(/^Chapter\s+\d+\s*[—\-–]\s*/, '').trim();
-    const recommendedFiles = [
-      ...(includeDocs ? (section.fileRecommendations?.docs ?? []) : []),
-      ...(section.fileRecommendations?.source ?? []),
-    ];
-    for (const file of recommendedFiles) {
-      const path = file.path;
-      if (!isGuideRecommendedFile(path, includeDocs)) continue;
+    const narrativePaths = getSectionNarrativePaths(section, includeDocs);
+    for (const path of narrativePaths) {
       const currentOrder = pedagogicalOrder++;
       if (seen.has(path)) continue;
       seen.add(path);
@@ -796,12 +836,13 @@ export function buildChapterView(
         position: { x: 0, y: 0 },
         data: {
           filePath: path,
-          fileName: path.split('/').pop() ?? path,
+          fileName: getDisplayName(path),
           language: getLang(path),
           sectionLabel: 'Related',
           sectionIndex: -1,
           color: fallbackColor,
-          isDocumentation: !isCoreSourceFile(path),
+          isDirectory: path.endsWith('/'),
+          isDocumentation: isDocumentationPath(path),
           pedagogicalOrder: Number.MAX_SAFE_INTEGER,
           pedagogicalOrderLabel: 'R',
         },
@@ -814,32 +855,52 @@ export function buildChapterView(
   // Build edges
   const rawEdges: Edge[] = [];
 
-  if (parsedEdges.length > 0) {
-    // Curated edges: styled distinctly as learning connections
-    for (const e of parsedEdges) {
-      if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) continue;
-      const color = nodeMap.get(e.source)!.data.color;
-      rawEdges.push({
-        id: `ch|||${e.source}|||${e.target}`,
-        source: e.source,
-        target: e.target,
-        type: 'smoothstep',
-        ...(e.label
-          ? {
-              label: e.label,
-              labelStyle: { fill: color, fontSize: 8, fontFamily: 'monospace' },
-              labelBgStyle: { fill: '#0d0d0d', fillOpacity: 0.85 },
-            }
-          : {}),
-        style: { stroke: color, strokeOpacity: 0.85, strokeWidth: 2 },
-      });
-    }
-  } else {
+  for (let i = 0; i < chapterFiles.length - 1; i++) {
+    const source = chapterFiles[i];
+    const target = chapterFiles[i + 1];
+    if (!nodeMap.has(source) || !nodeMap.has(target) || source === target) continue;
+    const color = nodeMap.get(source)!.data.color;
+    rawEdges.push({
+      id: `story|||${source}|||${target}|||${i}`,
+      source,
+      target,
+      type: 'smoothstep',
+      style: { stroke: color, strokeOpacity: 0.92, strokeWidth: 2.4 },
+    });
+  }
+
+  for (const e of parsedEdges) {
+    if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) continue;
+    const color = nodeMap.get(e.source)!.data.color;
+    rawEdges.push({
+      id: `ch|||${e.source}|||${e.target}`,
+      source: e.source,
+      target: e.target,
+      type: 'smoothstep',
+      ...(e.label
+        ? {
+            label: e.label,
+            labelStyle: { fill: color, fontSize: 8, fontFamily: 'monospace' },
+            labelBgStyle: { fill: '#0d0d0d', fillOpacity: 0.85 },
+          }
+        : {}),
+      style: {
+        stroke: color,
+        strokeOpacity: chapterFiles.length > 1 ? 0.52 : 0.85,
+        strokeWidth: chapterFiles.length > 1 ? 1.5 : 2,
+        strokeDasharray: chapterFiles.length > 1 ? '5 4' : undefined,
+      },
+    });
+  }
+
+  if (rawEdges.length === 0) {
     // Fallback: guide/analysis edges between chapter nodes
     for (const edge of allFileEdges) {
-      if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
-        rawEdges.push(edge);
-      }
+      if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) continue;
+      rawEdges.push({
+        ...edge,
+        id: `${edge.id}:::chapter`,
+      });
     }
   }
 

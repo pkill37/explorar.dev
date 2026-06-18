@@ -1,7 +1,8 @@
 ---
+curatedRepoId: glibc-2.39
 owner: bminor
 repo: glibc
-defaultBranch: glibc-2.39
+revision: glibc-2.39
 guideId: glibc-guide
 name: GNU C Library (glibc) In The Mind
 description: Understanding glibc Before Code

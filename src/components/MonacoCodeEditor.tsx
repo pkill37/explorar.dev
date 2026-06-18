@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   findSymbolsInFile,
@@ -9,6 +9,7 @@ import {
   type SymbolReference,
 } from '@/lib/cross-reference';
 import { configureMonacoEnvironment as configureMonacoWorkers } from '@/lib/monaco-config';
+import { debugLog } from '@/lib/browser-debug';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {
@@ -33,6 +34,10 @@ interface MonacoCodeEditorProps {
 type MonacoEditorLike = {
   layout: (dimension?: { width: number; height: number }) => void;
   updateOptions: (options: Record<string, unknown>) => void;
+  getModel: () => {
+    getValue: () => string;
+    setValue: (value: string) => void;
+  } | null;
   onDidChangeCursorPosition: (
     listener: (e: { position: { lineNumber: number; column: number } }) => void
   ) => void;
@@ -74,9 +79,100 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 }) => {
   const editorRef = useRef<unknown>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [language, setLanguage] = useState<string>('text');
   const decorationsRef = useRef<string[]>([]);
   const symbolsRef = useRef<SymbolReference[]>([]);
+
+  const revealTargetLine = useCallback((targetLine: number, lines: string[]) => {
+    if (!editorRef.current || targetLine < 1) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const editor = editorRef.current as any;
+
+    if (decorationsRef.current.length > 0) {
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+    }
+
+    editor.revealLineInCenter(targetLine);
+    editor.setPosition({ lineNumber: targetLine, column: 1 });
+
+    decorationsRef.current = editor.deltaDecorations(
+      [],
+      [
+        {
+          range: {
+            startLineNumber: targetLine,
+            startColumn: 1,
+            endLineNumber: targetLine,
+            endColumn: lines[targetLine - 1]?.length || 1,
+          },
+          options: {
+            isWholeLine: true,
+            className: 'highlight-line',
+            glyphMarginClassName: 'highlight-line-glyph',
+          },
+        },
+      ]
+    );
+  }, []);
+
+  const findDefinitionLineForPattern = useCallback((pattern: string, lines: string[]): number => {
+    const normalizedPattern = pattern.trim().replace(/\(\)$/, '');
+    if (!normalizedPattern) return -1;
+
+    const directDefinition = findDefinition(normalizedPattern, symbolsRef.current);
+    if (directDefinition) {
+      return directDefinition.line;
+    }
+
+    const exactDefinition = symbolsRef.current.find(
+      (symbol) =>
+        symbol.isDefinition &&
+        (symbol.name === normalizedPattern ||
+          symbol.name === normalizedPattern.replace(/^(struct|class|enum)\s+/, ''))
+    );
+    if (exactDefinition) {
+      return exactDefinition.line;
+    }
+
+    const escapedPattern = normalizedPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const simpleName = normalizedPattern.replace(/^(struct|class|enum)\s+/, '');
+    const escapedSimpleName = simpleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const definitionPatterns = [
+      new RegExp(`^\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${escapedSimpleName}\\s*\\(`),
+      new RegExp(
+        `^\\s*(?:export\\s+)?(?:const|let|var)\\s+${escapedSimpleName}\\s*=\\s*(?:async\\s*)?\\(`
+      ),
+      new RegExp(
+        `^\\s*(?:export\\s+)?(?:const|let|var)\\s+${escapedSimpleName}\\s*=\\s*(?:async\\s*)?[^=]*=>`
+      ),
+      new RegExp(`^\\s*(?:async\\s+)?def\\s+${escapedSimpleName}\\s*\\(`),
+      new RegExp(`^\\s*fn\\s+${escapedSimpleName}\\s*\\(`),
+      new RegExp(`^\\s*func\\s+${escapedSimpleName}\\s*\\(`),
+      new RegExp(
+        `^\\s*(?:[\\w~:*<>\\[\\],&]+\\s+)+${escapedSimpleName}\\s*\\([^;{}]*\\)\\s*(?:\\{|$)`
+      ),
+      new RegExp(`^\\s*${escapedPattern}\\s*\\{`),
+      new RegExp(`^\\s*${escapedPattern}\\s*$`),
+      new RegExp(`^\\s*typedef\\s+${escapedPattern}`),
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+      for (const definitionPattern of definitionPatterns) {
+        if (definitionPattern.test(lines[i])) {
+          return i + 1;
+        }
+      }
+    }
+
+    if (simpleName !== normalizedPattern) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(simpleName) && lines[i].includes(normalizedPattern.split(' ')[0])) {
+          return i + 1;
+        }
+      }
+    }
+
+    return -1;
+  }, []);
 
   const getMonacoLanguage = useCallback((filename: string): string => {
     const extension = filename.split('.').pop()?.toLowerCase();
@@ -127,16 +223,83 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
   }, []);
 
-  // Update language when file path changes
+  const language = useMemo(
+    () => (filePath ? getMonacoLanguage(filePath) : 'text'),
+    [filePath, getMonacoLanguage]
+  );
+  const editorInstanceKey = useMemo(
+    () => `${filePath}:${content.length}:${isLoading ? 'loading' : 'ready'}`,
+    [content.length, filePath, isLoading]
+  );
+
+  // Keep the live Monaco model synchronized with async-loaded content.
+  // The React wrapper does not reliably repaint in this app when content
+  // arrives after mount for an already-open model.
   useEffect(() => {
-    if (filePath) {
-      const detectedLanguage = getMonacoLanguage(filePath);
-      // Use setTimeout to avoid synchronous setState in effect
-      setTimeout(() => {
-        setLanguage(detectedLanguage);
-      }, 0);
+    const editor = editorRef.current as MonacoEditorLike | null;
+    const model = editor?.getModel();
+    if (!model) {
+      if (content) {
+        debugLog('[explorar:monaco] sync-skipped-no-model', {
+          filePath,
+          contentLength: content.length,
+        });
+      }
+      return;
     }
-  }, [filePath, getMonacoLanguage]);
+
+    const existingValue = model.getValue();
+    if (existingValue !== content) {
+      debugLog('[explorar:monaco] model-sync', {
+        filePath,
+        previousLength: existingValue.length,
+        nextLength: content.length,
+        preview: content.slice(0, 80),
+      });
+      model.setValue(content);
+    } else {
+      debugLog('[explorar:monaco] model-already-synced', {
+        filePath,
+        contentLength: content.length,
+      });
+    }
+  }, [content, filePath]);
+
+  const isLicenseHeaderComment = useCallback((commentText: string, isXnuFile: boolean): boolean => {
+    const normalized = commentText.toLowerCase();
+
+    const genericLicenseMarkers = [
+      'license',
+      'copyright',
+      'spdx-license-identifier',
+      'permission is hereby granted',
+      'all rights reserved',
+    ];
+
+    if (genericLicenseMarkers.some((marker) => normalized.includes(marker))) {
+      return true;
+    }
+
+    if (!isXnuFile) {
+      return false;
+    }
+
+    const xnuSpecificMarkers = [
+      '@apple_osreference_license_header_start@',
+      '@apple_osreference_license_header_end@',
+      '@osf_copyright@',
+      'apple public source license',
+      'original code and/or modifications of original code',
+      'carnegie mellon university',
+      'the regents of the university of california',
+      'notice: this file was modified by sparta',
+      'notice: this file was modified by mcafee research',
+      'support for mandatory and extensible security protections',
+      'mach operating system',
+    ];
+
+    return xnuSpecificMarkers.some((marker) => normalized.includes(marker));
+  }, []);
 
   const getAutoFoldRanges = useCallback((): Array<{
     start: number;
@@ -149,6 +312,17 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
 
     const fileName = filePath.toLowerCase();
+    const isXnuFile =
+      fileName.startsWith('osfmk/') ||
+      fileName.startsWith('bsd/') ||
+      fileName.startsWith('libkern/') ||
+      fileName.startsWith('libsa/') ||
+      fileName.startsWith('libsyscall/') ||
+      fileName.startsWith('security/') ||
+      fileName.startsWith('pexpert/') ||
+      fileName.startsWith('iokit/') ||
+      fileName.startsWith('san/') ||
+      fileName.startsWith('tests/');
     const isCLike =
       language === 'c' ||
       language === 'cpp' ||
@@ -170,37 +344,52 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     const firstCodeLine = current + 1;
 
     if (current < lines.length) {
-      const first = lines[current].trim();
-      if (first.startsWith('/*') || first.startsWith('/**')) {
-        let end = current;
+      let headerStart = -1;
+      let headerEnd = -1;
+      let scan = current;
 
-        if (first.includes('*/')) {
-          end = current;
-        } else {
-          for (let i = current + 1; i < lines.length; i++) {
-            end = i;
+      while (scan < lines.length) {
+        while (scan < lines.length && lines[scan].trim() === '') {
+          scan++;
+        }
+        if (scan >= lines.length) {
+          break;
+        }
+
+        const first = lines[scan].trim();
+        if (!first.startsWith('/*') && !first.startsWith('/**')) {
+          break;
+        }
+
+        let commentEnd = scan;
+        if (!first.includes('*/')) {
+          for (let i = scan + 1; i < lines.length; i++) {
+            commentEnd = i;
             if (lines[i].includes('*/')) {
               break;
             }
           }
         }
 
-        if (end > current) {
-          const headerText = lines
-            .slice(current, end + 1)
-            .join('\n')
-            .toLowerCase();
-          const looksLikeLicenseHeader =
-            headerText.includes('license') ||
-            headerText.includes('copyright') ||
-            headerText.includes('spdx-license-identifier') ||
-            headerText.includes('permission is hereby granted') ||
-            headerText.includes('all rights reserved');
-
-          if (looksLikeLicenseHeader) {
-            ranges.push({ start: 1, end: end + 1, kind: 'comment', isLicenseHeader: true });
-          }
+        const commentText = lines.slice(scan, commentEnd + 1).join('\n');
+        if (!isLicenseHeaderComment(commentText, isXnuFile)) {
+          break;
         }
+
+        if (headerStart === -1) {
+          headerStart = scan;
+        }
+        headerEnd = commentEnd;
+        scan = commentEnd + 1;
+      }
+
+      if (headerStart !== -1 && headerEnd > headerStart) {
+        ranges.push({
+          start: headerStart + 1,
+          end: headerEnd + 1,
+          kind: 'comment',
+          isLicenseHeader: true,
+        });
       }
     }
 
@@ -256,7 +445,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     }
 
     return ranges;
-  }, [content, filePath, language]);
+  }, [content, filePath, isLicenseHeaderComment, language]);
 
   // Force Monaco to relayout whenever its flex container changes size.
   useEffect(() => {
@@ -315,112 +504,45 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   // Search for pattern and scroll to it
   useEffect(() => {
     if (editorRef.current && searchPattern && content) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const editor = editorRef.current as any;
-
       setTimeout(() => {
-        // Search for the struct definition
         const lines = content.split('\n');
-        let targetLine = -1;
-
-        // Try different patterns to find the struct
-        const patterns = [
-          new RegExp(`^\\s*${searchPattern.replace(/\s+/g, '\\s+')}\\s*\\{`, 'm'), // struct name {
-          new RegExp(`^\\s*${searchPattern.replace(/\s+/g, '\\s+')}\\s*$`, 'm'), // struct name alone
-          new RegExp(`^\\s*typedef\\s+${searchPattern.replace(/\s+/g, '\\s+')}`, 'm'), // typedef struct
-        ];
-
-        for (let i = 0; i < lines.length; i++) {
-          for (const pattern of patterns) {
-            if (pattern.test(lines[i])) {
-              targetLine = i + 1; // Monaco uses 1-based line numbers
-              break;
-            }
-          }
-          if (targetLine !== -1) break;
-        }
-
-        // If not found, try a simpler search for just the struct name
-        if (targetLine === -1) {
-          const structName = searchPattern.replace('struct ', '');
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes(structName) && lines[i].includes('struct')) {
-              targetLine = i + 1;
-              break;
-            }
-          }
-        }
+        const targetLine = findDefinitionLineForPattern(searchPattern, lines);
+        debugLog('[explorar:monaco-jump] resolve-search-pattern', {
+          filePath,
+          searchPattern,
+          targetLine,
+          symbolCount: symbolsRef.current.length,
+          fallbackScrollToLine: scrollToLine,
+        });
 
         if (targetLine !== -1) {
-          // Clear previous decorations
-          if (decorationsRef.current.length > 0) {
-            decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
-          }
-
-          // Scroll to the line
-          editor.revealLineInCenter(targetLine);
-          editor.setPosition({ lineNumber: targetLine, column: 1 });
-
-          // Highlight the line
-          decorationsRef.current = editor.deltaDecorations(
-            [],
-            [
-              {
-                range: {
-                  startLineNumber: targetLine,
-                  startColumn: 1,
-                  endLineNumber: targetLine,
-                  endColumn: lines[targetLine - 1]?.length || 1,
-                },
-                options: {
-                  isWholeLine: true,
-                  className: 'highlight-line',
-                  glyphMarginClassName: 'highlight-line-glyph',
-                },
-              },
-            ]
-          );
+          revealTargetLine(targetLine, lines);
+        } else if (scrollToLine) {
+          revealTargetLine(scrollToLine, lines);
         }
       }, 200);
     }
-  }, [searchPattern, content]);
+  }, [
+    searchPattern,
+    content,
+    scrollToLine,
+    filePath,
+    findDefinitionLineForPattern,
+    revealTargetLine,
+  ]);
 
   // Scroll to specific line when scrollToLine changes (fallback)
   useEffect(() => {
     if (editorRef.current && scrollToLine && content && !searchPattern) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const editor = editorRef.current as any;
       setTimeout(() => {
-        // Clear previous decorations
-        if (decorationsRef.current.length > 0) {
-          decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
-        }
-
-        editor.revealLineInCenter(scrollToLine);
-        editor.setPosition({ lineNumber: scrollToLine, column: 1 });
-
-        // Highlight the line
-        decorationsRef.current = editor.deltaDecorations(
-          [],
-          [
-            {
-              range: {
-                startLineNumber: scrollToLine,
-                startColumn: 1,
-                endLineNumber: scrollToLine,
-                endColumn: 1,
-              },
-              options: {
-                isWholeLine: true,
-                className: 'highlight-line',
-                glyphMarginClassName: 'highlight-line-glyph',
-              },
-            },
-          ]
-        );
+        debugLog('[explorar:monaco-jump] direct-line', {
+          filePath,
+          scrollToLine,
+        });
+        revealTargetLine(scrollToLine, content.split('\n'));
       }, 200);
     }
-  }, [scrollToLine, content, searchPattern]);
+  }, [scrollToLine, content, searchPattern, filePath, revealTargetLine]);
 
   // Reset scroll position to top when file path changes (unless we have scrollToLine or searchPattern)
   useEffect(() => {
@@ -439,6 +561,11 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   const handleEditorDidMount = useCallback(
     async (editor: unknown, monaco: unknown) => {
       editorRef.current = editor;
+      debugLog('[explorar:monaco] mount', {
+        filePath,
+        language,
+        contentLength: content.length,
+      });
 
       // Configure Monaco Editor to use local workers
       configureMonacoWorkers();
@@ -811,7 +938,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         });
       });
     },
-    [getAutoFoldRanges, language, onCursorChange]
+    [content.length, filePath, getAutoFoldRanges, language, onCursorChange]
   );
 
   if (isLoading && !content) {
@@ -853,6 +980,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         }}
       >
         <Editor
+          key={editorInstanceKey}
+          path={filePath}
           height="100%"
           width="100%"
           language={language}

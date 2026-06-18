@@ -50,7 +50,7 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('repository page meets performance thresholds', async ({ page }) => {
-    await page.goto('/torvalds/linux', { waitUntil: 'networkidle' });
+    await page.goto('/linux-kernel', { waitUntil: 'networkidle' });
 
     const metrics = await page.evaluate(() => {
       const navigation = performance.getEntriesByType(

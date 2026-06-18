@@ -1,18 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { fetchRepositoryFile } from '@/lib/github-api';
+import { getRepoIdentifier } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
-import { extractEntities, type CodeEntity } from '@/lib/entity-analysis';
+import { findSymbolsInFile, type SymbolReference } from '@/lib/cross-reference';
+import { getTreeStructure } from '@/lib/repo-storage';
+import { getRepositoryMode, getTreeStructureFromStatic } from '@/lib/repo-static';
+import {
+  getFileSourceMode,
+  getFileSourceModeServerSnapshot,
+  isStaticFileSourceMode,
+  subscribeToFileSourceMode,
+} from '@/lib/curated-content-url';
+import type { FileNode } from '@/types';
 
 // ─── Importance tiers ────────────────────────────────────────────────────────
 
 type Tier = 'hero' | 'major' | 'minor';
+type EntityKind = 'struct' | 'class' | 'type' | 'function' | 'enum' | 'interface';
+
+interface EntityField {
+  name: string;
+  type: string;
+}
+
+interface CodeEntity {
+  name: string;
+  kind: EntityKind;
+  fields: EntityField[];
+  filePath: string;
+  language: string;
+}
 
 interface ScoredEntity {
-  entity: CodeEntity;
+  entity: CodeEntity & { line: number };
   refCount: number;
   score: number;
   tier: Tier;
@@ -63,14 +87,10 @@ function buildFolderGroups(scored: ScoredEntity[]): FolderGroup[] {
       color: colorMap.get(folder) ?? FOLDER_COLORS[0],
       items: folderItems.get(folder) ?? [],
     }))
-    .sort((a, b) => {
-      const aTop = a.items[0]?.score ?? 0;
-      const bTop = b.items[0]?.score ?? 0;
-      return bTop - aTop;
-    });
+    .sort((a, b) => a.folder.localeCompare(b.folder));
 }
 
-function scoreEntities(entities: CodeEntity[]): ScoredEntity[] {
+function scoreEntities(entities: Array<CodeEntity & { line: number }>): ScoredEntity[] {
   // Deduplicate (same name+file)
   const seen = new Set<string>();
   const unique = entities.filter((e) => {
@@ -115,14 +135,18 @@ function scoreEntities(entities: CodeEntity[]): ScoredEntity[] {
           ? 'major'
           : 'minor') as Tier,
     }))
-    .sort((a, b) => b.score - a.score); // most important first
+    .sort(
+      (a, b) =>
+        a.entity.name.localeCompare(b.entity.name) ||
+        a.entity.filePath.localeCompare(b.entity.filePath)
+    );
 }
 
 // ─── Entity card ─────────────────────────────────────────────────────────────
 
 interface EntityCardProps {
   scored: ScoredEntity;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, searchPattern?: string, scrollToLine?: number) => void;
   color: string;
   folderLabel: string;
 }
@@ -147,7 +171,7 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
 
   return (
     <div
-      onClick={() => onOpenFile(entity.filePath)}
+      onClick={() => onOpenFile(entity.filePath, entity.name, entity.line)}
       style={{
         fontFamily: 'monospace',
         background: '#1a1a1a',
@@ -351,7 +375,7 @@ interface ChapterEntry {
 interface EntityViewProps {
   owner: string;
   repo: string;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, searchPattern?: string, scrollToLine?: number) => void;
   activeChapterId?: string | null;
   chapterMapEntries?: ChapterEntry[];
   guideSections?: GuideSection[];
@@ -360,6 +384,405 @@ interface EntityViewProps {
 const FETCH_CAP = 40;
 const BATCH_SIZE = 8;
 const BYTES_CAP = 60 * 1024;
+const SOURCE_FILE_EXTENSIONS = new Set([
+  'c',
+  'cc',
+  'cpp',
+  'cxx',
+  'h',
+  'hh',
+  'hpp',
+  'hxx',
+  'inc',
+  'inl',
+  'py',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+]);
+
+function isLikelySourceFile(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase();
+  return Boolean(ext && SOURCE_FILE_EXTENSIONS.has(ext));
+}
+
+function flattenTree(nodes: FileNode[]): FileNode[] {
+  const flat: FileNode[] = [];
+
+  const walk = (entries: FileNode[]) => {
+    for (const entry of entries) {
+      flat.push(entry);
+      if (entry.children?.length) {
+        walk(entry.children);
+      }
+    }
+  };
+
+  walk(nodes);
+  return flat;
+}
+
+function expandGuidePathsToSourceFiles(paths: string[], tree: FileNode[]): string[] {
+  const flatTree = flattenTree(tree);
+  const deduped = new Set<string>();
+  const resolved: string[] = [];
+
+  for (const rawPath of paths) {
+    const normalizedPath = rawPath.replace(/\/+$/, '');
+    if (!normalizedPath) {
+      continue;
+    }
+
+    const exactNode = flatTree.find((node) => node.path === normalizedPath);
+    if (exactNode?.type === 'file' && isLikelySourceFile(exactNode.path)) {
+      if (!deduped.has(exactNode.path)) {
+        deduped.add(exactNode.path);
+        resolved.push(exactNode.path);
+      }
+      continue;
+    }
+
+    const prefix = `${normalizedPath}/`;
+    const descendants = flatTree
+      .filter((node) => node.type === 'file' && node.path.startsWith(prefix))
+      .map((node) => node.path)
+      .filter(isLikelySourceFile)
+      .sort();
+
+    for (const filePath of descendants) {
+      if (!deduped.has(filePath)) {
+        deduped.add(filePath);
+        resolved.push(filePath);
+      }
+    }
+  }
+
+  return resolved;
+}
+
+function signatureToFields(signature?: string): Array<{ name: string; type: string }> {
+  if (!signature) return [];
+  const match = signature.match(/\((.*)\)/);
+  if (!match) return [];
+
+  return match[1]
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part && part !== 'void')
+    .slice(0, 8)
+    .map((part, index) => {
+      const tokens = part.split(/\s+/).filter(Boolean);
+      const name =
+        tokens[tokens.length - 1]?.replace(/^[*&]+/, '').replace(/\[\]$/, '') || `arg${index + 1}`;
+      const type = tokens.slice(0, -1).join(' ') || part;
+      return { name, type };
+    });
+}
+
+function symbolToEntity(symbol: SymbolReference): CodeEntity & { line: number } {
+  const base = {
+    name: symbol.name,
+    filePath: symbol.file,
+    line: symbol.line,
+    language: symbol.file.split('.').pop()?.toLowerCase() || 'text',
+  };
+
+  switch (symbol.type) {
+    case 'struct':
+    case 'class':
+      return {
+        ...base,
+        kind: symbol.type,
+        fields:
+          symbol.members?.slice(0, 12).map((member) => ({
+            name: member.name,
+            type: member.type,
+          })) ?? [],
+      };
+    case 'typedef':
+      return {
+        ...base,
+        kind: 'type',
+        fields: symbol.signature ? [{ name: symbol.name, type: symbol.signature }] : [],
+      };
+    case 'function':
+      return {
+        ...base,
+        kind: 'function',
+        fields: signatureToFields(symbol.signature),
+      };
+    default:
+      return {
+        ...base,
+        kind: 'type',
+        fields: symbol.relatedSymbols
+          .slice(0, 8)
+          .map((related) => ({ name: related, type: 'related' })),
+      };
+  }
+}
+
+function extractPythonEntities(
+  lines: string[],
+  filePath: string
+): Array<CodeEntity & { line: number }> {
+  const entities: Array<CodeEntity & { line: number }> = [];
+  const n = lines.length;
+  let i = 0;
+
+  while (i < n) {
+    const raw = lines[i];
+    const t = raw.trim();
+    const classM = t.match(/^class\s+(\w+)/);
+
+    if (!classM) {
+      i++;
+      continue;
+    }
+
+    const name = classM[1];
+    const classIndent = raw.match(/^(\s*)/)![1].length;
+    const line = i + 1;
+    i++;
+
+    const fields: EntityField[] = [];
+    const seen = new Set<string>();
+    let inInit = false;
+
+    while (i < n) {
+      const bodyRaw = lines[i];
+      const bodyT = bodyRaw.trim();
+      const indent = bodyRaw.match(/^(\s*)/)![1].length;
+
+      if (bodyT && indent <= classIndent && !bodyRaw.match(/^\s*$/)) {
+        break;
+      }
+
+      if (indent === classIndent + 4 || indent === classIndent + 2) {
+        const ann = bodyT.match(/^(\w+)\s*:\s*([^=\n]+?)(?:\s*=.*)?$/);
+        if (ann && ann[1] !== 'def' && ann[1] !== 'class' && !seen.has(ann[1])) {
+          seen.add(ann[1]);
+          fields.push({ name: ann[1], type: ann[2].trim() });
+        }
+      }
+
+      if (bodyT.match(/^def\s+__init__\s*\(/)) {
+        inInit = true;
+        i++;
+        continue;
+      }
+
+      if (inInit) {
+        if (bodyT && indent <= classIndent + 4 && bodyT.startsWith('def ')) {
+          inInit = false;
+        } else {
+          const selfAnn = bodyT.match(/^self\.(\w+)\s*:\s*([^=\n]+?)(?:\s*=.*)?$/);
+          const selfAssign = bodyT.match(/^self\.(\w+)\s*=/);
+          if (selfAnn && !seen.has(selfAnn[1])) {
+            seen.add(selfAnn[1]);
+            fields.push({ name: selfAnn[1], type: selfAnn[2].trim() });
+          } else if (selfAssign && !seen.has(selfAssign[1])) {
+            seen.add(selfAssign[1]);
+            fields.push({ name: selfAssign[1], type: '' });
+          }
+        }
+      }
+
+      i++;
+    }
+
+    entities.push({
+      name,
+      kind: 'class',
+      fields: fields.slice(0, 12),
+      filePath,
+      language: 'python',
+      line,
+    });
+  }
+
+  return entities;
+}
+
+function extractTSEntities(
+  lines: string[],
+  filePath: string
+): Array<CodeEntity & { line: number }> {
+  const entities: Array<CodeEntity & { line: number }> = [];
+  const n = lines.length;
+  let i = 0;
+
+  while (i < n) {
+    const t = lines[i].trim();
+
+    const ifaceM = t.match(/^(?:export\s+)?interface\s+(\w+)(?:\s+extends\s+\S+)?\s*\{/);
+    if (ifaceM) {
+      const name = ifaceM[1];
+      const line = i + 1;
+      const fields: EntityField[] = [];
+      i++;
+      let depth = 1;
+      while (i < n && depth > 0) {
+        const body = lines[i].trim();
+        depth += (body.match(/\{/g) || []).length;
+        depth -= (body.match(/\}/g) || []).length;
+        if (depth > 0 && body && !body.startsWith('/')) {
+          const field = body.match(/^(?:readonly\s+)?(\w+)\??\s*:\s*([^;,]+)/);
+          if (field) {
+            fields.push({ name: field[1], type: field[2].trim() });
+          }
+        }
+        i++;
+      }
+      entities.push({
+        name,
+        kind: 'interface',
+        fields: fields.slice(0, 12),
+        filePath,
+        language: 'typescript',
+        line,
+      });
+      continue;
+    }
+
+    const typeObjM = t.match(/^(?:export\s+)?type\s+(\w+)\s*=\s*\{/);
+    if (typeObjM) {
+      const name = typeObjM[1];
+      const line = i + 1;
+      const fields: EntityField[] = [];
+      i++;
+      let depth = 1;
+      while (i < n && depth > 0) {
+        const body = lines[i].trim();
+        depth += (body.match(/\{/g) || []).length;
+        depth -= (body.match(/\}/g) || []).length;
+        if (depth > 0 && body && !body.startsWith('/')) {
+          const field = body.match(/^(?:readonly\s+)?(\w+)\??\s*:\s*([^;,]+)/);
+          if (field) {
+            fields.push({ name: field[1], type: field[2].trim() });
+          }
+        }
+        i++;
+      }
+      entities.push({
+        name,
+        kind: 'type',
+        fields: fields.slice(0, 12),
+        filePath,
+        language: 'typescript',
+        line,
+      });
+      continue;
+    }
+
+    const enumM = t.match(/^(?:export\s+)?(?:const\s+)?enum\s+(\w+)\s*\{/);
+    if (enumM) {
+      const name = enumM[1];
+      const line = i + 1;
+      const fields: EntityField[] = [];
+      i++;
+      let depth = 1;
+      while (i < n && depth > 0) {
+        const body = lines[i].trim();
+        depth += (body.match(/\{/g) || []).length;
+        depth -= (body.match(/\}/g) || []).length;
+        if (depth > 0 && body && !body.startsWith('/')) {
+          const val = body.match(/^(\w+)\s*(?:=\s*[^,]+)?\s*,?/);
+          if (val) {
+            fields.push({ name: val[1], type: '' });
+          }
+        }
+        i++;
+      }
+      entities.push({
+        name,
+        kind: 'enum',
+        fields: fields.slice(0, 12),
+        filePath,
+        language: 'typescript',
+        line,
+      });
+      continue;
+    }
+
+    const classM = t.match(/^(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+(\w+)/);
+    if (classM) {
+      const name = classM[1];
+      const line = i + 1;
+      const fields: EntityField[] = [];
+      i++;
+      let depth = 1;
+      while (i < n && depth > 0) {
+        const body = lines[i].trim();
+        depth += (body.match(/\{/g) || []).length;
+        depth -= (body.match(/\}/g) || []).length;
+        if (depth === 1 && body && !body.startsWith('/')) {
+          const prop = body.match(
+            /^(?:(?:private|public|protected|readonly|static|declare|override)\s+)*(\w+)\??\s*:\s*([^;=]+)/
+          );
+          if (prop && !prop[1].match(/^(?:constructor|get|set|async|static|abstract)$/)) {
+            fields.push({ name: prop[1], type: prop[2].trim() });
+          }
+        }
+        i++;
+      }
+      entities.push({
+        name,
+        kind: 'class',
+        fields: fields.slice(0, 12),
+        filePath,
+        language: 'typescript',
+        line,
+      });
+      continue;
+    }
+
+    i++;
+  }
+
+  return entities;
+}
+
+function extractEntities(filePath: string, content: string): Array<CodeEntity & { line: number }> {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  const lines = content.split('\n').slice(0, 1500);
+
+  if (ext === 'py') {
+    return extractPythonEntities(lines, filePath);
+  }
+
+  if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') {
+    return extractTSEntities(lines, filePath);
+  }
+
+  const cFamilyExtensions = new Set([
+    'c',
+    'cc',
+    'cpp',
+    'cxx',
+    'h',
+    'hh',
+    'hpp',
+    'hxx',
+    'inc',
+    'inl',
+  ]);
+  if (cFamilyExtensions.has(ext)) {
+    return findSymbolsInFile(content, filePath)
+      .filter(
+        (symbol) =>
+          symbol.isDefinition &&
+          (symbol.type === 'function' ||
+            symbol.type === 'struct' ||
+            symbol.type === 'class' ||
+            symbol.type === 'typedef')
+      )
+      .map(symbolToEntity);
+  }
+
+  return [];
+}
 
 export function EntityView({
   owner,
@@ -370,7 +793,12 @@ export function EntityView({
   guideSections,
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
-  const branch = projectConfig?.defaultBranch ?? 'main';
+  const branch = projectConfig?.defaultRevision ?? 'main';
+  const fileSourceMode = useSyncExternalStore(
+    subscribeToFileSourceMode,
+    getFileSourceMode,
+    getFileSourceModeServerSnapshot
+  );
 
   // Per-key entity cache — key is chapterId or '__all__'
   const cacheRef = useRef<Map<string, ScoredEntity[]>>(new Map());
@@ -382,8 +810,8 @@ export function EntityView({
   // Stable key for the current view
   const currentKey = activeChapterId ?? '__all__';
 
-  // Files to fetch for the current key
-  const filesToFetch = useMemo(() => {
+  // Guide-selected paths for the current key. These may be files or directories.
+  const selectedPaths = useMemo(() => {
     if (chapterMapEntries && chapterMapEntries.length > 0) {
       if (activeChapterId) {
         return chapterMapEntries.find((e) => e.id === activeChapterId)?.files ?? [];
@@ -412,6 +840,71 @@ export function EntityView({
     return nodes.map((n) => n.id);
   }, [owner, repo, activeChapterId, chapterMapEntries, guideSections]);
 
+  const [filesToFetch, setFilesToFetch] = useState<string[]>(selectedPaths);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveFilesToFetch() {
+      if (selectedPaths.length === 0) {
+        setFilesToFetch([]);
+        return;
+      }
+
+      const hasDirectoryHints = selectedPaths.some(
+        (path) => path.endsWith('/') || !path.split('/').pop()?.includes('.')
+      );
+      if (!hasDirectoryHints) {
+        setFilesToFetch(selectedPaths.filter(isLikelySourceFile));
+        return;
+      }
+
+      try {
+        const repoMode = getRepositoryMode(owner, repo);
+        const tree =
+          repoMode === 'curated'
+            ? await getTreeStructureFromStatic(
+                owner,
+                repo,
+                branch,
+                isStaticFileSourceMode(fileSourceMode) ? fileSourceMode : 'local-filesystem'
+              )
+            : await getTreeStructure('github', getRepoIdentifier(owner, repo), branch);
+
+        if (cancelled) return;
+
+        if (tree && tree.length > 0) {
+          const expanded = expandGuidePathsToSourceFiles(selectedPaths, tree);
+          setFilesToFetch(expanded);
+          return;
+        }
+      } catch {
+        // Fall back to raw selected paths below.
+      }
+
+      if (!cancelled) {
+        setFilesToFetch(selectedPaths.filter(isLikelySourceFile));
+      }
+    }
+
+    void resolveFilesToFetch();
+    return () => {
+      cancelled = true;
+    };
+  }, [owner, repo, branch, selectedPaths, fileSourceMode]);
+
+  useEffect(() => {
+    console.log('[EntityView] files selected for scan', {
+      owner,
+      repo,
+      activeChapterId: activeChapterId ?? '__all__',
+      selectedPathCount: selectedPaths.length,
+      selectedPaths: selectedPaths.slice(0, 20),
+      fileCount: filesToFetch.length,
+      files: filesToFetch.slice(0, 20),
+    });
+  }, [owner, repo, activeChapterId, selectedPaths, filesToFetch]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -432,7 +925,7 @@ export function EntityView({
 
       setLoading(true);
 
-      const allEntities: CodeEntity[] = [];
+      const allEntities: Array<CodeEntity & { line: number }> = [];
       const batch = filesToFetch.slice(0, FETCH_CAP);
 
       for (let i = 0; i < batch.length; i += BATCH_SIZE) {
@@ -442,7 +935,11 @@ export function EntityView({
             try {
               const fullText = (await fetchRepositoryFile(owner, repo, branch, fp)).content;
               const text = fullText.length > BYTES_CAP ? fullText.slice(0, BYTES_CAP) : fullText;
-              allEntities.push(...extractEntities(fp, text));
+              const entities = extractEntities(fp, text);
+
+              if (entities.length > 0) {
+                allEntities.push(...entities);
+              }
             } catch {
               // skip
             }
@@ -453,6 +950,14 @@ export function EntityView({
       if (cancelled) return;
 
       const result = allEntities.length > 0 ? scoreEntities(allEntities) : [];
+      console.log('[EntityView] symbols/entities extracted', {
+        owner,
+        repo,
+        activeChapterId: activeChapterId ?? '__all__',
+        fileCount: batch.length,
+        rawEntityCount: allEntities.length,
+        scoredEntityCount: result.length,
+      });
       cacheRef.current.set(currentKey, result);
       setScored(result);
       setLoading(false);
@@ -462,7 +967,19 @@ export function EntityView({
     return () => {
       cancelled = true;
     };
-  }, [currentKey, branch, owner, repo, filesToFetch]);
+  }, [currentKey, branch, owner, repo, activeChapterId, filesToFetch]);
+
+  useEffect(() => {
+    console.log('[EntityView] render state', {
+      owner,
+      repo,
+      activeChapterId: activeChapterId ?? '__all__',
+      loading,
+      scoredEntityCount: scored.length,
+      folderGroupCount: folderGroups.length,
+      branch: loading || scored.length > 0 ? (scored.length > 0 ? 'cards' : 'loading') : 'empty',
+    });
+  }, [owner, repo, activeChapterId, loading, scored.length, folderGroups.length]);
 
   if (loading) {
     return (

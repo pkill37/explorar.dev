@@ -6,76 +6,65 @@ import { getTrustedVersion } from '@/lib/github-api';
 import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
 import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
-import { CURATED_REPOS, type CuratedRepoConfig } from '@/lib/curated-repos';
+import { CURATED_REPOS, getCuratedRepoPath, type CuratedRepoConfig } from '@/lib/curated-repos';
 import { isCuratedRepo } from '@/lib/repo-static';
 
-// Icon Components
-const DiscordIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-  </svg>
-);
-
-const GitHubIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-  </svg>
-);
-
-// Social Links Data
-const SOCIAL_LINKS = [
-  {
-    name: 'GitHub',
-    url: 'https://github.com/pkill37/explorar.dev',
-    shortUrl: 'github.com/pkill37/explorar.dev',
-    icon: GitHubIcon,
-  },
-  {
-    name: 'Discord',
-    url: 'https://discord.gg/fuXYz44tSs',
-    shortUrl: 'discord.gg/fuXYz44tSs',
-    icon: DiscordIcon,
-  },
+const HERO_SLOGANS = [
+  'Shorten time-to-context on large codebases.',
+  'Pedagogical exploration, not just raw browsing.',
+  'Grounded in LSP and MCP, not black-box explanation.',
 ];
+
+const COMMUNITY_BADGES = [
+  {
+    href: 'https://github.com/pkill37/explorar.dev',
+    ariaLabel: 'GitHub repository stars badge',
+    src: 'https://img.shields.io/github/stars/pkill37/explorar.dev',
+    alt: 'GitHub Repo stars',
+  },
+  {
+    href: 'https://discord.gg/fuXYz44tSs',
+    ariaLabel: 'Join the Explorar.dev Discord server',
+    src: 'https://dcbadge.limes.pink/api/server/fuXYz44tSs',
+    alt: 'Discord server badge',
+  },
+  {
+    href: 'https://news.ycombinator.com/item?id=46066280',
+    ariaLabel: 'Featured on Hacker News story',
+    src: 'https://hackerbadge.now.sh/api?id=46066280',
+    alt: 'Featured on Hacker News',
+  },
+] as const;
+
+function formatDisplayRef(ref: string): string {
+  if (!/^[0-9a-f]{7,40}$/i.test(ref)) {
+    return ref;
+  }
+
+  return ref.length > 12 ? `${ref.slice(0, 12)}…` : ref;
+}
 
 function CommunityPanel() {
   return (
     <div className="w-full max-w-md">
-      <div className="space-y-3">
-        {SOCIAL_LINKS.map((link) => {
-          const IconComponent = link.icon;
-          return (
-            <a
-              key={link.name}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center gap-3 rounded-2xl border border-gray-800/70 bg-gray-950/70 px-4 py-4 text-gray-400 shadow-2xl shadow-black/20 backdrop-blur-xl transition-all duration-300 hover:border-gray-600 hover:bg-gray-900/80 hover:text-gray-200"
-              title={link.name}
-              aria-label={`${link.name}: ${link.shortUrl}`}
-            >
-              <IconComponent className="h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110 sm:h-6 sm:w-6" />
-              <div className="min-w-0 flex-1 text-left">
-                <div className="text-sm font-semibold text-gray-200 group-hover:text-white">
-                  {link.name}
-                </div>
-                <div className="mt-1 truncate text-xs text-gray-500 group-hover:text-gray-300">
-                  {link.shortUrl}
-                </div>
-              </div>
-            </a>
-          );
-        })}
+      <div className="mt-4 flex flex-col gap-2">
+        {COMMUNITY_BADGES.map((badge) => (
+          <a
+            key={badge.href}
+            href={badge.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-fit max-w-full"
+            aria-label={badge.ariaLabel}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={badge.src}
+              alt={badge.alt}
+              className="block h-5 w-auto max-w-full rounded-sm opacity-90 transition-opacity hover:opacity-100"
+            />
+          </a>
+        ))}
       </div>
     </div>
   );
@@ -121,7 +110,7 @@ export default function Home() {
     if (existingRepo) {
       try {
         await setRepository('github', identifier, githubRepo.displayName);
-        router.push(`/${githubRepo.owner}/${githubRepo.repo}`);
+        router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to open repository');
       }
@@ -149,7 +138,7 @@ export default function Home() {
       }
 
       await setRepository('github', identifier, githubRepo.displayName);
-      router.push(`/${githubRepo.owner}/${githubRepo.repo}`);
+      router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Download failed');
     } finally {
@@ -244,24 +233,23 @@ export default function Home() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-12 pb-4 sm:pt-16 sm:pb-6 relative z-10">
         <div className="w-full max-w-6xl mx-auto">
           {/* Header */}
-          <header className="relative mb-16">
-            <div className="relative max-w-5xl mx-auto">
-              <div className="lg:pr-[24rem] text-center lg:text-left">
-                <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-gray-100 to-gray-400 bg-clip-text text-transparent">
+          <header className="mb-14">
+            <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+              <div className="text-center lg:text-left">
+                <h1 className="mb-6 text-4xl font-semibold tracking-tight text-gray-100 sm:text-5xl">
                   explorar.dev
                 </h1>
-                <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-                  Explore curated open-source repositories with an interactive code browser. Study
-                  real-world codebases and learn from the best.
-                </p>
+                <div className="mx-auto max-w-3xl space-y-3 lg:mx-0">
+                  {HERO_SLOGANS.map((slogan) => (
+                    <p key={slogan} className="text-base leading-relaxed text-gray-300 sm:text-lg">
+                      {slogan}
+                    </p>
+                  ))}
+                </div>
               </div>
-
-              <div className="hidden lg:block absolute top-0 right-0 w-[22rem]">
+              <div className="flex justify-center lg:justify-end">
                 <CommunityPanel />
               </div>
-            </div>
-            <div className="mt-8 lg:hidden">
-              <CommunityPanel />
             </div>
           </header>
 
@@ -292,6 +280,7 @@ export default function Home() {
             {CURATED_REPOS.map((repo) => {
               const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
               const selectedBranch = getSelectedBranch(repo);
+              const selectedBranchLabel = selectedBranch ? formatDisplayRef(selectedBranch) : '';
               const avatarUrl = `/avatars/${repo.avatarFile ?? `${repo.owner}.png`}`;
 
               return (
@@ -342,8 +331,11 @@ export default function Home() {
                   {/* Footer row */}
                   <div className="mt-3 flex items-center justify-between">
                     {selectedBranch && !repo.dimmed && (
-                      <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 text-[10px] font-mono rounded border border-gray-700/60">
-                        {selectedBranch}
+                      <div
+                        className="px-1.5 py-0.5 bg-gray-800 text-gray-400 text-[10px] font-mono rounded border border-gray-700/60"
+                        title={selectedBranch}
+                      >
+                        {selectedBranchLabel}
                       </div>
                     )}
                     {isDownloading ? (

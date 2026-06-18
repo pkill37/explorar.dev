@@ -9,6 +9,7 @@ import {
   sortFileNodes,
   getCurrentRepoLabel,
   getCurrentBranch,
+  getTrustedVersion,
 } from '@/lib/github-api';
 import { type FileSourceMode } from '@/lib/curated-content-url';
 import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
@@ -35,6 +36,45 @@ interface FileTreeItemProps {
   expandedPaths: Set<string>;
   onToggleExpand: (path: string, isExpanded: boolean) => void;
 }
+
+function inferRefKind(repoLabel: string | null, ref: string): 'commit' | 'tag' | 'branch' {
+  if (/^[0-9a-f]{7,40}$/i.test(ref)) {
+    return 'commit';
+  }
+
+  if (repoLabel) {
+    const [owner, repo] = repoLabel.split('/');
+    if (owner && repo && getTrustedVersion(owner, repo) === ref) {
+      return 'tag';
+    }
+  }
+
+  return 'branch';
+}
+
+function formatDisplayRef(ref: string, refKind: 'commit' | 'tag' | 'branch'): string {
+  if (refKind !== 'commit') {
+    return ref;
+  }
+
+  return ref.length > 12 ? `${ref.slice(0, 12)}…` : ref;
+}
+
+const SourceModeGearIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    style={{ width: '12px', height: '12px', display: 'block' }}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="3.25" />
+    <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.7-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.7 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2H9a1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .7.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1V9c0 .4.2.7.6.9h.2a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.7Z" />
+  </svg>
+);
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({
   node,
@@ -178,10 +218,42 @@ const FileTree: React.FC<FileTreeProps> = ({
   const [error, setError] = useState<string | null>(null);
   // Track expanded paths in centralized state
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [isSourceMenuOpen, setIsSourceMenuOpen] = useState(false);
   const handledRequestRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sourceMenuRef = useRef<HTMLDivElement>(null);
   const { setRateLimit } = useGitHubRateLimit();
+  const currentRepoLabel = getCurrentRepoLabel();
+  const currentRef = getCurrentBranch();
+  const currentRefKind = inferRefKind(currentRepoLabel, currentRef);
+  const currentRefLabel = formatDisplayRef(currentRef, currentRefKind);
+
+  useEffect(() => {
+    if (!isSourceMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!sourceMenuRef.current?.contains(event.target as Node)) {
+        setIsSourceMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSourceMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSourceMenuOpen]);
 
   // Handler to toggle directory expansion
   const handleToggleExpand = useCallback((path: string, isExpanded: boolean) => {
@@ -482,24 +554,6 @@ const FileTree: React.FC<FileTreeProps> = ({
     };
   }, [selectedFile, rootNodes]);
 
-  if (isLoading) {
-    return (
-      <div className="vscode-loading">
-        <div className="vscode-spinner" />
-        <div>Loading source tree...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="vscode-loading">
-        <div>⚠️ Failed to load</div>
-        <div style={{ fontSize: '12px', marginTop: '4px' }}>{error}</div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       {(titleLabel || onSourceModeChange) && (
@@ -531,53 +585,136 @@ const FileTree: React.FC<FileTreeProps> = ({
             {titleLabel || 'Explorer'}
           </div>
           {onSourceModeChange && sourceMode && (
-            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-              {[
-                ['local-filesystem', 'Local'],
-                ['r2-bucket', 'R2'],
-                ['github-api', 'GitHub'],
-              ].map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onSourceModeChange(mode as FileSourceMode)}
+            <div
+              ref={sourceMenuRef}
+              style={{ flexShrink: 0, position: 'relative', display: 'flex' }}
+            >
+              <button
+                type="button"
+                aria-label="Open file source menu"
+                aria-haspopup="true"
+                aria-expanded={isSourceMenuOpen}
+                onClick={() => setIsSourceMenuOpen((current) => !current)}
+                style={{
+                  border: '1px solid var(--vscode-border)',
+                  background: 'var(--vscode-editor-background, #1e1e1e)',
+                  color: 'var(--vscode-foreground, #d4d4d4)',
+                  borderRadius: '4px',
+                  width: '24px',
+                  height: '24px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+                title="File source"
+              >
+                <SourceModeGearIcon />
+              </button>
+
+              {isSourceMenuOpen && (
+                <div
                   style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    right: 0,
+                    zIndex: 20,
+                    minWidth: '132px',
+                    padding: '6px',
                     border: '1px solid var(--vscode-border)',
-                    background:
-                      sourceMode === mode
-                        ? 'var(--vscode-text-accent, #0078d4)'
-                        : 'var(--vscode-editor-background, #1e1e1e)',
-                    color:
-                      sourceMode === mode
-                        ? 'var(--vscode-button-foreground, #fff)'
-                        : 'var(--vscode-foreground, #d4d4d4)',
-                    borderRadius: '4px',
-                    padding: '2px 6px',
-                    fontSize: '11px',
-                    cursor: 'pointer',
+                    borderRadius: '6px',
+                    background: 'var(--vscode-editor-background, #1e1e1e)',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.24)',
                   }}
                 >
-                  {label}
-                </button>
-              ))}
+                  <div
+                    style={{
+                      padding: '2px 2px 6px',
+                      fontSize: '10px',
+                      lineHeight: 1.4,
+                      color: 'var(--vscode-text-muted, #999)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        marginBottom: '2px',
+                      }}
+                    >
+                      {currentRefKind}
+                    </div>
+                    <div
+                      style={{
+                        color: 'var(--vscode-foreground, #d4d4d4)',
+                        wordBreak: 'break-all',
+                      }}
+                      title={currentRef}
+                    >
+                      {currentRefLabel}
+                    </div>
+                  </div>
+                  <select
+                    aria-label="Select file source"
+                    className="vscode-source-select"
+                    value={sourceMode}
+                    onChange={(event) => {
+                      onSourceModeChange(event.target.value as FileSourceMode);
+                      setIsSourceMenuOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      border: '1px solid var(--vscode-border)',
+                      background: 'var(--vscode-editor-background, #1e1e1e)',
+                      color: 'var(--vscode-foreground, #d4d4d4)',
+                      borderRadius: '4px',
+                      padding: '4px 24px 4px 8px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="local-filesystem">Local filesystem</option>
+                    <option value="r2-bucket">R2 bucket</option>
+                    <option value="github-api">api.github.com</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-      <div ref={treeContainerRef} className="vscode-file-tree" style={{ flex: 1, minHeight: 0 }}>
-        {sortFileNodes(rootNodes).map((node) => (
-          <FileTreeItem
-            key={node.path}
-            node={node}
-            level={0}
-            onFileSelect={onFileSelect}
-            selectedFile={selectedFile}
-            listDirectory={listDirectory}
-            onDirectoryExpand={onDirectoryExpand}
-            expandedPaths={expandedPaths}
-            onToggleExpand={handleToggleExpand}
-          />
-        ))}
+      <div
+        ref={treeContainerRef}
+        className={isLoading || error ? undefined : 'vscode-file-tree'}
+        style={{ flex: 1, minHeight: 0 }}
+      >
+        {isLoading ? (
+          <div className="vscode-loading">
+            <div className="vscode-spinner" />
+            <div>Loading source tree...</div>
+          </div>
+        ) : error ? (
+          <div className="vscode-loading">
+            <div>⚠️ Failed to load</div>
+            <div style={{ fontSize: '12px', marginTop: '4px' }}>{error}</div>
+          </div>
+        ) : (
+          sortFileNodes(rootNodes).map((node) => (
+            <FileTreeItem
+              key={node.path}
+              node={node}
+              level={0}
+              onFileSelect={onFileSelect}
+              selectedFile={selectedFile}
+              listDirectory={listDirectory}
+              onDirectoryExpand={onDirectoryExpand}
+              expandedPaths={expandedPaths}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))
+        )}
       </div>
     </div>
   );

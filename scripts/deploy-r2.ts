@@ -117,6 +117,46 @@ function runAwsCommandAsync(args: string[], env: DeployEnv, failureContext: stri
   });
 }
 
+function runAwsCommandQuiet(args: string[], env: DeployEnv): Promise<boolean> {
+  const endpointUrl = `https://${env.accountId}.r2.cloudflarestorage.com`;
+  const argsWithEndpoint = [...args, '--endpoint-url', endpointUrl];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('aws', argsWithEndpoint, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        AWS_ACCESS_KEY_ID: env.accessKeyId,
+        AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
+        AWS_DEFAULT_REGION: 'auto',
+      },
+    });
+
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(new Error(`Failed to launch aws CLI: ${error.message}`));
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(true);
+        return;
+      }
+
+      if (code === 1) {
+        resolve(false);
+        return;
+      }
+
+      reject(new Error(`aws exited with status ${code ?? 'unknown'}: ${stderr.trim()}`));
+    });
+  });
+}
+
 function readPositiveIntEnv(name: string, fallback: number): number {
   const rawValue = process.env[name]?.trim();
   if (!rawValue) {
@@ -241,22 +281,46 @@ function runBucketAccessPreflight(env: DeployEnv): void {
 
 async function syncCorpusRepos(env: DeployEnv): Promise<void> {
   let completed = 0;
+  let skipped = 0;
   const retryAttempts = getRetryAttempts();
   const retryBaseDelayMs = getRetryBaseDelayMs();
 
   const tasks = CURATED_REPOS.map((repo) => async () => {
-    const repoDir = path.join(CORPUS_REPOS_DIR, repo.owner, repo.repo, repo.branch);
-    const bucketPrefix = `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.branch}/`;
-    ensureCorpusDir(repoDir, `${repo.owner}/${repo.repo}@${repo.branch}`);
+    const repoDir = path.join(CORPUS_REPOS_DIR, repo.owner, repo.repo, repo.revision);
+    const bucketPrefix = `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.revision}/`;
+    ensureCorpusDir(repoDir, `${repo.owner}/${repo.repo}@${repo.revision}`);
 
     const fileCount = countFiles(repoDir);
     const size = directorySizeBytes(repoDir);
+
+    const manifestExists = await runWithRetries(
+      `${repo.owner}/${repo.repo}@${repo.revision} existence check`,
+      () =>
+        runAwsCommandQuiet(
+          [
+            's3',
+            'ls',
+            `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.revision}/repo-manifest.json`,
+          ],
+          env
+        ),
+      retryAttempts,
+      retryBaseDelayMs
+    );
+
+    if (manifestExists) {
+      skipped++;
+      console.log(
+        `   Skipping ${repo.owner}/${repo.repo}@${repo.revision} (already present in R2)`
+      );
+      return;
+    }
 
     await runPhase(
       `📦 Sync ${repo.owner}/${repo.repo}`,
       async () => {
         await runWithRetries(
-          `${repo.owner}/${repo.repo}@${repo.branch} sync`,
+          `${repo.owner}/${repo.repo}@${repo.revision} sync`,
           () =>
             runAwsCommandAsync(
               [
@@ -269,7 +333,7 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
                 ...R2_SYNC_COMPARISON_ARGS,
               ],
               env,
-              `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.branch}`
+              `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.revision}`
             ),
           retryAttempts,
           retryBaseDelayMs
@@ -288,6 +352,9 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
 
   await runWithConcurrency(tasks, R2_SYNC_CONCURRENCY);
   console.log(`   Corpus repo sync complete: ${completed}/${CURATED_REPOS.length}`);
+  if (skipped > 0) {
+    console.log(`   Corpus repo skipped: ${skipped}/${CURATED_REPOS.length}`);
+  }
 }
 
 export async function runAwsSync(env: DeployEnv): Promise<void> {

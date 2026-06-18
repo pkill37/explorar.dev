@@ -31,7 +31,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('repository pages have proper meta tags', async ({ page }) => {
-    await page.goto('/torvalds/linux');
+    await page.goto('/linux-kernel');
 
     const title = await page.title();
     expect(title).toBeTruthy();

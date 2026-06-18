@@ -1,3 +1,5 @@
+import { debugLog } from './browser-debug';
+
 export type FileFetchSource = 'r2-bucket' | 'github-api' | 'local-filesystem' | 'unknown';
 
 export interface FileFetchDebugInfo {
@@ -21,5 +23,5 @@ export function logFileFetchDebugInfo(debugInfo: FileFetchDebugInfo | undefined)
     return;
   }
 
-  console.debug('[explorar:file-fetch]', debugInfo);
+  debugLog('[explorar:file-fetch]', debugInfo);
 }

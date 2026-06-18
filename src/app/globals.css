@@ -259,3 +259,141 @@ body {
   padding: 8px;
   margin: 4px 0;
 }
+
+/* Markdown preview and guide body styles */
+:where([data-markdown-preview], [data-guide-markdown]) h1,
+:where([data-markdown-preview], [data-guide-markdown]) h2,
+:where([data-markdown-preview], [data-guide-markdown]) h3,
+:where([data-markdown-preview], [data-guide-markdown]) h4,
+:where([data-markdown-preview], [data-guide-markdown]) h5,
+:where([data-markdown-preview], [data-guide-markdown]) h6 {
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) h1 {
+  font-size: 2rem;
+  border-bottom: 1px solid var(--vscode-border, #2d2d30);
+  padding-bottom: 0.3em;
+  margin-top: 0;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) h2 {
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--vscode-border, #2d2d30);
+  padding-bottom: 0.25em;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) h3 {
+  font-size: 1.25rem;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) p,
+:where([data-markdown-preview], [data-guide-markdown]) ul,
+:where([data-markdown-preview], [data-guide-markdown]) ol,
+:where([data-markdown-preview], [data-guide-markdown]) blockquote,
+:where([data-markdown-preview], [data-guide-markdown]) table,
+:where([data-markdown-preview], [data-guide-markdown]) pre {
+  margin: 0 0 1em;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a {
+  color: var(--vscode-textLink-foreground, #4a9eff);
+  text-decoration: none;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a:hover {
+  text-decoration: underline;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) ul,
+:where([data-markdown-preview], [data-guide-markdown]) ol {
+  padding-left: 1.5em;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) li + li {
+  margin-top: 0.25em;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) blockquote {
+  border-left: 3px solid var(--vscode-textLink-foreground, #4a9eff);
+  padding-left: 1em;
+  color: var(--vscode-descriptionForeground, #9da5b4);
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) code {
+  font-family: var(
+    --font-geist-mono,
+    'SFMono-Regular',
+    Consolas,
+    'Liberation Mono',
+    Menlo,
+    monospace
+  );
+  font-size: 0.92em;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 0.12em 0.38em;
+  color: rgba(226, 232, 240, 0.96);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link {
+  text-decoration: none;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link code {
+  color: var(--vscode-textLink-foreground, #7db7ff);
+  border-color: rgba(74, 158, 255, 0.28);
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.12), rgba(74, 158, 255, 0.06));
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link:hover code {
+  border-color: rgba(74, 158, 255, 0.48);
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.1));
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) pre {
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--vscode-border, #2d2d30);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) th,
+:where([data-markdown-preview], [data-guide-markdown]) td {
+  border: 1px solid var(--vscode-border, #2d2d30);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) hr {
+  border: 0;
+  border-top: 1px solid var(--vscode-border, #2d2d30);
+  margin: 2em 0;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}

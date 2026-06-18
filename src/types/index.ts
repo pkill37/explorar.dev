@@ -16,6 +16,7 @@ export interface EditorTab {
   path: string;
   isActive: boolean;
   isDirty: boolean;
+  viewMode?: 'source' | 'preview';
   content?: string;
   isLoading: boolean;
   scrollToLine?: number; // Line number to scroll to when opening

@@ -29,8 +29,8 @@ export interface SymbolReference {
 }
 
 // Enhanced regex patterns for C/C++ code
-const FUNCTION_DEF_PATTERN = /^(\w+\s+)*(\w+)\s*\([^)]*\)\s*\{/;
-const FUNCTION_DECL_PATTERN = /^(\w+\s+)*(\w+)\s*\([^)]*\)\s*;/;
+const FUNCTION_DEF_PATTERN = /^(?:[\w~:*<>[\],&]+\s+)+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{$/;
+const FUNCTION_DECL_PATTERN = /^(?:[\w~:*<>[\],&]+\s+)+([A-Za-z_]\w*)\s*\([^;{}]*\)\s*;$/;
 const STRUCT_DEF_PATTERN = /^struct\s+(\w+)\s*\{/;
 const STRUCT_DECL_PATTERN = /^struct\s+(\w+)\s*[;=]/;
 const CLASS_DEF_PATTERN = /^class\s+(\w+)\s*[:\{]/;
@@ -38,6 +38,32 @@ const CLASS_DECL_PATTERN = /^class\s+(\w+)\s*[;]/;
 const TYPEDEF_PATTERN = /^typedef\s+.*\s+(\w+)\s*;/;
 const MACRO_PATTERN = /^#define\s+(\w+)/;
 const STRUCT_MEMBER_PATTERN = /^\s*(\w+(?:\s*\*+)?)\s+(\w+)\s*[;,\[]/;
+const CONTROL_FLOW_KEYWORDS = new Set([
+  'if',
+  'for',
+  'while',
+  'switch',
+  'return',
+  'sizeof',
+  'typedef',
+  'define',
+  'else',
+  'do',
+]);
+const MACRO_LIKE_SYMBOL = /^[A-Z0-9_]+$/;
+
+function isLikelyCallableSymbol(name: string): boolean {
+  return !CONTROL_FLOW_KEYWORDS.has(name) && !MACRO_LIKE_SYMBOL.test(name);
+}
+
+function looksLikeTypeFragment(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#') || trimmed.includes('(') || trimmed.includes(')')) {
+    return false;
+  }
+
+  return /^(?:[\w:*<>[\],&]+(?:\s+|$))+$/.test(trimmed);
+}
 
 // Extract documentation comments preceding a line
 function extractDocumentation(lines: string[], startLine: number): string | undefined {
@@ -150,6 +176,27 @@ function extractFunctionSignature(line: string): string {
   return line.trim();
 }
 
+function combineFunctionSignature(lines: string[], lineIndex: number): string {
+  const current = lines[lineIndex]?.trim() || '';
+  const previous = lines[lineIndex - 1]?.trim() || '';
+  const next = lines[lineIndex + 1]?.trim() || '';
+  if (!current) {
+    return '';
+  }
+
+  let signature = current;
+
+  if (looksLikeTypeFragment(previous)) {
+    signature = `${previous} ${signature}`;
+  }
+
+  if (!/[;{]\s*$/.test(signature) && (next === '{' || next === ';')) {
+    signature = `${signature} ${next}`;
+  }
+
+  return signature.trim();
+}
+
 // Find all references to a symbol in the file
 function findReferences(
   symbolName: string,
@@ -215,6 +262,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
+    const signatureLine = combineFunctionSignature(lines, i);
     const lineNum = i + 1;
 
     // Skip comments and preprocessor directives (except #define)
@@ -223,11 +271,11 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
     }
 
     // Function definitions
-    const funcDefMatch = trimmed.match(FUNCTION_DEF_PATTERN);
+    const funcDefMatch = trimmed.includes('(') ? signatureLine.match(FUNCTION_DEF_PATTERN) : null;
     if (funcDefMatch) {
-      const funcName = funcDefMatch[2];
-      if (funcName && !funcName.includes('*') && !funcName.includes('(')) {
-        const signature = extractFunctionSignature(line);
+      const funcName = funcDefMatch[1];
+      if (funcName && isLikelyCallableSymbol(funcName)) {
+        const signature = extractFunctionSignature(signatureLine);
         const documentation = extractDocumentation(lines, lineNum);
         symbols.push({
           name: funcName,
@@ -246,11 +294,12 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
     }
 
     // Function declarations
-    const funcDeclMatch = trimmed.match(FUNCTION_DECL_PATTERN);
+    const funcDeclMatch =
+      trimmed.includes('(') && !funcDefMatch ? signatureLine.match(FUNCTION_DECL_PATTERN) : null;
     if (funcDeclMatch && !funcDefMatch) {
-      const funcName = funcDeclMatch[2];
-      if (funcName && !funcName.includes('*') && !funcName.includes('(')) {
-        const signature = extractFunctionSignature(line);
+      const funcName = funcDeclMatch[1];
+      if (funcName && isLikelyCallableSymbol(funcName)) {
+        const signature = extractFunctionSignature(signatureLine);
         const documentation = extractDocumentation(lines, lineNum);
         symbols.push({
           name: funcName,

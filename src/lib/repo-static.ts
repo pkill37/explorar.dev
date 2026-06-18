@@ -6,6 +6,25 @@ import type { FileNode } from '@/types';
 import { buildCuratedRepoUrl, type StaticFileSourceMode } from './curated-content-url';
 import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
 import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
+import { debugLog } from './browser-debug';
+
+const STATIC_FETCH_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), STATIC_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Timed out after ${STATIC_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
 
 /**
  * Check if a repository is curated (pre-downloaded at build time)
@@ -29,6 +48,33 @@ export const getStaticFilePath = (
   source: StaticFileSourceMode = 'local-filesystem'
 ) => buildCuratedRepoUrl(owner, repo, branch, filePath, source);
 
+function getStaticFileCandidates(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string,
+  source: StaticFileSourceMode
+): Array<{ url: string; resolvedSource: StaticFileSourceMode }> {
+  const candidates: Array<{ url: string; resolvedSource: StaticFileSourceMode }> = [
+    {
+      url: getStaticFilePath(owner, repo, branch, filePath, source),
+      resolvedSource: source,
+    },
+  ];
+
+  if (source === 'r2-bucket') {
+    const sameOriginUrl = getStaticFilePath(owner, repo, branch, filePath, 'local-filesystem');
+    if (sameOriginUrl !== candidates[0].url) {
+      candidates.push({
+        url: sameOriginUrl,
+        resolvedSource: 'local-filesystem',
+      });
+    }
+  }
+
+  return candidates;
+}
+
 /**
  * Read file content from static files
  */
@@ -39,41 +85,89 @@ export async function readFileFromStatic(
   filePath: string,
   source: StaticFileSourceMode = 'local-filesystem'
 ): Promise<FileFetchResult> {
-  const requestUrl = getStaticFilePath(owner, repo, branch, filePath, source);
-  const url = requestUrl;
+  const candidates = getStaticFileCandidates(owner, repo, branch, filePath, source);
 
-  try {
-    const response = await fetch(url);
+  let lastError: Error | null = null;
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error(`File not found: ${filePath}`);
+  for (const candidate of candidates) {
+    try {
+      debugLog('[explorar:file-fetch-static] start', {
+        owner,
+        repo,
+        branch,
+        filePath,
+        source,
+        resolvedSource: candidate.resolvedSource,
+        url: candidate.url,
+      });
+      const response = await fetchWithTimeout(candidate.url);
+
+      if (!response.ok) {
+        debugLog('[explorar:file-fetch-static] response-error', {
+          owner,
+          repo,
+          branch,
+          filePath,
+          source,
+          resolvedSource: candidate.resolvedSource,
+          url: candidate.url,
+          status: response.status,
+          statusText: response.statusText,
+        });
+        if (response.status === 404) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+        throw new Error(`Failed to read file: ${response.statusText}`);
       }
-      throw new Error(`Failed to read file: ${response.statusText}`);
-    }
 
-    const result: FileFetchResult = {
-      content: await response.text(),
-      debugInfo: {
-        enabled: true,
-        source: source === 'r2-bucket' ? 'r2-bucket' : 'local-filesystem',
-        requestUrl: url,
-        responseUrl: response.url || undefined,
-        responseStatus: response.status,
-        cacheStatus: response.headers.get('cf-cache-status'),
-        r2Key: response.headers.get('x-explorar-r2-key'),
-        contentLength: response.headers.get('content-length'),
-      },
-    };
+      const content = await response.text();
+      debugLog('[explorar:file-fetch-static] success', {
+        owner,
+        repo,
+        branch,
+        filePath,
+        source,
+        resolvedSource: candidate.resolvedSource,
+        url: candidate.url,
+        contentLength: content.length,
+      });
 
-    logFileFetchDebugInfo(result.debugInfo);
-    return result;
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
+      const result: FileFetchResult = {
+        content,
+        debugInfo: {
+          enabled: true,
+          source: candidate.resolvedSource === 'r2-bucket' ? 'r2-bucket' : 'local-filesystem',
+          requestUrl: candidate.url,
+          responseUrl: response.url || undefined,
+          responseStatus: response.status,
+          cacheStatus: response.headers.get('cf-cache-status'),
+          r2Key: response.headers.get('x-explorar-r2-key'),
+          contentLength: response.headers.get('content-length'),
+        },
+      };
+
+      logFileFetchDebugInfo(result.debugInfo);
+      return result;
+    } catch (error) {
+      const normalizedError =
+        error instanceof Error
+          ? error
+          : new Error(`Failed to read file from static storage: ${filePath}`);
+      lastError = normalizedError;
+      debugLog('[explorar:file-fetch-static] error', {
+        owner,
+        repo,
+        branch,
+        filePath,
+        source,
+        resolvedSource: candidate.resolvedSource,
+        url: candidate.url,
+        error: normalizedError.message,
+      });
     }
-    throw new Error(`Failed to read file from static storage: ${filePath}`);
   }
+
+  throw lastError ?? new Error(`Failed to read file from static storage: ${filePath}`);
 }
 
 // Compact node format stored in manifest (short keys, no path/size)
@@ -114,31 +208,56 @@ export async function getTreeStructureFromStatic(
   }
 
   // Try new manifest name first (repo-manifest.json), then fall back to old name (.repo-manifest.json)
-  const manifestPaths = [
-    getStaticFilePath(owner, repo, branch, 'repo-manifest.json', source),
-    getStaticFilePath(owner, repo, branch, '.repo-manifest.json', source),
-  ];
+  const manifestFileNames = ['repo-manifest.json', '.repo-manifest.json'];
 
-  for (const manifestPath of manifestPaths) {
-    try {
-      const response = await fetch(manifestPath);
+  for (const manifestFileName of manifestFileNames) {
+    const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName, source);
 
-      if (response.ok) {
-        const manifest = await response.json();
-        const rawTree: ManifestNode[] | null = manifest.tree || null;
-        if (!rawTree) return null;
-        // New compact format uses short type keys ('f'/'d'); legacy format uses full FileNode shape
-        const isCompact =
-          rawTree.length > 0 && (rawTree[0].type === 'f' || rawTree[0].type === 'd');
-        return isCompact ? expandManifestNodes(rawTree) : (rawTree as unknown as FileNode[]);
+    for (const candidate of candidates) {
+      try {
+        const response = await fetchWithTimeout(candidate.url);
+
+        if (response.ok) {
+          const manifest = await response.json();
+          const rawTree: ManifestNode[] | null = manifest.tree || null;
+          if (!rawTree) return null;
+
+          debugLog('[explorar:manifest-fetch-static] success', {
+            owner,
+            repo,
+            branch,
+            source,
+            resolvedSource: candidate.resolvedSource,
+            url: candidate.url,
+          });
+
+          // New compact format uses short type keys ('f'/'d'); legacy format uses full FileNode shape
+          const isCompact =
+            rawTree.length > 0 && (rawTree[0].type === 'f' || rawTree[0].type === 'd');
+          return isCompact ? expandManifestNodes(rawTree) : (rawTree as unknown as FileNode[]);
+        }
+
+        debugLog('[explorar:manifest-fetch-static] response-error', {
+          owner,
+          repo,
+          branch,
+          source,
+          resolvedSource: candidate.resolvedSource,
+          url: candidate.url,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      } catch (error) {
+        debugLog('[explorar:manifest-fetch-static] error', {
+          owner,
+          repo,
+          branch,
+          source,
+          resolvedSource: candidate.resolvedSource,
+          url: candidate.url,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-
-      // Silently continue on 404 (expected for branches that weren't downloaded)
-      // Other errors are also handled silently to avoid noise
-    } catch {
-      // Network errors - silently continue
-      // This is expected when branches don't exist or are not downloaded
-      continue;
     }
   }
 

@@ -1,7 +1,8 @@
 ---
+curatedRepoId: apple-xnu
 owner: apple-oss-distributions
 repo: xnu
-defaultBranch: xnu-12377.1.9
+revision: xnu-12377.1.9
 guideId: xnu-kernel-guide
 name: XNU Kernel In The Mind
 description: Understanding Apple's Hybrid Kernel Before Code

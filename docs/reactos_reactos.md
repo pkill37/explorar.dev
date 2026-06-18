@@ -1,7 +1,8 @@
 ---
+curatedRepoId: reactos
 owner: reactos
 repo: reactos
-defaultBranch: 0.4.16
+revision: 0.4.16
 guideId: reactos-guide
 name: ReactOS In The Mind
 description: Understanding ReactOS before reading the NT-compatible source tree

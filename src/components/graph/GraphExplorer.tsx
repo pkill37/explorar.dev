@@ -19,6 +19,7 @@ import { FileNode } from './FileNode';
 import { FolderNode } from './FolderNode';
 import { PairedNode } from './PairedNode';
 import { GraphControls } from './GraphControls';
+import { CodeIntelPanel } from './CodeIntelPanel';
 import { ZoomWatcher } from './ZoomWatcher';
 import { GraphLegend } from './GraphLegend';
 import {
@@ -31,6 +32,7 @@ import {
   FOLDER_NODE_HEIGHT,
   type FileNodeData,
   type FolderNodeData,
+  type PairedNodeData,
 } from '@/lib/graph-data';
 import {
   parseSymbols,
@@ -42,6 +44,16 @@ import { fetchRepositoryFile } from '@/lib/github-api';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { GraphContext } from '@/contexts/GraphContext';
+import {
+  buildImportedEdges,
+  findQueryMatchedNodeIds,
+  getNodeEvidenceSummary,
+  getSelectedNodePaths,
+  loadOpenCodeIntelBundle,
+  parseOpenCodeIntel,
+  saveOpenCodeIntelBundle,
+  type OpenCodeIntelBundle,
+} from '@/lib/open-code-intel';
 
 // Defined at module scope to avoid ReactFlow "nodeTypes changed" warnings
 const nodeTypes: NodeTypes = {
@@ -180,13 +192,16 @@ function GraphFlow({
   const cwdRef = useRef('');
   cwdRef.current = cwd;
 
-  // Latest file edges (updated by analysis)
-  const fileEdgesRef = useRef<Edge[]>(allFileEdges);
+  // Analysis edges are computed incrementally and merged with guide/imported edges.
+  const analysisEdgesRef = useRef<Edge[]>([]);
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [symbolsMap, setSymbolsMap] = useState<Map<string, FileSymbols>>(new Map());
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [codeIntelBundle, setCodeIntelBundle] = useState<OpenCodeIntelBundle | null>(null);
+  const [graphQuery, setGraphQuery] = useState('');
+  const [matchedNodeIds, setMatchedNodeIds] = useState<string[]>([]);
 
   // ── Initial view: root depth=1 (no chapter active) ───────────────────────
   const initialView = useMemo(
@@ -197,6 +212,64 @@ function GraphFlow({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialView.nodes as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialView.edges);
+  const knownFilePathSet = useMemo(
+    () => new Set(allFileNodes.map((node) => node.id)),
+    [allFileNodes]
+  );
+  const importedEdges = useMemo(
+    () =>
+      codeIntelBundle
+        ? buildImportedEdges(codeIntelBundle).filter(
+            (edge) => knownFilePathSet.has(edge.source) && knownFilePathSet.has(edge.target)
+          )
+        : [],
+    [codeIntelBundle, knownFilePathSet]
+  );
+
+  const getEffectiveFileEdges = useCallback(
+    () => [
+      ...allFileEdges.filter(
+        (edge) => !edge.id.startsWith('analysis-') && !edge.id.startsWith('imported-')
+      ),
+      ...analysisEdgesRef.current,
+      ...importedEdges,
+    ],
+    [allFileEdges, importedEdges]
+  );
+
+  const rebuildCurrentView = useCallback(() => {
+    const effectiveEdges = getEffectiveFileEdges();
+
+    if (!prevChapterRef.current) {
+      const { nodes: nextNodes, edges: nextEdges } = buildCwdView(
+        allFileNodes,
+        effectiveEdges,
+        cwdRef.current
+      );
+      setNodes(nextNodes as Node[]);
+      setEdges(nextEdges);
+      return;
+    }
+
+    const entry = chapterMapEntries?.find((chapter) => chapter.id === prevChapterRef.current);
+    const { nodes: nextNodes, edges: nextEdges } = buildChapterView(
+      allFileNodes,
+      effectiveEdges,
+      entry?.files ?? [],
+      entry?.graph
+    );
+    setNodes(nextNodes as Node[]);
+    setEdges(nextEdges);
+  }, [allFileNodes, chapterMapEntries, getEffectiveFileEdges, setEdges, setNodes]);
+
+  useEffect(() => {
+    setCodeIntelBundle(loadOpenCodeIntelBundle(owner, repo, branch));
+  }, [owner, repo, branch]);
+
+  useEffect(() => {
+    saveOpenCodeIntelBundle(owner, repo, branch, codeIntelBundle);
+    rebuildCurrentView();
+  }, [owner, repo, branch, codeIntelBundle, rebuildCurrentView]);
 
   // ── React to chapter change ───────────────────────────────────────────────
   const prevChapterRef = useRef<string | null | undefined>(undefined);
@@ -212,7 +285,7 @@ function GraphFlow({
       // No active chapter → return to cwd view
       const { nodes: n, edges: e } = buildCwdView(
         allFileNodes,
-        fileEdgesRef.current,
+        getEffectiveFileEdges(),
         cwdRef.current
       );
       setNodes(n as Node[]);
@@ -223,7 +296,7 @@ function GraphFlow({
       const entry = chapterMapEntries?.find((c) => c.id === activeChapterId);
       const { nodes: n, edges: e } = buildChapterView(
         allFileNodes,
-        fileEdgesRef.current,
+        getEffectiveFileEdges(),
         entry?.files ?? [],
         entry?.graph
       );
@@ -231,22 +304,28 @@ function GraphFlow({
       setEdges(e);
     }
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
-    // stable setters + refs excluded intentionally
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChapterId]);
+  }, [
+    activeChapterId,
+    allFileNodes,
+    chapterMapEntries,
+    getEffectiveFileEdges,
+    setEdges,
+    setNodes,
+    fitView,
+  ]);
 
   // ── Navigate to a new cwd (only valid outside chapter view) ──────────────
   const navigateToCwd = useCallback(
     (newCwd: string) => {
       console.log(`[GraphFlow] navigateToCwd → "${newCwd || 'root'}"`);
       setCwd(newCwd);
-      const { nodes: n, edges: e } = buildCwdView(allFileNodes, fileEdgesRef.current, newCwd);
+      const { nodes: n, edges: e } = buildCwdView(allFileNodes, getEffectiveFileEdges(), newCwd);
       setNodes(n as Node[]);
       setEdges(e);
       setSelectedFilePath(null);
       setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
     },
-    [allFileNodes, setNodes, setEdges, fitView]
+    [allFileNodes, getEffectiveFileEdges, setNodes, setEdges, fitView]
   );
 
   // ── Progressive code analysis ─────────────────────────────────────────────
@@ -344,11 +423,8 @@ function GraphFlow({
         data: { relType: rel.type, symbols: rel.symbols },
       }));
 
-      const newFileEdges = [
-        ...allFileEdges.filter((e) => !e.id.startsWith('analysis-')),
-        ...analysisEdges,
-      ];
-      fileEdgesRef.current = newFileEdges;
+      analysisEdgesRef.current = analysisEdges;
+      const newFileEdges = getEffectiveFileEdges();
 
       // Update edges only — nodes already have correct positions from initial Dagre layout.
       // This avoids a full rebuild (including another Dagre pass) after analysis completes.
@@ -369,7 +445,72 @@ function GraphFlow({
 
     runAnalysis();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allFileNodes, allFileEdges, owner, repo, branch]);
+  }, [allFileNodes, allFileEdges, owner, repo, branch, getEffectiveFileEdges]);
+
+  const selectedPaths = useMemo(
+    () =>
+      getSelectedNodePaths(
+        selectedFilePath,
+        nodes as Array<Node<FileNodeData | FolderNodeData | PairedNodeData>>
+      ),
+    [selectedFilePath, nodes]
+  );
+
+  const selectedEvidence = useMemo(
+    () => getNodeEvidenceSummary(selectedPaths, codeIntelBundle, edges),
+    [selectedPaths, codeIntelBundle, edges]
+  );
+
+  const displayNodes = useMemo(() => {
+    const matchedSet = new Set(matchedNodeIds);
+    const hasQueryMatches = matchedSet.size > 0;
+
+    return nodes.map((node) => {
+      if (!hasQueryMatches) {
+        return node;
+      }
+
+      const isMatched = matchedSet.has(node.id);
+      return {
+        ...node,
+        style: {
+          ...(node.style ?? {}),
+          opacity: isMatched ? 1 : 0.28,
+          boxShadow: isMatched ? '0 0 0 2px rgba(251,191,36,0.9)' : undefined,
+        },
+      };
+    });
+  }, [nodes, matchedNodeIds]);
+
+  const handleImportBundle = useCallback(
+    (raw: string) => {
+      const bundle = parseOpenCodeIntel(raw, repo);
+      setCodeIntelBundle(bundle);
+    },
+    [repo]
+  );
+
+  const handleClearBundle = useCallback(() => {
+    setCodeIntelBundle(null);
+    setMatchedNodeIds([]);
+  }, []);
+
+  const handleFocusQuery = useCallback(() => {
+    const matches = findQueryMatchedNodeIds(
+      graphQuery,
+      nodes as Array<Node<FileNodeData | FolderNodeData | PairedNodeData>>,
+      codeIntelBundle
+    );
+    setMatchedNodeIds(matches);
+    if (matches.length > 0) {
+      fitView({
+        nodes: matches.map((id) => ({ id })),
+        padding: 0.28,
+        duration: 480,
+        maxZoom: 2.4,
+      });
+    }
+  }, [codeIntelBundle, fitView, graphQuery, nodes]);
 
   // ── Node interaction ──────────────────────────────────────────────────────
 
@@ -417,7 +558,7 @@ function GraphFlow({
       {activeChapterId && <ChapterHint activeChapterId={activeChapterId} />}
 
       <ReactFlow
-        nodes={nodes}
+        nodes={displayNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -438,6 +579,18 @@ function GraphFlow({
           size={1}
           color="#222"
           style={{ background: '#0d0d0d' }}
+        />
+        <CodeIntelPanel
+          bundle={codeIntelBundle}
+          selectedNodeId={selectedFilePath}
+          selectedPaths={selectedPaths}
+          selectedEvidence={selectedEvidence}
+          query={graphQuery}
+          queryMatchCount={matchedNodeIds.length}
+          onQueryChange={setGraphQuery}
+          onFocusQuery={handleFocusQuery}
+          onImportBundle={handleImportBundle}
+          onClearBundle={handleClearBundle}
         />
         <ZoomWatcher selectedFilePath={selectedFilePath} onEnterFile={onEnterFile} />
         <GraphControls selectedFilePath={selectedFilePath} onEnterEditor={handleEnterEditor} />
@@ -468,7 +621,7 @@ export function GraphExplorer({
 }: GraphExplorerProps) {
   const guideDoc = useMemo(() => getGuideByRepo(owner, repo), [owner, repo]);
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
-  const branch = projectConfig?.defaultBranch ?? 'main';
+  const branch = projectConfig?.defaultRevision ?? 'main';
 
   const { nodes: allFileNodes, edges: allFileEdges } = useMemo(() => {
     if (guideSections && guideSections.length > 0) {

@@ -7,6 +7,12 @@ import { QuizQuestion } from '@/components/ChapterQuiz';
 import ChapterQuiz from '@/components/ChapterQuiz';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
 import MermaidDiagram from '@/components/MermaidDiagram';
+import { debugLog } from '@/lib/browser-debug';
+import {
+  escapeHtml,
+  getRepoLinkAttributes,
+  parseRepoNavigationTarget,
+} from '@/lib/markdown-navigation';
 
 /** Extract and strip a ```chapter-graph block from section content. */
 function extractChapterGraph(content: string): { graph: string | undefined; cleanContent: string } {
@@ -19,8 +25,16 @@ function extractChapterGraph(content: string): { graph: string | undefined; clea
   };
 }
 
+function isLikelySymbolCode(code: string): boolean {
+  const trimmed = code.trim();
+  if (!trimmed || trimmed.length > 120) return false;
+  if (/[\s/\\]/.test(trimmed)) return false;
+  if (/^(true|false|null|undefined|\d+)$/i.test(trimmed)) return false;
+  return /^(?:[A-Za-z_]\w*|[A-Za-z_]\w*::[A-Za-z_]\w*)(?:\(\))?$/.test(trimmed);
+}
+
 // Custom renderer for marked to handle mermaid blocks
-function createMarkdownRenderer(sectionId: string) {
+function createMarkdownRenderer(sectionId: string, symbolScopePaths: string[]) {
   const renderer = new marked.Renderer();
   let mermaidCounter = 0;
 
@@ -32,6 +46,22 @@ function createMarkdownRenderer(sectionId: string) {
     }
     // Default code block rendering
     return `<pre><code class="language-${language || ''}">${code}</code></pre>`;
+  };
+
+  renderer.codespan = function (code) {
+    const repoTarget = parseRepoNavigationTarget(code);
+    const codeHtml = `<code>${escapeHtml(code)}</code>`;
+
+    if (!repoTarget) {
+      if (symbolScopePaths.length > 0 && isLikelySymbolCode(code)) {
+        return `<a href="#" class="inline-code-link" data-search-pattern="${escapeHtml(
+          code.trim()
+        )}" data-symbol-scope="${escapeHtml(symbolScopePaths.join('|||'))}">${codeHtml}</a>`;
+      }
+      return codeHtml;
+    }
+
+    return `<a href="#" class="inline-code-link" ${getRepoLinkAttributes(repoTarget)}>${codeHtml}</a>`;
   };
 
   return renderer;
@@ -85,6 +115,66 @@ interface SectionFrontmatter {
   quiz?: QuizQuestion[];
 }
 
+function pushUniquePath(target: string[], seen: Set<string>, path: string) {
+  if (!path || seen.has(path)) return;
+  seen.add(path);
+  target.push(path);
+}
+
+function extractNarrativePaths(sectionContent: string, sectionMeta: SectionFrontmatter): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+
+  const readingOrder = sectionMeta.fileRecommendations?.readingOrder ?? [];
+  const fallbackRecommendations =
+    readingOrder.length > 0
+      ? readingOrder
+      : [
+          ...(sectionMeta.fileRecommendations?.docs ?? []),
+          ...(sectionMeta.fileRecommendations?.source ?? []),
+        ];
+
+  for (const recommendation of fallbackRecommendations) {
+    const target = parseRepoNavigationTarget(recommendation.path);
+    if (!target) continue;
+    pushUniquePath(paths, seen, target.path);
+  }
+
+  const markdownLinkRe = /\[[^\]]+\]\(([^)\s]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = markdownLinkRe.exec(sectionContent)) !== null) {
+    const target = parseRepoNavigationTarget(match[1]);
+    if (!target) continue;
+    pushUniquePath(paths, seen, target.path);
+  }
+
+  const codeSpanRe = /`([^`\n]+)`/g;
+  while ((match = codeSpanRe.exec(sectionContent)) !== null) {
+    const target = parseRepoNavigationTarget(match[1]);
+    if (!target) continue;
+    pushUniquePath(paths, seen, target.path);
+  }
+
+  return paths;
+}
+
+function looksLikeSectionFrontmatter(frontmatter: string): boolean {
+  if (!frontmatter.trim()) return false;
+
+  const lines = frontmatter
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.some(
+    (line) =>
+      line.startsWith('id:') ||
+      line.startsWith('title:') ||
+      line.startsWith('fileRecommendations:') ||
+      line.startsWith('quiz:')
+  );
+}
+
 // Split markdown into sections by "---" delimiters with frontmatter
 function splitIntoSections(content: string): Array<{ frontmatter: string; content: string }> {
   const sections: Array<{ frontmatter: string; content: string }> = [];
@@ -135,8 +225,9 @@ function splitIntoSections(content: string): Array<{ frontmatter: string; conten
       const frontmatter = frontmatterLines.join('\n').trim();
       const sectionContent = contentLines.join('\n').trim();
 
-      // Only add section if we have frontmatter (id and title are required)
-      if (frontmatter) {
+      // Only treat this block as section metadata if it actually looks like
+      // section frontmatter. Plain thematic breaks should be ignored.
+      if (looksLikeSectionFrontmatter(frontmatter)) {
         sections.push({
           frontmatter,
           content: sectionContent,
@@ -164,7 +255,12 @@ function parseSectionFrontmatter(yaml: string): SectionFrontmatter {
  */
 export function parseGuideMarkdown(
   markdown: string,
-  openFileInTab: (path: string, searchPattern?: string) => void
+  openFileInTab: (
+    path: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[]
+  ) => void
 ): GuideSection[] {
   // Validate inputs
   if (!markdown || markdown.trim().length === 0) {
@@ -215,11 +311,15 @@ export function parseGuideMarkdown(
       // Extract chapter-graph block (strip it from rendered content)
       const { graph, cleanContent: contentWithoutGraph } = extractChapterGraph(sectionContent);
       sectionContent = contentWithoutGraph;
+      const narrativePaths = extractNarrativePaths(sectionContent, sectionMeta);
 
       // Convert markdown to HTML (only if content exists)
       let reactContent: React.ReactNode = null;
       if (sectionContent && sectionContent.trim().length > 0) {
-        const renderer = createMarkdownRenderer(sectionMeta.id || `section-${index}`);
+        const renderer = createMarkdownRenderer(
+          sectionMeta.id || `section-${index}`,
+          narrativePaths.filter((path) => !path.endsWith('/'))
+        );
         marked.setOptions({ renderer });
         // marked can return string or Promise<string>, but with sync renderer it's always string
         const htmlContent = marked(sectionContent) as string;
@@ -232,19 +332,73 @@ export function parseGuideMarkdown(
       const body: React.ReactNode = (
         <div>
           <div
+            data-guide-markdown={sectionMeta.id || `section-${index}`}
             onClick={(e: React.MouseEvent) => {
               const anchor = (e.target as HTMLElement).closest('a');
               if (!anchor) return;
               const href = anchor.getAttribute('href');
-              if (
-                !href ||
-                href.startsWith('http://') ||
-                href.startsWith('https://') ||
-                href.startsWith('#')
-              )
+              const repoPath = anchor.getAttribute('data-repo-path');
+              const searchPattern = anchor.getAttribute('data-search-pattern') || undefined;
+              const scrollToLineAttr = anchor.getAttribute('data-scroll-to-line');
+              const scrollToLine = scrollToLineAttr ? parseInt(scrollToLineAttr, 10) : undefined;
+              const symbolScopeAttr = anchor.getAttribute('data-symbol-scope') || '';
+              const symbolScope = symbolScopeAttr
+                ? symbolScopeAttr.split('|||').filter(Boolean)
+                : undefined;
+
+              if (repoPath) {
+                e.preventDefault();
+                debugLog('[explorar:guide-link] repo-target', {
+                  sectionId: sectionMeta.id,
+                  repoPath,
+                  searchPattern,
+                  scrollToLine,
+                  symbolScope,
+                  href,
+                });
+                openFileInTab(repoPath, searchPattern, scrollToLine, symbolScope);
                 return;
+              }
+
+              if (!href || href.startsWith('http://') || href.startsWith('https://')) {
+                return;
+              }
+
               e.preventDefault();
-              openFileInTab(href);
+
+              const explicitTarget = href.startsWith('#') ? null : parseRepoNavigationTarget(href);
+              if (explicitTarget) {
+                debugLog('[explorar:guide-link] explicit-target', {
+                  sectionId: sectionMeta.id,
+                  href,
+                  explicitTarget,
+                });
+                openFileInTab(
+                  explicitTarget.path,
+                  explicitTarget.searchPattern,
+                  explicitTarget.scrollToLine,
+                  symbolScope
+                );
+                return;
+              }
+
+              if (searchPattern && symbolScope && symbolScope.length > 0) {
+                debugLog('[explorar:guide-link] scoped-symbol-target', {
+                  sectionId: sectionMeta.id,
+                  searchPattern,
+                  symbolScope,
+                });
+                openFileInTab(symbolScope[0], searchPattern, scrollToLine, symbolScope);
+                return;
+              }
+
+              if (!href.startsWith('#')) {
+                debugLog('[explorar:guide-link] raw-href', {
+                  sectionId: sectionMeta.id,
+                  href,
+                });
+                openFileInTab(href);
+              }
             }}
           >
             {reactContent}
@@ -271,6 +425,7 @@ export function parseGuideMarkdown(
         id: sectionMeta.id,
         title: sectionMeta.title,
         body,
+        narrativePaths,
         fileRecommendations: sectionMeta.fileRecommendations,
         quiz: sectionMeta.quiz,
         graph,

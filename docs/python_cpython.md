@@ -1,7 +1,8 @@
 ---
+curatedRepoId: python-cpython-3.12.0
 owner: python
 repo: cpython
-defaultBranch: v3.12.0
+revision: v3.12.0
 guideId: cpython-guide
 name: CPython In The Mind
 description: Understanding CPython Before Code
@@ -628,5 +629,4 @@ See [Doc/extending/](Doc/extending/) for the complete guide to extending Python 
 - [Exploring CPython's Internals](https://devguide.python.org/internals/exploring/) — Official guide to exploring CPython
 - [Python Documentation](https://docs.python.org/) — Official Python documentation
 ---
-
 

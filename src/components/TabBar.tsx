@@ -8,9 +8,16 @@ interface TabBarProps {
   activeTabId: string | null;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  onMarkdownPreviewToggle?: () => void;
 }
 
-const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
+const TabBar: React.FC<TabBarProps> = ({
+  tabs,
+  activeTabId,
+  onTabSelect,
+  onTabClose,
+  onMarkdownPreviewToggle,
+}) => {
   const getFileIcon = (path: string): string => {
     const extension = path.split('.').pop()?.toLowerCase();
     switch (extension) {
@@ -26,6 +33,7 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
       case 'sh':
         return '🐚';
       case 'md':
+      case 'rst':
         return '📖';
       case 'json':
         return '📋';
@@ -62,6 +70,10 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
     }
   };
 
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
+  const isMarkdownTab = !!activeTab && /\.(md|rst)$/i.test(activeTab.path);
+  const isPreviewMode = activeTab?.viewMode === 'preview';
+
   return (
     <div className="vscode-tab-bar">
       <div className="vscode-tab-strip">
@@ -97,6 +109,33 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, onTabSelect, onTabClose }) => {
           </div>
         ))}
       </div>
+      {isMarkdownTab && onMarkdownPreviewToggle && (
+        <button
+          type="button"
+          onClick={onMarkdownPreviewToggle}
+          title={isPreviewMode ? 'Show source' : 'Open preview'}
+          aria-label={isPreviewMode ? 'Show source' : 'Open preview'}
+          style={{
+            marginLeft: 'auto',
+            marginRight: '8px',
+            alignSelf: 'center',
+            border: '1px solid var(--vscode-border)',
+            background: isPreviewMode
+              ? 'var(--vscode-text-accent, #0078d4)'
+              : 'var(--vscode-editor-background, #1e1e1e)',
+            color: isPreviewMode
+              ? 'var(--vscode-button-foreground, #fff)'
+              : 'var(--vscode-foreground, #d4d4d4)',
+            borderRadius: '4px',
+            padding: '3px 8px',
+            fontSize: '11px',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          {isPreviewMode ? 'Source' : 'Preview'}
+        </button>
+      )}
     </div>
   );
 };

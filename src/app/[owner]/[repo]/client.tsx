@@ -8,6 +8,7 @@ import { EntityView } from '@/components/EntityView';
 import GuidePanel from '@/components/GuidePanel';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
+import { debugLog } from '@/lib/browser-debug';
 import '@/app/vscode.css';
 
 const GUIDE_DEFAULT_WIDTH = 300;
@@ -19,24 +20,50 @@ interface RepositoryExplorerClientProps {
   repo: string;
 }
 
+type InitialFileTarget =
+  | string
+  | string[]
+  | {
+      path: string;
+      searchPattern?: string;
+      scrollToLine?: number;
+      searchScope?: string[];
+    };
+
 export default function RepositoryExplorerClient({ owner, repo }: RepositoryExplorerClientProps) {
   const projectConfig = getProjectConfig(owner, repo);
   if (!projectConfig) notFound();
 
   const [mode, setMode] = useState<'graph' | 'editor' | 'entities'>('editor');
-  const [initialFile, setInitialFile] = useState<string | string[] | null>(null);
+  const [initialFile, setInitialFile] = useState<InitialFileTarget | null>(null);
   // Keep KernelExplorer mounted once it has been rendered to preserve tab state
   const [editorMounted, setEditorMounted] = useState(true);
   // Keep EntityView mounted once first activated to preserve per-chapter cache
   const [entitiesMounted, setEntitiesMounted] = useState(false);
 
-  const handleEnterFile = useCallback((fileId: string) => {
-    // Paired nodes encode both paths as "primary|||header"
-    const paths = fileId.includes('|||') ? fileId.split('|||') : null;
-    setInitialFile(paths ?? fileId);
-    setEditorMounted(true);
-    setMode('editor');
-  }, []);
+  const handleEnterFile = useCallback(
+    (fileId: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
+      debugLog('[explorar:open-file] guide-request', {
+        fileId,
+        searchPattern,
+        scrollToLine,
+        searchScope,
+      });
+      // Paired nodes encode both paths as "primary|||header"
+      const paths = fileId.includes('|||') ? fileId.split('|||') : null;
+      setInitialFile(
+        paths ?? {
+          path: fileId,
+          searchPattern,
+          scrollToLine,
+          searchScope,
+        }
+      );
+      setEditorMounted(true);
+      setMode('editor');
+    },
+    []
+  );
 
   // ── Guide sections ──────────────────────────────────────────────────────────
   // loadGuideFromMarkdown is synchronous (all guide docs are bundled at build time),
@@ -62,27 +89,46 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
 
   // ── Chapter graph state ─────────────────────────────────────────────────────
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const getChapterNarrativePaths = useCallback(
+    (section: (typeof guideSections)[number], includeDocs: boolean) =>
+      (section.narrativePaths ?? []).filter((path) => {
+        if (includeDocs) return true;
+        const ext = path.split('.').pop()?.toLowerCase() ?? '';
+        return !['md', 'rst', 'txt', 'adoc', 'asciidoc', 'texi', 'texinfo', 'html', 'htm'].includes(
+          ext
+        );
+      }),
+    []
+  );
   const chapterMapEntries = useMemo(
     () =>
       guideSections.map((s) => ({
         id: s.id,
-        files: s.fileRecommendations?.source?.map((f) => f.path) ?? [],
+        files: getChapterNarrativePaths(s, false),
         graph: s.graph,
       })),
-    [guideSections]
+    [getChapterNarrativePaths, guideSections]
   );
   const graphChapterMapEntries = useMemo(
     () =>
       guideSections.map((s) => ({
         id: s.id,
-        files: [
-          ...(s.fileRecommendations?.source?.map((f) => f.path) ?? []),
-          ...(s.fileRecommendations?.docs?.map((f) => f.path) ?? []),
-        ],
+        files: getChapterNarrativePaths(s, true),
         graph: s.graph,
       })),
-    [guideSections]
+    [getChapterNarrativePaths, guideSections]
   );
+
+  useEffect(() => {
+    console.log('[RepositoryExplorerClient] surface state', {
+      owner,
+      repo,
+      mode,
+      activeChapterId: activeChapterId ?? '__all__',
+      editorMounted,
+      entitiesMounted,
+    });
+  }, [owner, repo, mode, activeChapterId, editorMounted, entitiesMounted]);
 
   // ── Guide panel resize ──────────────────────────────────────────────────────
   const [guideWidth, setGuideWidth] = useState(GUIDE_DEFAULT_WIDTH);

@@ -25,6 +25,7 @@ import {
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
 import { useRepository } from '@/contexts/RepositoryContext';
+import { findSymbolsInFile } from '@/lib/cross-reference';
 import {
   repositoryExists,
   getGitHubRepoIdentifier,
@@ -33,7 +34,6 @@ import {
 } from '@/lib/repo-storage';
 import { downloadDirectoryContents } from '@/lib/github-archive';
 import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
-import { type FileFetchDebugInfo } from '@/lib/file-fetch-debug';
 import {
   getFileSourceModeServerSnapshot,
   isStaticFileSourceMode,
@@ -41,6 +41,8 @@ import {
   subscribeToFileSourceMode,
   getFileSourceMode,
 } from '@/lib/curated-content-url';
+import { findImportedSymbolLocation, loadOpenCodeIntelBundle } from '@/lib/open-code-intel';
+import { debugLog } from '@/lib/browser-debug';
 import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -76,11 +78,22 @@ const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): strin
   return `${baseKey}-${repoIdentifier}`;
 };
 
+const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
+
 interface KernelExplorerProps {
   owner?: string;
   repo?: string;
   branch?: string;
-  initialFile?: string | string[] | null;
+  initialFile?:
+    | string
+    | string[]
+    | {
+        path: string;
+        searchPattern?: string;
+        scrollToLine?: number;
+        searchScope?: string[];
+      }
+    | null;
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
 }
@@ -121,7 +134,7 @@ export default function KernelExplorer({
   const [selectedVersion, setSelectedVersion] = useState<string>(() => {
     const config = owner && repo ? getProjectConfig(owner, repo) : null;
     const trusted = owner && repo ? getTrustedVersion(owner, repo) : '';
-    const defaultBranch = config?.defaultBranch || trusted || 'main';
+    const defaultBranch = config?.defaultRevision || trusted || 'main';
     const effectiveBranch = branch || defaultBranch;
     if (owner && repo) {
       void setGitHubRepoWithDefaultBranch(owner, repo, effectiveBranch);
@@ -146,7 +159,6 @@ export default function KernelExplorer({
   const [editorLanguage, setEditorLanguage] = useState<string>('');
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
-  const [fileFetchDebugInfo, setFileFetchDebugInfo] = useState<FileFetchDebugInfo | null>(null);
   const fileSourceMode = useSyncExternalStore(
     subscribeToFileSourceMode,
     getFileSourceMode,
@@ -234,7 +246,7 @@ export default function KernelExplorer({
 
         // Set GitHub API config for backward compatibility
         const config = getProjectConfig(owner, repo);
-        const defaultBranch = config?.defaultBranch || branch || 'main';
+        const defaultBranch = config?.defaultRevision || branch || 'main';
         await setGitHubRepoWithDefaultBranch(owner, repo, branch || defaultBranch);
         setRepoLabel(`${owner}/${repo}`);
 
@@ -502,16 +514,118 @@ export default function KernelExplorer({
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const generateTabId = (path: string) => `tab-${path.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
 
-  const handleFetchDebugInfo = useCallback(
-    (_debugFilePath: string, debugInfo: FileFetchDebugInfo | null) => {
-      setFileFetchDebugInfo(debugInfo);
+  const resolveSymbolNavigationLine = useCallback(
+    async (
+      filePath: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      searchScope?: string[]
+    ) => {
+      if (!searchPattern || scrollToLine || !owner || !repo) {
+        return {
+          resolvedFilePath: filePath,
+          resolvedSearchPattern: searchPattern,
+          resolvedScrollToLine: scrollToLine,
+        };
+      }
+
+      const candidatePaths = Array.from(
+        new Set((searchScope && searchScope.length > 0 ? searchScope : [filePath]).filter(Boolean))
+      );
+      const branchToUse =
+        currentBranch || branch || selectedVersion || projectConfig?.defaultRevision || 'main';
+      const importedBundle = loadOpenCodeIntelBundle(owner, repo, branchToUse);
+      const importedLocation = findImportedSymbolLocation(
+        importedBundle,
+        candidatePaths,
+        searchPattern
+      );
+      if (importedLocation) {
+        debugLog('[explorar:open-file] resolved-symbol-line:lsp', {
+          filePath: importedLocation.filePath,
+          searchPattern,
+          branch: branchToUse,
+          line: importedLocation.line,
+          candidatePathCount: candidatePaths.length,
+        });
+        return {
+          resolvedFilePath: importedLocation.filePath,
+          resolvedSearchPattern: undefined,
+          resolvedScrollToLine: importedLocation.line,
+        };
+      }
+
+      for (const candidatePath of candidatePaths) {
+        try {
+          const fileResult = await fetchFileContent(candidatePath);
+          const parsedSymbols = findSymbolsInFile(fileResult.content, candidatePath);
+          const normalizedQuery = searchPattern
+            .trim()
+            .replace(/\(\)$/, '')
+            .replace(/^(struct|class|enum)\s+/, '');
+          const symbolMatch =
+            parsedSymbols.find(
+              (symbol) => symbol.isDefinition && symbol.name === normalizedQuery && symbol.line > 0
+            ) ?? parsedSymbols.find((symbol) => symbol.name === normalizedQuery && symbol.line > 0);
+
+          if (symbolMatch?.line) {
+            debugLog('[explorar:open-file] resolved-symbol-line:local-parse', {
+              filePath: candidatePath,
+              searchPattern,
+              branch: branchToUse,
+              line: symbolMatch.line,
+              symbolType: symbolMatch.type,
+              isDefinition: symbolMatch.isDefinition,
+              candidatePathCount: candidatePaths.length,
+            });
+            return {
+              resolvedFilePath: candidatePath,
+              resolvedSearchPattern: undefined,
+              resolvedScrollToLine: symbolMatch.line,
+            };
+          }
+        } catch (error) {
+          debugLog('[explorar:open-file] symbol-line-resolution-failed', {
+            filePath: candidatePath,
+            searchPattern,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      debugLog('[explorar:open-file] unresolved-symbol-line', {
+        filePath,
+        searchPattern,
+        branch: branchToUse,
+        candidatePathCount: candidatePaths.length,
+      });
+      return {
+        resolvedFilePath: candidatePaths[0] || filePath,
+        resolvedSearchPattern: searchPattern,
+        resolvedScrollToLine: scrollToLine,
+      };
     },
-    []
+    [owner, repo, currentBranch, branch, selectedVersion, projectConfig]
   );
 
   const openFileInTab = useCallback(
-    (filePath: string, searchPattern?: string, scrollToLine?: number) => {
+    async (
+      filePath: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      searchScope?: string[]
+    ) => {
       let normalizedPath = filePath.replace(/\/+$/, '');
+      const { resolvedFilePath, resolvedSearchPattern, resolvedScrollToLine } =
+        await resolveSymbolNavigationLine(normalizedPath, searchPattern, scrollToLine, searchScope);
+      normalizedPath = resolvedFilePath.replace(/\/+$/, '');
+      debugLog('[explorar:open-file] request', {
+        filePath,
+        normalizedPath,
+        searchPattern: resolvedSearchPattern,
+        scrollToLine: resolvedScrollToLine,
+        searchScope,
+      });
 
       // Check if this is a Documentation folder - open index.rst instead
       if (filePath.startsWith('Documentation/') && filePath.endsWith('/')) {
@@ -528,7 +642,7 @@ export default function KernelExplorer({
             if (!isCuratedRepo(owner || 'torvalds', repo || 'linux')) {
               const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
               const config = owner && repo ? getProjectConfig(owner, repo) : null;
-              const defaultBranch = config?.defaultBranch || 'main';
+              const defaultBranch = config?.defaultRevision || 'main';
               const branchToUse = currentBranch || branch || defaultBranch;
 
               const metadata = await getDirectoryMetadata(
@@ -571,31 +685,48 @@ export default function KernelExplorer({
       setSelectedFile(normalizedPath);
       const existing = tabs.find((t) => t.path === normalizedPath);
       if (existing) {
+        debugLog('[explorar:open-file] activate-existing-tab', {
+          path: normalizedPath,
+          tabId: existing.id,
+        });
         setActiveTabId(existing.id);
         setTabs((prev) =>
           prev.map((t) => ({
             ...t,
             isActive: t.id === existing.id,
-            searchPattern: t.id === existing.id ? searchPattern : t.searchPattern,
-            scrollToLine: t.id === existing.id ? scrollToLine : t.scrollToLine,
+            searchPattern: t.id === existing.id ? resolvedSearchPattern : t.searchPattern,
+            scrollToLine: t.id === existing.id ? resolvedScrollToLine : t.scrollToLine,
           }))
         );
         return;
       }
+
       const newTab: EditorTab = {
         id: generateTabId(normalizedPath),
         title: normalizedPath.split('/').pop() || normalizedPath,
         path: normalizedPath,
         isActive: true,
         isDirty: false,
+        viewMode: isPreviewableMarkupFile(normalizedPath) ? 'source' : undefined,
         isLoading: true,
-        searchPattern: searchPattern,
-        scrollToLine: scrollToLine,
+        searchPattern: resolvedSearchPattern,
+        scrollToLine: resolvedScrollToLine,
       };
+      debugLog('[explorar:open-file] create-tab', {
+        path: normalizedPath,
+        tabId: newTab.id,
+      });
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, owner, repo, currentBranch, branch]
+    [tabs, resolveSymbolNavigationLine, owner, repo, currentBranch, branch]
+  );
+
+  const guideOpenFileInTab = useCallback(
+    (filePath: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
+      openFileInTab(filePath, searchPattern, scrollToLine, searchScope);
+    },
+    [openFileInTab]
   );
 
   const onTabSelect = (tabId: string) => {
@@ -604,6 +735,23 @@ export default function KernelExplorer({
     const t = tabs.find((x) => x.id === tabId);
     if (t) setSelectedFile(t.path);
   };
+
+  const toggleMarkdownPreview = useCallback(() => {
+    if (!activeTab || !isPreviewableMarkupFile(activeTab.path)) {
+      return;
+    }
+
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === activeTab.id
+          ? {
+              ...tab,
+              viewMode: tab.viewMode === 'preview' ? 'source' : 'preview',
+            }
+          : tab
+      )
+    );
+  }, [activeTab]);
 
   const onTabClose = useCallback(
     (tabId: string) => {
@@ -683,7 +831,7 @@ export default function KernelExplorer({
     const guideId = projectConfig.guides[0]?.id;
     if (guideId) {
       try {
-        return loadGuideFromMarkdown(guideId, openFileInTab);
+        return loadGuideFromMarkdown(guideId, guideOpenFileInTab);
       } catch (error) {
         console.error(`Failed to load guide ${guideId}:`, error);
       }
@@ -691,20 +839,43 @@ export default function KernelExplorer({
 
     // Fallback to generic guide
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
-  }, [projectConfig, owner, repo, openFileInTab]);
+  }, [projectConfig, owner, repo, guideOpenFileInTab]);
 
-  // Open initialFile once the editor is ready (tree loaded + loading screen gone)
+  // Open explicit file targets as soon as they are requested.
+  // Tree readiness is useful for directory expansion/highlighting, but should
+  // not block the editor from opening and fetching a file.
   useEffect(() => {
-    if (!initialFile || !isTreeStructureReady) return;
-    const paths = Array.isArray(initialFile) ? initialFile : [initialFile];
-    const key = paths.join('|||');
+    if (!initialFile) return;
+    const paths = Array.isArray(initialFile)
+      ? initialFile
+      : typeof initialFile === 'string'
+        ? [initialFile]
+        : [initialFile.path];
+    const key =
+      typeof initialFile === 'string' || Array.isArray(initialFile)
+        ? paths.join('|||')
+        : `${initialFile.path}|||${initialFile.searchPattern || ''}|||${initialFile.scrollToLine || ''}|||${initialFile.searchScope?.join(':::') || ''}`;
     if (key === lastOpenedInitialFileRef.current) return;
+    debugLog('[explorar:open-file] initial-file-trigger', {
+      key,
+      initialFile,
+      isTreeStructureReady,
+    });
     lastOpenedInitialFileRef.current = key;
     // Defer to avoid synchronous setState-in-effect warning.
     // Open header first so the primary (.c) ends up as the active tab.
     setTimeout(() => {
       for (let i = 0; i < paths.length - 1; i++) openFileInTab(paths[i]);
-      openFileInTab(paths[paths.length - 1]);
+      if (typeof initialFile === 'string' || Array.isArray(initialFile)) {
+        openFileInTab(paths[paths.length - 1]);
+      } else {
+        openFileInTab(
+          initialFile.path,
+          initialFile.searchPattern,
+          initialFile.scrollToLine,
+          initialFile.searchScope
+        );
+      }
     }, 0);
   }, [initialFile, isTreeStructureReady, openFileInTab]);
 
@@ -791,7 +962,6 @@ export default function KernelExplorer({
               titleLabel={repoLabel}
               sourceMode={fileSourceMode}
               onSourceModeChange={(mode) => {
-                setFileFetchDebugInfo(null);
                 setFileSourceMode(mode);
               }}
               expandDirectoryRequest={directoryExpandRequest}
@@ -823,6 +993,7 @@ export default function KernelExplorer({
             activeTabId={activeTabId}
             onTabSelect={onTabSelect}
             onTabClose={onTabClose}
+            onMarkdownPreviewToggle={toggleMarkdownPreview}
           />
           {activeTab ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -830,8 +1001,10 @@ export default function KernelExplorer({
                 key={`editor-${activeTab.id}-${fileSourceMode}`}
                 filePath={activeTab.path}
                 onContentLoad={onEditorContentLoad}
+                onOpenFile={openFileInTab}
                 fetchFile={fetchFileContent}
-                onFetchDebugInfo={handleFetchDebugInfo}
+                markdownViewMode={activeTab.viewMode}
+                onToggleMarkdownPreview={toggleMarkdownPreview}
                 scrollToLine={activeTab.scrollToLine}
                 searchPattern={activeTab.searchPattern}
                 onCursorChange={(line, column) => {
@@ -1042,7 +1215,6 @@ export default function KernelExplorer({
         fileSize={editorFileSize}
         repoLabel={repoLabel}
         branch={currentBranch || selectedVersion}
-        fileFetchDebugInfo={fileFetchDebugInfo}
       />
     </div>
   );

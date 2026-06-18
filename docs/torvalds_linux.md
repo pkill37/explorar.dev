@@ -1,7 +1,8 @@
 ---
+curatedRepoId: linux-v6.1
 owner: torvalds
 repo: linux
-defaultBranch: v6.1
+revision: v6.1
 guideId: linux-kernel-guide
 name: Linux Kernel In The Mind
 description: Understanding Linux Kernel Before Code

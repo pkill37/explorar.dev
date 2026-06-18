@@ -5,7 +5,7 @@ import { getGitHubRepoIdentifier, isFileAvailable, getTreeStructure } from './re
 import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } from './repo-static';
 import { getHttpClient, isWebPlatform } from './platform';
 import { storeTreeStructure } from './repo-storage';
-import { getCuratedRepoBranch } from './curated-repos';
+import { getCuratedRepoRevision } from './curated-repos';
 import {
   getFileSourceMode,
   getFileSourceModeLabel,
@@ -14,6 +14,7 @@ import {
   type FileSourceMode,
 } from './curated-content-url';
 import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
+import { debugLog } from './browser-debug';
 
 /**
  * Build headers for GitHub API requests
@@ -55,7 +56,7 @@ export function filterUnstableBranches(branches: string[]): string[] {
  * Main/master branches are never included
  */
 export function getTrustedVersion(owner: string, repo: string): string {
-  return getCuratedRepoBranch(owner, repo);
+  return getCuratedRepoRevision(owner, repo);
 }
 
 /**
@@ -117,6 +118,154 @@ export class GitHubApiError extends Error {
     super(message);
     this.name = 'GitHubApiError';
   }
+}
+
+type GitHubContentsEntry = {
+  type: 'file' | 'dir';
+  name: string;
+  path: string;
+  size?: number;
+};
+
+async function performGitHubRequest(url: string, headers: HeadersInit): Promise<Response> {
+  if (isWebPlatform()) {
+    try {
+      const httpClient = getHttpClient();
+      return await httpClient.get(url, headers as Record<string, string>);
+    } catch {
+      return fetch(url, { headers });
+    }
+  }
+
+  return fetch(url, { headers });
+}
+
+async function readGitHubErrorDetail(response: Response): Promise<string> {
+  try {
+    const body = await response.clone().json();
+    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
+      return body.message;
+    }
+  } catch {
+    // Ignore JSON parse failures and try plain text.
+  }
+
+  try {
+    const text = (await response.clone().text()).trim();
+    if (text) {
+      return text;
+    }
+  } catch {
+    // Ignore text read failures.
+  }
+
+  return response.statusText || `HTTP ${response.status}`;
+}
+
+async function getGitHubJson<T>(url: string, context: string, headers: HeadersInit): Promise<T> {
+  const response = await performGitHubRequest(url, headers);
+  if (!response.ok) {
+    const detail = await readGitHubErrorDetail(response);
+    throw new GitHubApiError(`${context}: ${detail}`, response.status);
+  }
+  return response.json() as Promise<T>;
+}
+
+function buildFileTreeFromFlatPaths(
+  entries: Array<{ path: string; type: 'file' | 'directory'; size: number }>
+): FileNode[] {
+  const fileNodes: FileNode[] = [];
+  const nodeMap = new Map<string, FileNode>();
+
+  for (const entry of entries) {
+    const pathParts = entry.path.split('/').filter(Boolean);
+    const node: FileNode = {
+      name: pathParts[pathParts.length - 1],
+      path: entry.path,
+      type: entry.type,
+      size: entry.size,
+      isExpanded: false,
+      isLoaded: false,
+      children: entry.type === 'directory' ? [] : undefined,
+    };
+    nodeMap.set(entry.path, node);
+  }
+
+  for (const entry of entries) {
+    const node = nodeMap.get(entry.path);
+    if (!node) continue;
+
+    const pathParts = entry.path.split('/').filter(Boolean);
+    if (pathParts.length === 1) {
+      fileNodes.push(node);
+      continue;
+    }
+
+    const parentPath = pathParts.slice(0, -1).join('/');
+    const parent = nodeMap.get(parentPath);
+    if (parent) {
+      if (!parent.children) {
+        parent.children = [];
+      }
+      parent.children.push(node);
+    }
+  }
+
+  return fileNodes;
+}
+
+async function fetchTreeMetadataFromContentsApi(
+  owner: string,
+  repo: string,
+  branch: string,
+  headers: HeadersInit
+): Promise<FileNode[]> {
+  const allEntries: Array<{ path: string; type: 'file' | 'directory'; size: number }> = [];
+  const visitedDirectories = new Set<string>();
+
+  const walkDirectory = async (directoryPath: string): Promise<void> => {
+    if (visitedDirectories.has(directoryPath)) {
+      return;
+    }
+    visitedDirectories.add(directoryPath);
+
+    const encodedDirectoryPath = directoryPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const contentsUrl = encodedDirectoryPath
+      ? `${currentConfig.apiBase}/${owner}/${repo}/contents/${encodedDirectoryPath}?ref=${encodeURIComponent(branch)}`
+      : `${currentConfig.apiBase}/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
+
+    const entries = await getGitHubJson<GitHubContentsEntry[]>(
+      contentsUrl,
+      `Failed to fetch contents for ${directoryPath || 'repository root'}`,
+      headers
+    );
+
+    for (const entry of entries) {
+      if (entry.type === 'dir') {
+        allEntries.push({
+          path: entry.path,
+          type: 'directory',
+          size: 0,
+        });
+        await walkDirectory(entry.path);
+        continue;
+      }
+
+      if (entry.type === 'file') {
+        allEntries.push({
+          path: entry.path,
+          type: 'file',
+          size: entry.size || 0,
+        });
+      }
+    }
+  };
+
+  await walkDirectory('');
+  return buildFileTreeFromFlatPaths(allEntries);
 }
 
 /**
@@ -268,10 +417,27 @@ export async function fetchRepositoryFile(
 ): Promise<FileFetchResult> {
   const source = getFileSourceMode();
   const repoMode = getRepositoryMode(owner, repo);
+  debugLog('[explorar:file-fetch-request] start', {
+    owner,
+    repo,
+    branch,
+    path,
+    source,
+    repoMode,
+  });
 
   if (source === 'github-api') {
     const apiResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
     if (apiResult) {
+      debugLog('[explorar:file-fetch-request] success', {
+        owner,
+        repo,
+        branch,
+        path,
+        source,
+        resolvedSource: 'github-api',
+        contentLength: apiResult.content.length,
+      });
       return apiResult;
     }
 
@@ -289,6 +455,15 @@ export async function fetchRepositoryFile(
   try {
     const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path, source);
     if (staticResult) {
+      debugLog('[explorar:file-fetch-request] success', {
+        owner,
+        repo,
+        branch,
+        path,
+        source,
+        resolvedSource: source,
+        contentLength: staticResult.content.length,
+      });
       return staticResult;
     }
   } catch (error) {
@@ -299,9 +474,26 @@ export async function fetchRepositoryFile(
   // Fall back to GitHub for pinned refs when a file is missing from the staged payload.
   const apiFallbackResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
   if (apiFallbackResult) {
+    debugLog('[explorar:file-fetch-request] fallback-success', {
+      owner,
+      repo,
+      branch,
+      path,
+      source,
+      resolvedSource: 'github-api',
+      contentLength: apiFallbackResult.content.length,
+    });
     return apiFallbackResult;
   }
 
+  debugLog('[explorar:file-fetch-request] failure', {
+    owner,
+    repo,
+    branch,
+    path,
+    source,
+    repoMode,
+  });
   throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
 }
 
@@ -314,32 +506,17 @@ export async function fetchFullTreeMetadata(
   repo: string,
   branch: string
 ): Promise<FileNode[]> {
+  const headers = buildGitHubHeaders();
+
   try {
     // Resolve the ref through the commits endpoint so pinned SHAs, tags, and branch
     // names all work. The branches endpoint only accepts named branches.
     const commitUrl = `${currentConfig.apiBase}/${owner}/${repo}/commits/${encodeURIComponent(branch)}`;
-    const headers = buildGitHubHeaders();
-
-    let commitResponse: Response;
-    if (isWebPlatform()) {
-      try {
-        const httpClient = getHttpClient();
-        commitResponse = await httpClient.get(commitUrl, headers as Record<string, string>);
-      } catch {
-        commitResponse = await fetch(commitUrl, { headers });
-      }
-    } else {
-      commitResponse = await fetch(commitUrl, { headers });
-    }
-
-    if (!commitResponse.ok) {
-      throw new GitHubApiError(
-        `Failed to fetch commit: ${commitResponse.statusText}`,
-        commitResponse.status
-      );
-    }
-
-    const commitData = await commitResponse.json();
+    const commitData = await getGitHubJson<{ commit?: { tree?: { sha?: string } } }>(
+      commitUrl,
+      `Failed to fetch commit for ${owner}/${repo}@${branch}`,
+      headers
+    );
     const treeSha = commitData.commit?.tree?.sha;
 
     if (!treeSha) {
@@ -348,68 +525,17 @@ export async function fetchFullTreeMetadata(
 
     // Fetch recursive tree
     const treeUrl = `${currentConfig.apiBase}/${owner}/${repo}/git/trees/${treeSha}?recursive=1`;
-    let treeResponse: Response;
-    if (isWebPlatform()) {
-      try {
-        const httpClient = getHttpClient();
-        treeResponse = await httpClient.get(treeUrl, headers as Record<string, string>);
-      } catch {
-        treeResponse = await fetch(treeUrl, { headers });
-      }
-    } else {
-      treeResponse = await fetch(treeUrl, { headers });
-    }
-
-    if (!treeResponse.ok) {
-      throw new GitHubApiError(
-        `Failed to fetch tree: ${treeResponse.statusText}`,
-        treeResponse.status
-      );
-    }
-
-    const treeData = await treeResponse.json();
+    const treeData = await getGitHubJson<{
+      tree?: Array<{ path: string; type: 'tree' | 'blob'; size?: number }>;
+    }>(treeUrl, `Failed to fetch tree for ${owner}/${repo}@${branch}`, headers);
     const tree = treeData.tree || [];
-
-    // Convert GitHub tree format to FileNode structure
-    const fileNodes: FileNode[] = [];
-    const nodeMap = new Map<string, FileNode>();
-
-    // First pass: create all nodes
-    for (const item of tree) {
-      const pathParts = item.path.split('/').filter(Boolean);
-      const node: FileNode = {
-        name: pathParts[pathParts.length - 1],
+    const fileNodes = buildFileTreeFromFlatPaths(
+      tree.map((item) => ({
         path: item.path,
         type: item.type === 'tree' ? 'directory' : 'file',
         size: item.size || 0,
-        isExpanded: false,
-        isLoaded: false,
-      };
-
-      nodeMap.set(item.path, node);
-    }
-
-    // Second pass: build tree structure
-    for (const item of tree) {
-      const node = nodeMap.get(item.path);
-      if (!node) continue;
-
-      const pathParts = item.path.split('/').filter(Boolean);
-      if (pathParts.length === 1) {
-        // Root level
-        fileNodes.push(node);
-      } else {
-        // Find parent
-        const parentPath = pathParts.slice(0, -1).join('/');
-        const parent = nodeMap.get(parentPath);
-        if (parent) {
-          if (!parent.children) {
-            parent.children = [];
-          }
-          parent.children.push(node);
-        }
-      }
-    }
+      }))
+    );
 
     // Store tree structure in IndexedDB
     const identifier = getGitHubRepoIdentifier(owner, repo);
@@ -418,8 +544,26 @@ export async function fetchFullTreeMetadata(
     return fileNodes;
   } catch (error) {
     if (error instanceof GitHubApiError) {
-      throw error;
+      console.warn(
+        `Falling back to GitHub contents API for ${owner}/${repo}@${branch}: ${error.message}`
+      );
+
+      try {
+        const fileNodes = await fetchTreeMetadataFromContentsApi(owner, repo, branch, headers);
+        const identifier = getGitHubRepoIdentifier(owner, repo);
+        await storeTreeStructure('github', identifier, branch, fileNodes);
+        return fileNodes;
+      } catch (fallbackError) {
+        if (fallbackError instanceof GitHubApiError) {
+          throw fallbackError;
+        }
+        throw new GitHubApiError(
+          `Failed to fetch full tree metadata via contents API: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+          500
+        );
+      }
     }
+
     throw new GitHubApiError(
       `Failed to fetch full tree metadata: ${error instanceof Error ? error.message : String(error)}`,
       500

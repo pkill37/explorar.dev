@@ -1,7 +1,8 @@
 ---
+curatedRepoId: windows-server-2003-anika
 owner: mrcxlinux
 repo: srv03rtm-anika
-defaultBranch: 9e4d6bae9ed79e542f0f3ab463d6b00866019ec1
+revision: 9e4d6bae9ed79e542f0f3ab463d6b00866019ec1
 guideId: windows-server-2003-guide
 name: Windows Server 2003 In The Mind
 description: A pedagogical reading guide to the Windows Server 2003 source tree
@@ -18,261 +19,264 @@ defaultOpenIds:
 
 # Windows Server 2003 In The Mind
 
-> This guide is about reading the tree as a product, not just as source.
+> This guide is about reading the tree as an execution path, not just as a list of directories.
 >
-> The goal is to identify the build contract, the subsystem boundaries, and the release routines that turn an NT 5.2 codebase into a server operating system.
+> The goal is to identify the boot path, the kernel bring-up path, the memory and object foundations, and the release routines that turn an NT 5.2 codebase into a server operating system.
 
-Windows Server 2003 is easiest to approach as a product tree with a control plane. The root files explain the build contract, the subsystem `project.mk` files describe what belongs to each area, and the `tools/` routines turn source into a bootable, signed release. Those layers are the architecture.
+Windows Server 2003 is easier to approach as a control-flow problem than as a taxonomy problem. Start where control enters the product, follow how the loader builds enough state to jump into the kernel, then follow the kernel as it initializes scheduling, memory, objects, processes, registry hives, cache, and I/O. The build files still matter, but they become much easier to read once you already know what the runtime is trying to assemble.
 
-The important mental shift is this: the tree is not one monolithic program. It is a composition of runtime layers, server-facing services, device support, and build-time policy, all stitched together by repeatable packaging steps.
+The important mental shift is this: “open this folder” is usually not a useful first instruction. A better reading strategy is to anchor on a handful of files that explain real execution paths. In this tree, `base/boot/bldr/osloader.c`, `base/ntos/init/init.c`, `base/ntos/ke/kiinit.c`, `base/ntos/mm/mminit.c`, `base/ntos/ob/obinit.c`, `base/ntos/ps/psinit.c`, and `base/ntos/config/cminit.c` teach more than most directory listings.
 
 ---
 id: ch1
-title: Chapter 1 — Start With the Contract
+title: Chapter 1 — Trace the Boot Path First
 fileRecommendations:
   readingOrder:
-    - path: README.md
-      description: Historical context, build notes, and caveats for the tree
+    - path: base/boot/bldr/osloader.c
+      description: Main OS loader handoff logic; this is the concrete start of the runtime story
       type: source
-    - path: project.mk
-      description: Root build lifecycle, status updates, and cleanup routines
+    - path: base/boot/lib/blmemory.c
+      description: Boot-time memory management before the kernel memory manager takes over
       type: source
-    - path: makefil0
-      description: Root entry point for the tree-level build flow
+    - path: base/boot/lib/blload.c
+      description: Loader support for pulling images and dependencies into memory
       type: source
-    - path: base/project.mk
-      description: Core runtime composition contract directly under the root build
+    - path: base/boot/lib/peldr.c
+      description: PE image loading support beneath the boot loader
       type: source
-    - path: base/ntos/project.mk
-      description: Kernel-facing subsystem contract that makes the product boundary concrete
+    - path: base/boot/lib/parseini.c
+      description: Boot configuration parsing, useful for understanding how policy reaches the loader
       type: source
-    - path: base/
-      description: Core runtime foundations and shared OS code
-      type: directory
-    - path: tools/
-      description: Build tooling that turns the contract into output
-      type: directory
+    - path: base/boot/bldr/regboot.c
+      description: Loader-side registry and boot option handling before kernel initialization
+      type: source
+    - path: base/boot/bootvid/bootvid.c
+      description: Early boot display support, useful when reading visible startup behavior
+      type: source
+    - path: base/boot/makefil0
+      description: Build entry point for the boot subtree after the code path makes sense
+      type: source
 ---
 
 ```chapter-graph
-README.md -> project.mk : product expectations to build contract
-project.mk -> makefil0 : root build entry
-project.mk -> base/project.mk : root contract flows into core runtime
-base/project.mk -> base/ntos/project.mk : core runtime narrows into the NT OS layer
+base/boot/lib/parseini.c -> base/boot/bldr/regboot.c : configuration becomes loader policy
+base/boot/lib/blload.c -> base/boot/lib/peldr.c : images are fetched and mapped
+base/boot/lib/blmemory.c -> base/boot/bldr/osloader.c : memory state feeds final handoff
+base/boot/bootvid/bootvid.c -> base/boot/bldr/osloader.c : early display support joins loader flow
 ```
 
-The first question this chapter answers is: what is this tree allowed to be?
+The first question this chapter answers is: how does this system actually begin executing?
 
-`README.md` gives you provenance and expectations. `project.mk` is the lifecycle file that stamps build identity, updates status, and cleans output. `makefil0` is the entry point. `base/project.mk` shows how the root contract immediately turns into subsystem composition, and `base/ntos/project.mk` makes that contract concrete at the kernel-facing layer.
+`base/boot/bldr/osloader.c` is a better opening move than any top-level directory because it sits at the handoff point between boot-time scaffolding and the kernel image. Read outward from there. `base/boot/lib/blmemory.c` shows how the loader reasons about memory before `Mm` exists. `base/boot/lib/blload.c` and `base/boot/lib/peldr.c` show how executable images are found and mapped. `base/boot/lib/parseini.c` and `base/boot/bldr/regboot.c` show how configuration data and registry state influence boot decisions. `base/boot/bootvid/bootvid.c` gives you the visible side of early startup.
 
-If you understand those five files, you understand the tree at the level of intention rather than just at the level of filenames.
+Only after those files make sense should you glance at `base/boot/makefil0`. At that point the build file stops being abstract and starts reading like a recipe for a code path you already understand.
 
 ---
 id: ch2
-title: Chapter 2 — Learn the Build Routine
+title: Chapter 2 — Follow the Kernel Bring-Up
 fileRecommendations:
   readingOrder:
-    - path: tools/razzle64.cmd
-      description: 64-bit entry point for initializing the build environment
+    - path: base/ntos/init/init.c
+      description: Primary kernel initialization path after the loader transfers control
       type: source
-    - path: tools/razzle.cmd
-      description: Main build bootstrap wrapper
+    - path: base/ntos/init/ntoskrnl.c
+      description: Kernel image identity and composition entry file
       type: source
-    - path: tools/prebuild.cmd
-      description: Prebuild staging and environment preparation
+    - path: base/ntos/ke/kiinit.c
+      description: Kernel dispatcher and low-level initialization glue
       type: source
-    - path: tools/postbuild.cmd
-      description: Postbuild signing, missing-file handling, and packaging
+    - path: base/ntos/ke/kernldat.c
+      description: Core scheduler and kernel global data used during bring-up
       type: source
-    - path: tools/oscdimg.cmd
-      description: ISO creation and final media packaging
+    - path: base/ntos/ke/i386/i386init.c
+      description: Architecture-specific x86 initialization path
       type: source
-    - path: tools/driver.conf
-      description: Driver-signing configuration consumed by the release pipeline
+    - path: base/ntos/ke/amd64/initkr.c
+      description: Architecture-specific AMD64 initialization path
       type: source
-    - path: tools/driver.pfx
-      description: Signing identity material kept alongside the build tools
+    - path: base/ntos/init/ntkrnlmp.c
+      description: Multiprocessor kernel image variant wiring
       type: source
-    - path: certutil/generate.sh
-      description: Certificate-generation helper for reproducing local trust material
+    - path: base/ntos/init/ntkrnlpa.c
+      description: PAE kernel variant wiring for memory-model differences
       type: source
-    - path: tools/
-      description: The entire build control plane lives here
-      type: directory
+    - path: base/ntos/project.mk
+      description: Kernel subsystem build contract after you know the runtime entry points
+      type: source
 ---
 
 ```chapter-graph
-tools/razzle64.cmd -> tools/razzle.cmd : bootstrap path
-tools/razzle.cmd -> tools/prebuild.cmd : initialize stages
-tools/prebuild.cmd -> tools/postbuild.cmd : build to package
-tools/postbuild.cmd -> tools/oscdimg.cmd : package ISO
-tools/driver.conf -> tools/postbuild.cmd : feed signing configuration
-tools/driver.pfx -> tools/postbuild.cmd : provide signing identity
-certutil/generate.sh -> tools/driver.pfx : reproduce trust material
+base/ntos/init/init.c -> base/ntos/ke/kiinit.c : generic initialization descends into dispatcher setup
+base/ntos/ke/kiinit.c -> base/ntos/ke/kernldat.c : init code relies on core kernel globals
+base/ntos/ke/kiinit.c -> base/ntos/ke/i386/i386init.c : x86-specific bring-up
+base/ntos/ke/kiinit.c -> base/ntos/ke/amd64/initkr.c : AMD64-specific bring-up
+base/ntos/init/ntoskrnl.c -> base/ntos/init/ntkrnlmp.c : kernel image fans into MP variant
+base/ntos/init/ntoskrnl.c -> base/ntos/init/ntkrnlpa.c : kernel image fans into PAE variant
 ```
 
-This chapter is about routine, not just tooling.
+This chapter is about the point where boot code stops and the kernel begins to build itself.
 
-The Windows build flow is explicit. `tools/razzle64.cmd` and `tools/razzle.cmd` set up the environment. `tools/prebuild.cmd` prepares the tree. `tools/postbuild.cmd` is where the build becomes a product: artifacts are staged, signed, and packaged. `tools/oscdimg.cmd` is the final media step. `tools/driver.conf`, `tools/driver.pfx`, and `certutil/generate.sh` make the trust material visible instead of leaving it as an implied step.
+`base/ntos/init/init.c` is the file to stare at when you want to understand the system’s first durable kernel decisions. `base/ntos/ke/kiinit.c` and `base/ntos/ke/kernldat.c` show how the dispatcher, timing, and global kernel state become real. The architecture files matter because NT is explicit about where generic logic stops: `base/ntos/ke/i386/i386init.c` and `base/ntos/ke/amd64/initkr.c` show that split cleanly.
 
-That is the pedagogical lesson: in a large OS tree, the build pipeline is itself a subsystem.
+The variant files `base/ntos/init/ntkrnlmp.c` and `base/ntos/init/ntkrnlpa.c` are worth reading early because they stop you from imagining “the kernel” as a single binary with one configuration. This tree ships multiple boot-time and memory-model personalities, and the source admits that directly.
 
 ---
 id: ch3
-title: Chapter 3 — Subsystem Contracts
+title: Chapter 3 — Read Memory Management as a System
 fileRecommendations:
   readingOrder:
-    - path: base/project.mk
-      description: Core runtime composition contract
+    - path: base/ntos/mm/mminit.c
+      description: Memory manager initialization; the best single file for understanding Mm's starting state
       type: source
-    - path: com/project.mk
-      description: COM subsystem composition contract
+    - path: base/ntos/mm/pagfault.c
+      description: Central page fault handling path
       type: source
-    - path: ds/project.mk
-      description: Directory and distributed systems contract
+    - path: base/ntos/mm/mmfault.c
+      description: Fault resolution support logic beneath the fault entry points
       type: source
-    - path: inetcore/project.mk
-      description: Internet core contract
+    - path: base/ntos/mm/pfnlist.c
+      description: PFN database list management, critical for physical page lifecycle
       type: source
-    - path: inetsrv/project.mk
-      description: Internet services contract
+    - path: base/ntos/mm/procsup.c
+      description: Per-process memory support and address-space attachment points
       type: source
-    - path: shell/project.mk
-      description: Shell subsystem contract
+    - path: base/ntos/mm/allocvm.c
+      description: Virtual address space allocation path
       type: source
-    - path: termsrv/project.mk
-      description: Terminal Services contract
+    - path: base/ntos/mm/freevm.c
+      description: Virtual address space teardown path
       type: source
-    - path: multimedia/project.mk
-      description: Multimedia subsystem contract
+    - path: base/ntos/mm/sysload.c
+      description: System image loading and section-backed memory interactions
       type: source
-    - path: printscan/project.mk
-      description: Printing and scanning contract
+    - path: base/ntos/mm/wsmanage.c
+      description: Working set management once the system is live
       type: source
-    - path: drivers/project.mk
-      description: Driver family contract
+    - path: base/ntos/mm/i386/init386.c
+      description: x86 memory initialization details, including architecture-specific setup
       type: source
-    - path: sdktools/project.mk
-      description: SDK and product tooling contract
+    - path: base/ntos/mm/amd64/initamd.c
+      description: AMD64 memory initialization details
       type: source
-    - path: base/
-      description: Core runtime and shared OS code
-      type: directory
-    - path: com/
-      description: COM infrastructure and component model support
-      type: directory
-    - path: ds/
-      description: Directory and distributed system support
-      type: directory
-    - path: inetcore/
-      description: Shared internet-facing core logic
-      type: directory
-    - path: inetsrv/
-      description: Server-facing network services
-      type: directory
-    - path: shell/
-      description: Shell and user-facing execution environment
-      type: directory
-    - path: termsrv/
-      description: Terminal Services and remote session support
-      type: directory
-    - path: multimedia/
-      description: Audio, video, and media components
-      type: directory
-    - path: printscan/
-      description: Printing and scanning subsystems
-      type: directory
-    - path: drivers/
-      description: Device driver families and hardware support
-      type: directory
-    - path: sdktools/
-      description: SDK and product tooling support
-      type: directory
+    - path: base/ntos/mm/mi.h
+      description: Internal memory manager contract tying the implementation files together
+      type: source
 ---
 
-The `project.mk` files are the real contracts of the tree. Each one says: this directory is not just a pile of code, it is a buildable subsystem family with a defined scope.
+The memory manager is where the tree stops looking like ordinary systems code and starts looking like NT.
 
-That matters because Windows Server 2003 is not a single kernel build. It is a composition of core runtime, COM, directory services, network services, shell, terminal sessions, multimedia, printing, drivers, and support tooling. If you want to understand architecture, start by noticing where a `project.mk` exists and ask why that family is separated.
+Start with `base/ntos/mm/mminit.c`, because initialization tells you what structures the subsystem considers fundamental. Then go straight to `base/ntos/mm/pagfault.c` and `base/ntos/mm/mmfault.c`, where the system translates abstract address spaces into concrete fault resolution work. `base/ntos/mm/pfnlist.c` explains how physical pages are tracked, while `base/ntos/mm/allocvm.c`, `base/ntos/mm/freevm.c`, and `base/ntos/mm/procsup.c` show how process address spaces are carved up and maintained.
 
-The directory names tell you the product boundaries; the `project.mk` files tell you the build boundaries. Those are often the same thing, and when they are not the difference is worth studying.
+Use `base/ntos/mm/sysload.c` and `base/ntos/mm/wsmanage.c` to connect memory policy to live system behavior. `base/ntos/mm/mi.h` is dense, but by the time you reach it you will already know why the internal types exist. The architecture files `base/ntos/mm/i386/init386.c` and `base/ntos/mm/amd64/initamd.c` are the right place to study what is genuinely machine-specific.
 
 ---
 id: ch4
-title: Chapter 4 — Core Boundaries and Shared Layers
+title: Chapter 4 — Objects, Processes, and the Executive Core
 fileRecommendations:
   readingOrder:
-    - path: public/public_changenum.sd
-      description: Public change-number marker for product level identity
+    - path: base/ntos/ob/obinit.c
+      description: Object manager initialization and namespace bring-up
       type: source
-    - path: mergedcomponents/
-      description: Shared components that bridge subsystem seams
-      type: directory
-    - path: public/
-      description: Public-facing exported material and release markers
-      type: directory
-    - path: base/
-      description: Foundational runtime code
-      type: directory
-    - path: com/
-      description: Shared COM layer
-      type: directory
-    - path: ds/
-      description: Directory services layer
-      type: directory
+    - path: base/ntos/ob/obcreate.c
+      description: Object creation path
+      type: source
+    - path: base/ntos/ob/obinsert.c
+      description: Handle-table insertion and publication of new objects
+      type: source
+    - path: base/ntos/ob/obhandle.c
+      description: Handle lookup and lifetime management
+      type: source
+    - path: base/ntos/ob/obdir.c
+      description: Object directory namespace behavior
+      type: source
+    - path: base/ntos/ps/psinit.c
+      description: Process manager initialization
+      type: source
+    - path: base/ntos/ps/create.c
+      description: Process and thread creation path
+      type: source
+    - path: base/ntos/ps/psdelete.c
+      description: Process teardown path
+      type: source
+    - path: base/ntos/ps/psjob.c
+      description: Job object policy, important for server-oriented workload control
+      type: source
+    - path: base/ntos/ke/thredsup.c
+      description: Thread support routines beneath process and scheduler behavior
+      type: source
+    - path: base/ntos/ke/wait.c
+      description: Wait semantics linking dispatcher objects to thread execution
+      type: source
+    - path: base/ntos/ke/procobj.c
+      description: Dispatcher-level process object support
+      type: source
+    - path: base/ntos/ke/thredobj.c
+      description: Dispatcher-level thread object support
+      type: source
 ---
 
-The tree has to teach you where the seams are.
+This chapter is where “Windows internals” becomes concrete instead of mythical.
 
-`mergedcomponents/` exists precisely because some boundaries are difficult to keep perfectly clean. `public/public_changenum.sd` is a release marker, not an implementation detail, and that is the point: some files are about policy, not behavior. `base/`, `com/`, and `ds/` are the layer names that keep showing up because they sit at the bottom of many other families.
+`base/ntos/ob/obinit.c` shows how the kernel’s object namespace comes alive. From there, `base/ntos/ob/obcreate.c`, `base/ntos/ob/obinsert.c`, and `base/ntos/ob/obhandle.c` explain object publication, handle management, and lifetime rules. `base/ntos/ob/obdir.c` matters because the namespace is itself data structure and policy.
 
-Read this chapter as an exercise in separating implementation from boundary marker. A healthy OS tree always has both.
+Then switch to processes. `base/ntos/ps/psinit.c` gives you the process manager’s starting assumptions, `base/ntos/ps/create.c` shows how execution contexts are born, `base/ntos/ps/psdelete.c` shows how they die, and `base/ntos/ps/psjob.c` reminds you this is a server OS, not just a desktop kernel. The supporting `Ke` files, especially `base/ntos/ke/thredsup.c`, `base/ntos/ke/wait.c`, `base/ntos/ke/procobj.c`, and `base/ntos/ke/thredobj.c`, are where those executive abstractions meet the dispatcher.
 
 ---
 id: ch5
-title: Chapter 5 — Networking, Ownership, and Shared Service Surfaces
+title: Chapter 5 — Registry, Cache, and I/O as Runtime Glue
 fileRecommendations:
   readingOrder:
-    - path: net/branch-reasons-and-info.txt
-      description: Why branch-specific networking changes exist
+    - path: base/ntos/config/cminit.c
+      description: Registry initialization and hive bring-up
       type: source
-    - path: net/owners.txt
-      description: Ownership map for the networking subtree
+    - path: base/ntos/config/cmboot.c
+      description: Boot-time registry path before the system is fully live
       type: source
-    - path: net/makefil0
-      description: Network subtree build entry point
+    - path: base/ntos/config/hiveinit.c
+      description: Hive infrastructure initialization
       type: source
-    - path: net/project.mk
-      description: Network subtree build contract
+    - path: base/ntos/config/hiveload.c
+      description: Persistent hive loading logic
       type: source
-    - path: inetcore/project.mk
-      description: Shared internet core build contract
+    - path: base/ntos/cache/cachesub.c
+      description: Core cache manager behavior
       type: source
-    - path: inetsrv/project.mk
-      description: Server networking build contract
+    - path: base/ntos/cache/lazyrite.c
+      description: Lazy writer path that turns dirty pages into deferred I/O
       type: source
-    - path: net/
-      description: Networking stack and transport code
-      type: directory
-    - path: inetcore/
-      description: Internet-facing shared core
-      type: directory
-    - path: inetsrv/
-      description: Web and server networking services
-      type: directory
+    - path: base/ntos/cache/prefetch.c
+      description: Cache-manager prefetch logic
+      type: source
+    - path: base/ntos/cache/prefboot.c
+      description: Boot-prefetch support, useful for connecting startup and steady-state performance
+      type: source
+    - path: base/ntos/io/iop.h
+      description: I/O manager internal contract
+      type: source
+    - path: base/ntos/io/iopcmn.h
+      description: Common I/O manager definitions and routines
+      type: source
+    - path: base/ntos/io/netboot.c
+      description: One concrete I/O path that still carries boot-time concerns
+      type: source
+    - path: base/ntos/mm/iosup.c
+      description: Bridge between Mm and I/O behavior
+      type: source
 ---
 
 ```chapter-graph
-net/owners.txt -> net/project.mk : people and build scope
-net/branch-reasons-and-info.txt -> net/makefil0 : why changes exist
-net/makefil0 -> inetcore/project.mk : network stack composes shared core
-inetcore/project.mk -> inetsrv/project.mk : shared core feeds server services
+base/ntos/config/cmboot.c -> base/ntos/config/cminit.c : boot registry state becomes live registry state
+base/ntos/config/hiveinit.c -> base/ntos/config/hiveload.c : hive infrastructure enables persistent state
+base/ntos/cache/cachesub.c -> base/ntos/cache/lazyrite.c : cache state eventually becomes disk traffic
+base/ntos/cache/prefboot.c -> base/ntos/cache/prefetch.c : boot performance flows into runtime prefetch policy
+base/ntos/mm/iosup.c -> base/ntos/io/iop.h : memory and I/O share subsystem boundaries
 ```
 
-This chapter is about the human side of subsystem design.
+This chapter explains why the kernel cannot be understood as scheduler plus memory manager alone.
 
-`net/owners.txt` tells you who owns the surface. `net/branch-reasons-and-info.txt` tells you why branches and exceptions exist. `net/makefil0` and `net/project.mk` turn those governance notes into buildable output. The result is a good model for a large platform tree: code, ownership, and release rationale all live next to each other.
+`base/ntos/config/cminit.c` and `base/ntos/config/cmboot.c` show how configuration survives reboot and becomes executable policy again. `base/ntos/config/hiveinit.c` and `base/ntos/config/hiveload.c` are the right place to learn that the registry is a storage engine as much as it is an API surface.
 
-Pedagogically, networking is a good place to learn that a subsystem is not just protocols. It is a service boundary, an ownership boundary, and a change-management boundary.
+Then read the cache manager. `base/ntos/cache/cachesub.c`, `base/ntos/cache/lazyrite.c`, `base/ntos/cache/prefetch.c`, and `base/ntos/cache/prefboot.c` show how Windows turns memory-backed file state into deferred writeback and startup optimization. Finish with `base/ntos/io/iop.h`, `base/ntos/io/iopcmn.h`, `base/ntos/io/netboot.c`, and `base/ntos/mm/iosup.c` to see the glue between cache, I/O, and memory.
 
 ---
 id: ch6
@@ -368,107 +372,72 @@ id: ch8
 title: Chapter 8 — How to Read the Tree End to End
 fileRecommendations:
   readingOrder:
-    - path: README.md
-      description: Re-anchor on the project history and build notes
+    - path: base/boot/bldr/osloader.c
+      description: Start at the last major loader stage
+      type: source
+    - path: base/ntos/init/init.c
+      description: Jump into generic kernel initialization
+      type: source
+    - path: base/ntos/ke/kiinit.c
+      description: Follow dispatcher and low-level kernel bring-up
+      type: source
+    - path: base/ntos/mm/mminit.c
+      description: Follow memory manager initialization
+      type: source
+    - path: base/ntos/mm/pagfault.c
+      description: Read the fault path once memory initialization is clear
+      type: source
+    - path: base/ntos/ob/obinit.c
+      description: Read object namespace bring-up
+      type: source
+    - path: base/ntos/ps/psinit.c
+      description: Read process manager bring-up
+      type: source
+    - path: base/ntos/config/cminit.c
+      description: Read registry bring-up
+      type: source
+    - path: base/ntos/cache/cachesub.c
+      description: Read cache manager core behavior
+      type: source
+    - path: base/ntos/io/iop.h
+      description: Read the internal I/O manager contract
+      type: source
+    - path: base/ntos/project.mk
+      description: Only now step back to the kernel build contract
       type: source
     - path: project.mk
-      description: Revisit the root build lifecycle
-      type: source
-    - path: makefil0
-      description: Revisit the root entry point
-      type: source
-    - path: base/project.mk
-      description: Revisit how the root contract fans into the core runtime
-      type: source
-    - path: tools/razzle64.cmd
-      description: Revisit environment bootstrap before the packaging pass
+      description: Then step back again to the whole-tree contract
       type: source
     - path: tools/prebuild.cmd
-      description: Revisit staging before the packaging pass
+      description: Read how the build is staged once the runtime path is familiar
       type: source
     - path: tools/postbuild.cmd
-      description: Revisit the packaging routine after the code makes sense
+      description: Read how the output becomes a product image
       type: source
     - path: tools/oscdimg.cmd
-      description: Revisit ISO packaging after postbuild
+      description: End at media packaging
       type: source
-    - path: com/project.mk
-      description: Revisit COM as one of the core subsystem contracts
-      type: source
-    - path: ds/project.mk
-      description: Revisit directory services as one of the core subsystem contracts
-      type: source
-    - path: net/project.mk
-      description: Revisit networking as a subsystem contract
-      type: source
-    - path: shell/project.mk
-      description: Revisit the shell as a subsystem contract
-      type: source
-    - path: drivers/project.mk
-      description: Revisit drivers as a subsystem contract
-      type: source
-    - path: net/owners.txt
-      description: Revisit networking ownership after the subsystem map is clear
-      type: source
-    - path: net/branch-reasons-and-info.txt
-      description: Revisit networking branch rationale after the subsystem map is clear
-      type: source
-    - path: shell/common.mk
-      description: Revisit the shell shared build layer
-      type: source
-    - path: shell/makefile.inc
-      description: Revisit the shell composition fragment
-      type: source
-    - path: termsrv/project.mk
-      description: Revisit the remote-session boundary beside the shell
-      type: source
-    - path: certutil/generate.sh
-      description: Revisit certificate generation as part of the trust pipeline
-      type: source
-    - path: tools/driver.conf
-      description: Revisit signing configuration as part of the trust pipeline
-      type: source
-    - path: tools/driver.pfx
-      description: Revisit signing identity material as part of the trust pipeline
-      type: source
-    - path: base/
-      description: Revisit the core runtime foundations
-      type: directory
-    - path: net/
-      description: Revisit networking after the subsystem names make sense
-      type: directory
-    - path: shell/
-      description: Revisit the interactive environment after the subsystem names make sense
-      type: directory
-    - path: drivers/
-      description: Revisit hardware-facing code after the subsystem names make sense
-      type: directory
-    - path: tools/
-      description: Revisit the build control plane after the product structure makes sense
-      type: directory
-    - path: sdktools/appcompat/
-      description: Revisit compatibility tooling as a concrete example of a leaf subtree
-      type: directory
 ---
 
 ```chapter-graph
-README.md -> project.mk : establish the build contract
-project.mk -> tools/postbuild.cmd : package the output
-tools/postbuild.cmd -> tools/oscdimg.cmd : produce media
-project.mk -> base/project.mk : subsystem contracts flow downward
-net/project.mk -> inetsrv/project.mk : services layer on shared code
-shell/project.mk -> termsrv/project.mk : interactive surface to remote sessions
+base/boot/bldr/osloader.c -> base/ntos/init/init.c : loader to kernel handoff
+base/ntos/init/init.c -> base/ntos/ke/kiinit.c : generic init to dispatcher init
+base/ntos/ke/kiinit.c -> base/ntos/mm/mminit.c : kernel core to memory subsystem
+base/ntos/mm/mminit.c -> base/ntos/ob/obinit.c : memory foundation enables object system
+base/ntos/ob/obinit.c -> base/ntos/ps/psinit.c : objects underpin process management
+base/ntos/ps/psinit.c -> base/ntos/config/cminit.c : process-capable kernel brings persistent config online
+project.mk -> tools/postbuild.cmd : build contract eventually becomes product packaging
 ```
 
 A good reading order is:
 
-1. Start with `README.md`, `makefil0`, `project.mk`, and `base/project.mk` to learn the tree contract.
-2. Read `tools/razzle64.cmd`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to learn the build and packaging routine.
-3. Open `base/project.mk`, `com/project.mk`, `ds/project.mk`, `net/project.mk`, `shell/project.mk`, and `drivers/project.mk` to learn subsystem boundaries.
-4. Use `net/owners.txt` and `net/branch-reasons-and-info.txt` to see how ownership and branch history shape the tree.
-5. Read `shell/common.mk`, `shell/makefile.inc`, and `termsrv/project.mk` to understand the interactive environment and terminal-session boundary.
-6. End with `certutil/generate.sh`, `tools/driver.conf`, and `tools/driver.pfx` to see how trust and signing are made repeatable.
+1. Start with `base/boot/bldr/osloader.c` and the supporting files in `base/boot/lib/` so you know what the loader is preparing for the kernel.
+2. Read `base/ntos/init/init.c`, `base/ntos/ke/kiinit.c`, and one architecture file such as `base/ntos/ke/i386/i386init.c` or `base/ntos/ke/amd64/initkr.c`.
+3. Read `base/ntos/mm/mminit.c`, `base/ntos/mm/pagfault.c`, and `base/ntos/mm/pfnlist.c` to understand what memory means in this kernel.
+4. Read `base/ntos/ob/obinit.c`, `base/ntos/ps/psinit.c`, and `base/ntos/ps/create.c` to understand how names, handles, processes, and threads are created.
+5. Read `base/ntos/config/cminit.c`, `base/ntos/cache/cachesub.c`, and `base/ntos/io/iop.h` to understand how persistent state and file-backed I/O make the kernel usable.
+6. Only after that, read `base/ntos/project.mk`, `project.mk`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to see how the source path you just studied is assembled into a product.
 
-That sequence works because the tree is arranged around composition. The build system tells you how the product is assembled, the subsystem contracts tell you what belongs where, and the release routines tell you how the result becomes a distributable server image.
+That sequence works because it follows dependency direction instead of taxonomy. Boot code prepares the kernel, kernel init prepares scheduling and memory, those subsystems enable objects and processes, and only then do registry, cache, and I/O become meaningful.
 
-The pedagogical takeaway is simple: read the build, then the contracts, then one subsystem end to end. That is the fastest way to make the tree legible.
+The pedagogical takeaway is simple: read execution paths before build scaffolding. Recommending folders is usually boring because folders only tell you where things live; these files tell you why the system works.

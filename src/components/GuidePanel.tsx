@@ -37,6 +37,12 @@ export default function GuidePanel({
   const selectedGuideId = guideList[0]?.id || 'default';
   const currentGuide = guideList.find((g) => g.id === selectedGuideId) || guideList[0];
   const currentSections = useMemo(() => currentGuide?.sections || [], [currentGuide?.sections]);
+  const storageScope = useMemo(() => {
+    const sectionIds = currentSections.map((section) => section.id).join('|');
+    return `${selectedGuideId}:${sectionIds}`;
+  }, [selectedGuideId, currentSections]);
+  const activeChapterStorageKey = `guide-panel-active-chapter:${storageScope}`;
+  const scrollPositionStorageKey = `guide-panel-scroll-position:${storageScope}`;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -50,7 +56,7 @@ export default function GuidePanel({
   // On mount, restore from localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('guide-panel-active-chapter');
+      const saved = localStorage.getItem(activeChapterStorageKey);
       if (saved && currentSections.some((s) => s.id === saved)) {
         setActiveId(saved);
         onActiveChapterChange?.(saved);
@@ -66,19 +72,19 @@ export default function GuidePanel({
       onActiveChapterChange?.(fallback);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeChapterStorageKey, currentSections, defaultOpenIds]);
 
   // Persist active chapter and notify graph whenever it changes
   useEffect(() => {
     try {
-      if (activeId) localStorage.setItem('guide-panel-active-chapter', activeId);
-      else localStorage.removeItem('guide-panel-active-chapter');
+      if (activeId) localStorage.setItem(activeChapterStorageKey, activeId);
+      else localStorage.removeItem(activeChapterStorageKey);
     } catch {
       // ignore
     }
     onActiveChapterChange?.(activeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, activeChapterStorageKey]);
 
   // Scroll active chapter into view when it opens
   useEffect(() => {
@@ -103,18 +109,18 @@ export default function GuidePanel({
     if (scrollSaveTimer.current !== null) clearTimeout(scrollSaveTimer.current);
     scrollSaveTimer.current = setTimeout(() => {
       try {
-        localStorage.setItem('guide-panel-scroll-position', pos.toString());
+        localStorage.setItem(scrollPositionStorageKey, pos.toString());
       } catch {
         // ignore
       }
     }, 250);
-  }, []);
+  }, [scrollPositionStorageKey]);
 
   // Restore scroll on mount
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     try {
-      const saved = localStorage.getItem('guide-panel-scroll-position');
+      const saved = localStorage.getItem(scrollPositionStorageKey);
       if (saved) {
         requestAnimationFrame(() => {
           if (scrollContainerRef.current)
@@ -124,7 +130,7 @@ export default function GuidePanel({
     } catch {
       // ignore
     }
-  }, [currentSections]);
+  }, [scrollPositionStorageKey]);
 
   const toggle = useCallback((id: string) => {
     setActiveId((prev) => {

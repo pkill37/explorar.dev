@@ -3,9 +3,9 @@
  *
  * For every guide whose static files exist in the local corpus mirror, validates that
  * every reference inside docs/*.md resolves to a real path in the downloaded
- * tree.  The repo root is derived directly from each guide's own frontmatter
- * (owner / repo / defaultBranch) — there is no separate hardcoded list to
- * keep in sync.
+ * tree. The repo root is derived from each guide's own frontmatter and
+ * validated against curated repo config (curatedRepoId / owner / repo / revision),
+ * so guide metadata cannot silently drift from the pinned curated corpus.
  *
  * Checks (hard errors → exit 1):
  *   1. fileRecommendations.readingOrder[].path — file or directory exists in repo
@@ -27,6 +27,7 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
+import { getCuratedRepo } from '../src/lib/curated-repos';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
 
 const DOCS_DIR = path.join(process.cwd(), 'docs');
@@ -413,20 +414,54 @@ function stripFencedBlocks(text: string): string {
     const raw = fs.readFileSync(path.join(DOCS_DIR, file), 'utf-8');
     const { data: fm, content } = matter(raw);
 
+    const curatedRepoId = String(fm['curatedRepoId'] ?? '');
     const owner = String(fm['owner'] ?? '');
     const repo = String(fm['repo'] ?? '');
-    const defaultBranch = String(fm['defaultBranch'] ?? '');
+    const revision = String(fm['revision'] ?? '');
+    const guideId = String(fm['guideId'] ?? '');
     const repoKey = `${owner}/${repo}`;
 
-    if (!owner || !repo || !defaultBranch) {
-      console.log(`⚠ skip: ${file} (missing owner/repo/defaultBranch in frontmatter)`);
+    if (!curatedRepoId || !owner || !repo || !revision || !guideId) {
+      console.log(
+        `⚠ skip: ${file} (missing curatedRepoId/owner/repo/revision/guideId in frontmatter)`
+      );
       skipped++;
       continue;
     }
 
-    const repoRoot = path.join(CORPUS_REPOS_DIR, owner, repo, defaultBranch);
+    const curatedRepo = getCuratedRepo(owner, repo);
+    if (!curatedRepo) {
+      console.error(`\n❌ ${file}:`);
+      console.error(`   Unknown curated repo: ${repoKey}`);
+      totalErrors++;
+      checked++;
+      continue;
+    }
+    if (curatedRepo.id !== curatedRepoId) {
+      console.error(`\n❌ ${file}:`);
+      console.error(`   curatedRepoId mismatch: ${curatedRepoId} != ${curatedRepo.id}`);
+      totalErrors++;
+      checked++;
+      continue;
+    }
+    if (curatedRepo.revision !== revision) {
+      console.error(`\n❌ ${file}:`);
+      console.error(`   revision mismatch: ${revision} != ${curatedRepo.revision}`);
+      totalErrors++;
+      checked++;
+      continue;
+    }
+    if (curatedRepo.guideId !== guideId) {
+      console.error(`\n❌ ${file}:`);
+      console.error(`   guideId mismatch: ${guideId} != ${curatedRepo.guideId}`);
+      totalErrors++;
+      checked++;
+      continue;
+    }
+
+    const repoRoot = path.join(CORPUS_REPOS_DIR, owner, repo, revision);
     if (!fs.existsSync(repoRoot)) {
-      console.log(`⚠ skip: ${file} (${repoKey}@${defaultBranch} not in corpus/ — not downloaded)`);
+      console.log(`⚠ skip: ${file} (${repoKey}@${revision} not in corpus/ — not downloaded)`);
       skipped++;
       continue;
     }

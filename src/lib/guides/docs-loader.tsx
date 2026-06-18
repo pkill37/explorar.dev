@@ -1,6 +1,6 @@
 // Auto-discovery system for docs/ markdown guides
 import matter from 'gray-matter';
-import { isCuratedRepo } from '@/lib/curated-repos';
+import { getCuratedRepo, isCuratedRepo } from '@/lib/curated-repos';
 
 // Import all guide markdown files
 import littlekernelLkMd from '../../../docs/littlekernel_lk.md?raw';
@@ -11,14 +11,16 @@ import torvaldsLinuxMd from '../../../docs/torvalds_linux.md?raw';
 import llvmProjectMd from '../../../docs/llvm_project.md?raw';
 import bminorGlibcMd from '../../../docs/bminor_glibc.md?raw';
 import appleXnuMd from '../../../docs/apple-oss-distributions_xnu.md?raw';
+import seL4SeL4Md from '../../../docs/seL4_seL4.md?raw';
 
 /**
  * Guide metadata extracted from frontmatter
  */
 export interface GuideMetadata {
+  curatedRepoId: string;
   owner: string;
   repo: string;
-  defaultBranch: string;
+  revision: string;
   guideId: string;
   name: string;
   description: string;
@@ -45,6 +47,7 @@ const DOCS_MARKDOWN: Record<string, string> = {
   'llvm_project.md': llvmProjectMd,
   'bminor_glibc.md': bminorGlibcMd,
   'apple-oss-distributions_xnu.md': appleXnuMd,
+  'seL4_seL4.md': seL4SeL4Md,
 };
 
 /**
@@ -55,7 +58,15 @@ function parseGuideDocument(markdown: string, filePath: string): GuideDocument {
     const { data, content } = matter(markdown);
 
     // Validate required fields
-    const requiredFields = ['owner', 'repo', 'defaultBranch', 'guideId', 'name', 'description'];
+    const requiredFields = [
+      'curatedRepoId',
+      'owner',
+      'repo',
+      'revision',
+      'guideId',
+      'name',
+      'description',
+    ];
     const missingFields = requiredFields.filter((field) => !data[field]);
 
     if (missingFields.length > 0) {
@@ -64,14 +75,41 @@ function parseGuideDocument(markdown: string, filePath: string): GuideDocument {
       );
     }
 
+    const curatedRepoId = String(data.curatedRepoId);
+    const owner = String(data.owner);
+    const repo = String(data.repo);
+    const revision = String(data.revision);
+    const guideId = String(data.guideId);
+    const curatedRepo = getCuratedRepo(owner, repo);
+
+    if (!curatedRepo) {
+      throw new Error(`Guide ${filePath} references non-curated repo ${owner}/${repo}`);
+    }
+    if (curatedRepo.id !== curatedRepoId) {
+      throw new Error(
+        `Guide ${filePath} has curatedRepoId=${curatedRepoId} but config expects ${curatedRepo.id}`
+      );
+    }
+    if (curatedRepo.revision !== revision) {
+      throw new Error(
+        `Guide ${filePath} has revision=${revision} but config expects ${curatedRepo.revision}`
+      );
+    }
+    if (curatedRepo.guideId !== guideId) {
+      throw new Error(
+        `Guide ${filePath} has guideId=${guideId} but config expects ${curatedRepo.guideId}`
+      );
+    }
+
     return {
       metadata: {
-        owner: data.owner,
-        repo: data.repo,
-        defaultBranch: data.defaultBranch,
-        guideId: data.guideId,
-        name: data.name,
-        description: data.description,
+        curatedRepoId,
+        owner,
+        repo,
+        revision,
+        guideId,
+        name: String(data.name),
+        description: String(data.description),
         defaultOpenIds: data.defaultOpenIds || [],
       },
       content,
@@ -82,20 +120,31 @@ function parseGuideDocument(markdown: string, filePath: string): GuideDocument {
   }
 }
 
+function getDocsMarkdownSignature(): string {
+  return Object.entries(DOCS_MARKDOWN)
+    .map(([filePath, markdown]) => `${filePath}:${markdown.length}:${markdown.slice(0, 64)}`)
+    .join('|');
+}
+
 /**
- * Cache for parsed guide documents
+ * Cache for parsed guide documents. The cache is invalidated whenever the raw
+ * imported markdown changes, which matters during local dev / HMR.
  */
 let guidesCache: Map<string, GuideDocument> | null = null;
+let guidesCacheSignature: string | null = null;
 
 /**
  * Get all guide documents, parsed and cached
  */
 export function getAllGuideDocuments(): Map<string, GuideDocument> {
-  if (guidesCache) {
+  const signature = getDocsMarkdownSignature();
+
+  if (guidesCache && guidesCacheSignature === signature) {
     return guidesCache;
   }
 
   guidesCache = new Map();
+  guidesCacheSignature = signature;
 
   for (const [filePath, markdown] of Object.entries(DOCS_MARKDOWN)) {
     try {

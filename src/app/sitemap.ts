@@ -15,8 +15,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily',
       priority: 1.0,
     },
-    ...CURATED_REPOS.map(({ owner, repo, sitemapPriority }) => ({
-      url: `${siteUrl}/${owner}/${repo}`,
+    ...CURATED_REPOS.map(({ slug, sitemapPriority }) => ({
+      url: `${siteUrl}/${slug}`,
       lastModified: baseDate,
       changeFrequency: 'weekly' as const,
       priority: sitemapPriority,

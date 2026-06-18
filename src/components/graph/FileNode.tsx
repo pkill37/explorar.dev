@@ -69,6 +69,27 @@ function DocumentChip() {
   );
 }
 
+function DirectoryChip() {
+  return (
+    <span
+      style={{
+        fontSize: 7,
+        background: '#dbeafe',
+        color: '#1e3a8a',
+        border: '1px solid #60a5fa66',
+        padding: '1px 4px',
+        borderRadius: 999,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        lineHeight: 1.1,
+        flexShrink: 0,
+      }}
+    >
+      DIR
+    </span>
+  );
+}
+
 // Fetch the first N lines of a file from the public static directory
 async function fetchPreviewLines(
   owner: string,
@@ -171,7 +192,7 @@ function NodeCompact({ data }: { data: FileNodeData }) {
         <PedagogicalBadge label={data.pedagogicalOrderLabel} subtle />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {data.isDocumentation && <DocumentChip />}
+        {data.isDirectory ? <DirectoryChip /> : data.isDocumentation && <DocumentChip />}
         <span
           style={{
             fontSize: 9,
@@ -378,7 +399,7 @@ function NodeFull({
           {data.filePath}
         </span>
         <PedagogicalBadge label={data.pedagogicalOrderLabel} />
-        {data.isDocumentation && <DocumentChip />}
+        {data.isDirectory ? <DirectoryChip /> : data.isDocumentation && <DocumentChip />}
       </div>
 
       {/* Tab bar */}
@@ -544,9 +565,11 @@ function NodeFull({
         }}
       >
         <span style={{ fontSize: 7, color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-          {data.isDocumentation
-            ? 'DOC'
-            : (LANG_BADGE[data.language] ?? data.language.toUpperCase())}
+          {data.isDirectory
+            ? 'DIR'
+            : data.isDocumentation
+              ? 'DOC'
+              : (LANG_BADGE[data.language] ?? data.language.toUpperCase())}
           {entryGlow > 0.1 && (
             <span style={{ opacity: 0.85, marginLeft: 6 }}>
               {entryGlow >= 1
@@ -590,13 +613,16 @@ function FileNodeInner({ data, selected }: NodeProps<FileNodeType>) {
   const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (data.isDirectory) {
+      return;
+    }
     if (zoom >= 1.0 && !fetchedRef.current && owner && repo && branch) {
       fetchedRef.current = true;
       fetchPreviewLines(owner, repo, branch, data.filePath).then((text) => {
         if (text) setPreview(text);
       });
     }
-  }, [zoom, owner, repo, branch, data.filePath]);
+  }, [zoom, owner, repo, branch, data.filePath, data.isDirectory]);
 
   let inner: React.ReactNode;
   if (zoom < 0.28) {

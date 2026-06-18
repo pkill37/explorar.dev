@@ -13,7 +13,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('repository page has no accessibility violations', async ({ page }) => {
-    await page.goto('/torvalds/linux');
+    await page.goto('/linux-kernel');
     // color-contrast is disabled: the dark VS Code-like UI intentionally uses
     // low-contrast muted labels (same design trade-off as VS Code's own dark theme)
     const accessibilityScanResults = await new AxeBuilder({ page })

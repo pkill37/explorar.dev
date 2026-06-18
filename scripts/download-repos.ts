@@ -12,7 +12,7 @@ import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
 
 type ScriptOptions = {
-  only: string[]; // entries like "owner/repo" or "owner/repo@branch"
+  only: string[]; // entries like "owner/repo" or "owner/repo@revision"
   skip: string[]; // entries like "owner/repo"
   depth: number;
   list: boolean;
@@ -126,7 +126,7 @@ function parseArgs(argv: string[]): ScriptOptions {
 }
 
 function parseRepoSelector(selector: string): { key: string; branchOverride?: string } {
-  // "owner/repo" or "owner/repo@branch"
+  // "owner/repo" or "owner/repo@revision"
   const [repoPart, branchPart] = selector.split('@');
   const key = (repoPart ?? '').trim();
   const branchOverride = (branchPart ?? '').trim() || undefined;
@@ -150,7 +150,7 @@ function selectRepos(opts: ScriptOptions): CuratedRepoConfig[] {
     .filter((r) => !skipSet.has(toRepoKey(r.owner, r.repo)))
     .map((r) => {
       const override = branchOverrides.get(toRepoKey(r.owner, r.repo));
-      return override ? { ...r, branch: override } : r;
+      return override ? { ...r, ref: override, revision: override } : r;
     });
 }
 
@@ -224,9 +224,12 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
 
 function getBuildSignature(config: CuratedRepoConfig): string {
   return JSON.stringify({
+    id: config.id,
     owner: config.owner,
     repo: config.repo,
-    branch: config.branch,
+    ref: config.ref,
+    revision: config.revision,
+    guideId: config.guideId,
   });
 }
 
@@ -270,10 +273,10 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
 
   const staleRepos: string[] = [];
   for (const repo of repos) {
-    const repoDir = path.join(REPOS_DIR, repo.owner, repo.repo, repo.branch);
+    const repoDir = path.join(REPOS_DIR, repo.owner, repo.repo, repo.revision);
     const isCurrent = await shouldSkipDownload(repoDir, repo);
     if (!isCurrent) {
-      staleRepos.push(`${repo.owner}/${repo.repo}@${repo.branch}`);
+      staleRepos.push(`${repo.owner}/${repo.repo}@${repo.revision}`);
     }
   }
 
@@ -291,7 +294,7 @@ function pruneStaleBranchDownloads(repos: CuratedRepoConfig[]): void {
   for (const repo of repos) {
     const key = toRepoKey(repo.owner, repo.repo);
     const allowed = allowedBranchesByRepo.get(key) ?? new Set<string>();
-    allowed.add(repo.branch);
+    allowed.add(repo.revision);
     allowedBranchesByRepo.set(key, allowed);
   }
 
@@ -328,7 +331,7 @@ async function gitCloneShallow(
   repoDir: string,
   depth: number
 ): Promise<string | null> {
-  const { owner, repo, branch } = config;
+  const { owner, repo, revision } = config;
   if (fs.existsSync(repoDir)) {
     fs.rmSync(repoDir, { recursive: true, force: true });
   }
@@ -338,14 +341,14 @@ async function gitCloneShallow(
 
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
 
-  if (isCommitSha(branch)) {
+  if (isCommitSha(revision)) {
     fs.mkdirSync(repoDir, { recursive: true });
     await runCommand('git', ['init'], repoDir);
     await runCommand('git', ['remote', 'add', 'origin', repoUrl], repoDir);
 
     await runCommand(
       'git',
-      ['fetch', '--depth', String(depth), '--filter=blob:none', 'origin', branch],
+      ['fetch', '--depth', String(depth), '--filter=blob:none', 'origin', revision],
       repoDir
     );
     await runCommand('git', ['checkout', '--detach', 'FETCH_HEAD'], repoDir);
@@ -368,7 +371,7 @@ async function gitCloneShallow(
     String(depth),
     '--single-branch',
     '--branch',
-    branch,
+    revision,
     repoUrl,
     repoDir,
   ];
@@ -495,18 +498,18 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
  * Download and extract a repository
  */
 async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promise<void> {
-  const { owner, repo, branch } = config;
-  const repoDir = path.join(REPOS_DIR, owner, repo, branch);
+  const { owner, repo, revision } = config;
+  const repoDir = path.join(REPOS_DIR, owner, repo, revision);
   const buildSignature = getBuildSignature(config);
 
-  console.log(`\nRepo ${owner}/${repo}@${branch}`);
+  console.log(`\nRepo ${owner}/${repo}@${revision}`);
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
   if (await shouldSkipDownload(repoDir, config)) {
-    console.log(`skip: ${owner}/${repo}@${branch} pinned build matches`);
+    console.log(`skip: ${owner}/${repo}@${revision} pinned build matches`);
     return;
   }
 
@@ -525,12 +528,12 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
     createManifest(repoDir, tree, buildSignature);
     console.log(`   Tree: ${tree.length} root entries`);
 
-    console.log(`ready: ${owner}/${repo}@${branch}`);
+    console.log(`ready: ${owner}/${repo}@${revision}`);
   } catch (error) {
     if (fs.existsSync(repoDir)) {
       fs.rmSync(repoDir, { recursive: true, force: true });
     }
-    console.error(`ERROR ${owner}/${repo}@${branch}:`, error);
+    console.error(`ERROR ${owner}/${repo}@${revision}:`, error);
     throw error;
   }
 }
@@ -602,7 +605,7 @@ async function main() {
   if (opts.list) {
     console.log('\nCurated repos:');
     for (const r of CURATED_REPOS) {
-      console.log(`- ${r.owner}/${r.repo}@${r.branch}`);
+      console.log(`- ${r.owner}/${r.repo}@${r.revision}`);
     }
     return;
   }
@@ -636,13 +639,13 @@ async function main() {
 
   console.log('\nFinal curated repo plan:');
   for (const repo of finalRepos) {
-    console.log(`   - ${repo.owner}/${repo.repo}@${repo.branch}`);
+    console.log(`   - ${repo.owner}/${repo.repo}@${repo.revision}`);
   }
 
   let completedRepos = 0;
   const tasks = finalRepos.map((repo) => async () => {
     try {
-      console.log(`\n   Starting ${repo.owner}/${repo.repo}@${repo.branch}`);
+      console.log(`\n   Starting ${repo.owner}/${repo.repo}@${repo.revision}`);
       await downloadRepo(repo, opts.depth);
     } catch {
       // Error already logged inside downloadRepo; continue with remaining repos.

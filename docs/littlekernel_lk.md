@@ -1,7 +1,8 @@
 ---
+curatedRepoId: littlekernel-lk
 owner: littlekernel
 repo: lk
-defaultBranch: a521fe60e1a16d5670fe24b7fca2c5155b3339c4
+revision: a521fe60e1a16d5670fe24b7fca2c5155b3339c4
 guideId: littlekernel-lk-guide
 name: Little Kernel In The Mind
 description: Understanding LK as a compact embedded kernel and second-stage bootloader
@@ -15,34 +16,39 @@ defaultOpenIds:
 ---
 
 # Little Kernel In The Mind
+---
+id: ch1
+title: Chapter 1 — What LK Is and What It Optimizes For
+fileRecommendations:
+  readingOrder:
+    - path: docs/index.md
+      description: Documentation hub that shows how LK explains itself
+      type: docs
+    - path: README.md
+      description: High-level overview, supported architectures, and the project's stated goals
+      type: source
+    - path: top/main.c
+      description: Main entry point and staged boot sequence from architecture handoff into the kernel
+      type: source
+    - path: kernel/init.c
+      description: Earliest kernel bring-up: threads, timers, ports, and multiprocessor support
+      type: source
+    - path: kernel/thread.c
+      description: Core threading subsystem that makes LK a real preemptive kernel instead of a linear boot stub
+      type: source
+    - path: arch/arch.c
+      description: Architecture-neutral front door into CPU-family implementations
+      type: source
+    - path: app/app.c
+      description: App runtime that turns product behavior into boot-time kernel threads
+      type: source
+---
 
 > LK is small enough to fit in your head, but only if you look at it as a system of constraints rather than as a pile of ports.
 
 This guide is for understanding how **Little Kernel** is shaped: its role as a second-stage bootloader, how its boot flow progresses from power-on to kernel handoff, how build composition works, where architecture code ends and platform code begins, and how the kernel stays useful in tiny bring-up and bootloader environments.
 
 **LK is not Linux scaled down. It is a deliberately compact kernel with a different set of tradeoffs — and it ships in production devices.**
-
----
-id: ch1
-title: Chapter 1 — What LK Is and What It Optimizes For
-fileRecommendations:
-  readingOrder:
-    - path: docs/
-      description: Project documentation index and conceptual notes
-      type: docs
-    - path: README.md
-      description: High-level overview, supported architectures, and the project's stated goals
-      type: source
-    - path: kernel/
-      description: Core kernel subsystem — scheduling, synchronization, timers, and thread lifecycle
-      type: source
-    - path: arch/
-      description: CPU-family code split by architecture
-      type: source
-    - path: app/
-      description: Application layer — this is where the bootloader's product behavior lives
-      type: source
----
 
 LK occupies a specific position in the boot stack: it is a **second-stage bootloader**. On ARM SoCs (MediaTek, Qualcomm, and others), a ROM bootloader or preloader transfers control to LK, and LK in turn loads and boots Linux. That role shapes every design decision.
 
@@ -62,20 +68,26 @@ id: ch2
 title: Chapter 2 — The Boot Flow
 fileRecommendations:
   readingOrder:
-    - path: top/
-      description: Integration glue that sequences the boot stages
-      type: docs
-    - path: kernel/
-      description: Thread initialization and scheduler — the first thing LK runs after architecture setup
+    - path: top/main.c
+      description: Full staged boot path from lk_main() through bootstrap2()
       type: source
-    - path: arch/
-      description: Early architecture init — cache, MMU, exception vectors, context switch
+    - path: kernel/init.c
+      description: Kernel early-init sequence invoked by top/main.c
       type: source
-    - path: platform/
-      description: Platform bring-up — interrupt controller, UART, clocks, display
+    - path: arch/arm/arm/arch.c
+      description: Representative ARM architecture initialization path used before generic kernel startup
       type: source
-    - path: app/
-      description: App threads — mt_boot, aboot, shell — where execution ends up after init
+    - path: platform/init.c
+      description: Generic platform initialization hooks that bridge architecture code to board-specific bring-up
+      type: source
+    - path: target/init.c
+      description: Target-level init stage that binds the image to a concrete deployment board
+      type: source
+    - path: app/app.c
+      description: App launch path that hands control to LK's product-facing threads
+      type: source
+    - path: app/lkboot/lkboot.c
+      description: Concrete bootloader app showing what LK does after core init completes
       type: source
 ---
 
@@ -100,26 +112,29 @@ id: ch3
 title: Chapter 3 — The Tree as an Architectural Contract
 fileRecommendations:
   readingOrder:
-    - path: platform/
-      description: Board/platform ports that bind the kernel to real hardware
+    - path: docs/source_tree_structure.md
+      description: LK's own explanation of the tree layout
       type: docs
-    - path: target/
-      description: Target descriptions that choose concrete hardware and configuration
-      type: docs
-    - path: project/
-      description: Build-time composition units for concrete firmware products
-      type: docs
-    - path: app/
-      description: Application layer — product behavior, fastboot, shell, Android boot
+    - path: app/app.c
+      description: Generic app registry and launcher that defines the product-behavior layer
       type: source
-    - path: dev/
-      description: Device-facing support code — Block I/O, shared hardware abstractions
+    - path: dev/dev.c
+      description: Common device model entry point beneath product apps
       type: source
-    - path: lib/
-      description: Shared support code used across the tree
+    - path: lib/console/console.c
+      description: Shared library subsystem used across the tree without being part of the kernel core
       type: source
-    - path: top/
-      description: Top-level boot and integration glue
+    - path: top/main.c
+      description: Integration glue that stitches arch, platform, target, kernel, and apps into one boot flow
+      type: source
+    - path: project/mt6797.mk
+      description: Project composition file for a production-style MediaTek bootloader image
+      type: source
+    - path: target/mt6797/rules.mk
+      description: Concrete target binding that chooses hardware-specific modules
+      type: source
+    - path: platform/mediatek/mt6797/platform.c
+      description: SoC/platform layer where LK's abstractions hit real hardware
       type: source
 ---
 
@@ -142,20 +157,23 @@ id: ch4
 title: Chapter 4 — Build Composition Is a First-Class Subsystem
 fileRecommendations:
   readingOrder:
-    - path: project/
-      description: Project-level composition inputs
-      type: docs
-    - path: target/
-      description: Target-level build selection and hardware binding
-      type: docs
     - path: makefile
       description: Entry point into LK's build flow
       type: source
     - path: engine.mk
       description: Core build orchestration logic
       type: source
-    - path: make/
-      description: Build support machinery and reusable make fragments
+    - path: top/rules.mk
+      description: Top-level module rules that show how the boot image is assembled from subsystems
+      type: source
+    - path: project/mt6797.mk
+      description: Project-level composition for a concrete shipped-style firmware image
+      type: source
+    - path: project/mt6797.mk
+      description: Project-level composition entry that selects the MediaTek bootloader image shape
+      type: source
+    - path: target/mt6797/rules.mk
+      description: Target-level module and option selection for the chosen hardware
       type: source
     - path: lk_inc.mk.example
       description: Example of local build configuration override patterns
@@ -175,20 +193,32 @@ id: ch5
 title: Chapter 5 — Concurrency in a Bootloader Kernel
 fileRecommendations:
   readingOrder:
-    - path: README.md
-      description: SMP-aware kernel positioning at the project overview level
+    - path: docs/threading_and_scheduler.md
+      description: LK's own overview of threading and scheduling concepts
       type: docs
-    - path: kernel/
-      description: Threading, synchronization, wait queues, timers, and scheduler internals
+    - path: docs/blocking_primitives.md
+      description: Documentation for wait queues, mutexes, semaphores, and related primitives
+      type: docs
+    - path: kernel/thread.c
+      description: Scheduler, run queue management, and thread lifecycle
       type: source
-    - path: lib/
-      description: Support primitives commonly used by kernel subsystems
+    - path: kernel/event.c
+      description: Event primitive used for blocking and wake-up coordination
       type: source
-    - path: arch/
-      description: Context-switch and interrupt-sensitive architecture hooks
+    - path: kernel/mutex.c
+      description: Mutex implementation for contended critical sections
       type: source
-    - path: app/
-      description: Application threads — multiple apps run concurrently during boot
+    - path: kernel/semaphore.c
+      description: Counting semaphore implementation in the compact LK kernel model
+      type: source
+    - path: kernel/timer.c
+      description: Timer queue and timeout infrastructure used by blocking operations
+      type: source
+    - path: arch/arm/arm/thread.c
+      description: Architecture-specific context switch and low-level thread support
+      type: source
+    - path: app/app.c
+      description: App threads as the visible consumers of LK's concurrency model
       type: source
 ---
 
@@ -209,11 +239,8 @@ id: ch6
 title: Chapter 6 — How to Read LK Effectively
 fileRecommendations:
   readingOrder:
-    - path: docs/
-      description: Documentation hub for deeper follow-up reading
-      type: docs
-    - path: app/
-      description: Product-facing functionality — the visible behavior of LK on a real device
+    - path: docs/getting_started.md
+      description: Practical orientation for building and running LK
       type: docs
     - path: README.md
       description: Re-anchor on the project goals after exploring the tree
@@ -221,11 +248,23 @@ fileRecommendations:
     - path: engine.mk
       description: Revisit the build engine once the directory roles make more sense
       type: source
-    - path: top/
-      description: Integration glue that ties the image together
+    - path: top/main.c
+      description: Revisit the full system handoff now that the subsystem roles are clearer
       type: source
-    - path: rust/
-      description: Emerging Rust support and experimentation in the tree
+    - path: app/lkboot/lkboot.c
+      description: Product-facing boot app that shows LK acting as a real bootloader
+      type: source
+    - path: lib/bootimage/bootimage.c
+      description: Shared boot-image parsing logic that sits underneath LK's loader behavior
+      type: source
+    - path: platform/mediatek/mt6797/platform.c
+      description: Concrete platform bring-up file worth tracing after the core model is clear
+      type: source
+    - path: rust/lk/src/lib.rs
+      description: High-level Rust facade showing how LK is exposing kernel/runtime services to Rust
+      type: source
+    - path: rust/lk-sys/src/lib.rs
+      description: Generated-sys layer that binds Rust code back to LK's C ABI and init model
       type: source
 ---
 

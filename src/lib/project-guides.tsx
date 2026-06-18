@@ -13,6 +13,7 @@ export interface GuideSection {
   id: string;
   title: string;
   body: React.ReactNode;
+  narrativePaths?: string[];
   fileRecommendations?: {
     readingOrder?: FileRecommendation[];
     docs?: FileRecommendation[];
@@ -37,7 +38,7 @@ export interface ProjectConfig {
   name: string;
   owner: string;
   repo: string;
-  defaultBranch: string;
+  defaultRevision: string;
   guides: ProjectGuide[];
   suggestions?: {
     pathBased?: Record<string, unknown[]>;
@@ -78,6 +79,17 @@ export function createFileRecommendationsComponent(
     }
   };
 
+  const getItemContext = (file: FileRecommendation) => {
+    switch (file.type) {
+      case 'docs':
+        return 'Use this reading for conceptual framing, terminology, and the documented contract before diving into implementation details.';
+      case 'directory':
+        return 'Use this reading to scan the subsystem boundary first, then drill into the most relevant files inside it.';
+      default:
+        return 'Use this reading as the implementation anchor where the model, control flow, or core mechanism becomes concrete in code.';
+    }
+  };
+
   return (
     <div style={{ marginTop: '16px', marginBottom: '16px' }}>
       {orderedItems.length > 0 && (
@@ -92,7 +104,7 @@ export function createFileRecommendationsComponent(
               letterSpacing: '0.5px',
             }}
           >
-            Reading Order
+            Readings
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {orderedItems.map((file, index) => (
@@ -119,52 +131,73 @@ export function createFileRecommendationsComponent(
                   e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                  }}
-                >
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <span
                     style={{
                       minWidth: '20px',
                       color: 'var(--vscode-descriptionForeground, #999)',
                       fontFamily: 'monospace',
+                      marginTop: '1px',
                     }}
                   >
                     {index + 1}.
                   </span>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>
-                    {getItemPath(file)}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          lineHeight: 1.45,
+                          color: 'var(--vscode-foreground, #d4d4d4)',
+                        }}
+                      >
+                        {file.description || getItemPath(file)}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          color: 'var(--vscode-descriptionForeground, #999)',
+                          border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                          borderRadius: '999px',
+                          padding: '1px 6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {getItemBadge(file)}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--vscode-descriptionForeground, #999)',
+                        marginTop: '4px',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {getItemContext(file)}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
+                        marginTop: '6px',
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {getItemPath(file)}
+                    </div>
                   </div>
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      color: 'var(--vscode-descriptionForeground, #999)',
-                      border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                      borderRadius: '999px',
-                      padding: '1px 6px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    {getItemBadge(file)}
-                  </span>
                 </div>
-                {file.description && (
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--vscode-descriptionForeground, #999)',
-                      marginTop: '2px',
-                      marginLeft: '28px',
-                    }}
-                  >
-                    {file.description}
-                  </div>
-                )}
               </button>
             ))}
           </div>
@@ -192,7 +225,7 @@ export function getProjectConfig(owner: string, repo: string): ProjectConfig | n
     name: metadata.name,
     owner: metadata.owner,
     repo: metadata.repo,
-    defaultBranch: metadata.defaultBranch,
+    defaultRevision: metadata.revision,
     guides: [
       {
         id: metadata.guideId,
@@ -295,7 +328,7 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                   )
                 </li>
                 <li>
-                  Add YAML frontmatter with owner, repo, defaultBranch, guideId, name, and
+                  Add YAML frontmatter with curatedRepoId, owner, repo, revision, guideId, name, and
                   description
                 </li>
                 <li>

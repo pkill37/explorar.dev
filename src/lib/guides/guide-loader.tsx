@@ -13,7 +13,12 @@ import { getGuideDocument, getAvailableGuideIds } from './docs-loader';
  */
 export function loadGuideFromMarkdown(
   guideId: string,
-  openFileInTab: (path: string, searchPattern?: string) => void
+  openFileInTab: (
+    path: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[]
+  ) => void
 ): GuideSection[] {
   const guideDoc = getGuideDocument(guideId);
 
