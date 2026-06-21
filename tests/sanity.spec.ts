@@ -6,13 +6,6 @@ import { CURATED_TEST_REPOS } from './helpers/curated-repos';
  * Ensures basic functionality works and pages load without errors
  */
 test.describe('Sanity Checks', () => {
-  async function openSourceMenu(page: import('@playwright/test').Page) {
-    const sourceMenuButton = page.getByLabel('Open file source menu').first();
-    await expect(sourceMenuButton).toBeVisible();
-    await sourceMenuButton.click();
-    return page.locator('select.vscode-source-select').first();
-  }
-
   test('homepage loads successfully', async ({ page }) => {
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
@@ -51,17 +44,6 @@ test.describe('Sanity Checks', () => {
     expect(response?.status()).toBe(200);
     const content = await page.textContent('body');
     expect(content).toContain('urlset');
-  });
-
-  test('repository pages expose source selection for on-demand loading', async ({ page }) => {
-    for (const { slug } of CURATED_TEST_REPOS) {
-      const response = await page.goto(`/${slug}`);
-      expect(response?.status()).toBe(200);
-
-      const sourceSelect = await openSourceMenu(page);
-      await expect(sourceSelect).toHaveValue('r2-bucket');
-      await expect(sourceSelect.locator('option[value="r2-bucket"]')).toContainText('R2 bucket');
-    }
   });
 
   test('all images load successfully', async ({ page }) => {

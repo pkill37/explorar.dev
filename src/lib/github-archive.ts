@@ -1,6 +1,4 @@
-// GitHub Archive API integration for downloading repository branches
-// Uses GitHub Contents API to avoid CORS issues
-// Supports lazy loading - downloads only metadata initially, files on-demand
+// GitHub archive helpers for curated repository metadata.
 
 import {
   getGitHubRepoIdentifier,
@@ -41,8 +39,7 @@ function getDownloadKey(owner: string, repo: string, branch: string): string {
 }
 
 /**
- * Download a single branch from GitHub - only downloads tree structure (no file contents)
- * Files are downloaded on-demand when user explicitly opens them
+ * Download a single curated branch's tree structure.
  */
 export async function downloadBranch(
   owner: string,
@@ -315,7 +312,7 @@ async function downloadCompleteTreeStructure(
 }
 
 /**
- * Download directory contents metadata on-demand
+ * Download directory contents metadata for a curated repository path
  * Called when user expands a directory - only downloads metadata, not file contents
  */
 export async function downloadDirectoryContents(
@@ -465,43 +462,4 @@ export async function getBranchDownloadStatus(
     isDownloading,
     isAvailable,
   };
-}
-
-/**
- * Download full tree metadata for arbitrary repositories
- * Fetches complete tree structure via GitHub API and stores in IndexedDB
- */
-export async function downloadFullTreeMetadata(
-  owner: string,
-  repo: string,
-  branch: string,
-  onProgress?: (progress: DownloadProgress) => void
-): Promise<FileNode[]> {
-  onProgress?.({
-    phase: 'downloading',
-    progress: 0,
-    message: 'Fetching full tree metadata...',
-  });
-
-  try {
-    // Use the fetchFullTreeMetadata function from github-api
-    const { fetchFullTreeMetadata } = await import('./github-api');
-    const tree = await fetchFullTreeMetadata(owner, repo, branch);
-
-    onProgress?.({
-      phase: 'completed',
-      progress: 100,
-      message: `Tree metadata downloaded (${tree.length} items)`,
-    });
-
-    return tree;
-  } catch (error) {
-    onProgress?.({
-      phase: 'error',
-      progress: 0,
-      message: error instanceof Error ? error.message : 'Failed to download tree metadata',
-    });
-
-    throw error;
-  }
 }

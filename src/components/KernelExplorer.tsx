@@ -1,12 +1,5 @@
 'use client';
-import React, {
-  useRef,
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-  useSyncExternalStore,
-} from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { notFound, useRouter } from 'next/navigation';
 import FileTree from '@/components/FileTree';
 import TabBar from '@/components/TabBar';
@@ -26,22 +19,7 @@ import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { findSymbolsInFile } from '@/lib/cross-reference';
-import {
-  repositoryExists,
-  getGitHubRepoIdentifier,
-  getDirectoryMetadata,
-  hasTreeStructure,
-} from '@/lib/repo-storage';
-import { downloadDirectoryContents } from '@/lib/github-archive';
 import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
-import {
-  getFileSourceModeServerSnapshot,
-  isStaticFileSourceMode,
-  setFileSourceMode,
-  subscribeToFileSourceMode,
-  getFileSourceMode,
-} from '@/lib/curated-content-url';
-import { findImportedSymbolLocation, loadOpenCodeIntelBundle } from '@/lib/open-code-intel';
 import { debugLog } from '@/lib/browser-debug';
 import '@/app/vscode.css';
 
@@ -111,7 +89,6 @@ export default function KernelExplorer({
     switchBranch,
     currentBranch,
     error: repoError,
-    downloadProgress,
     identifier: repoIdentifier,
   } = useRepository();
 
@@ -159,11 +136,7 @@ export default function KernelExplorer({
   const [editorLanguage, setEditorLanguage] = useState<string>('');
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
-  const fileSourceMode = useSyncExternalStore(
-    subscribeToFileSourceMode,
-    getFileSourceMode,
-    getFileSourceModeServerSnapshot
-  );
+  const fileSourceMode = 'r2-bucket' as const;
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -226,20 +199,12 @@ export default function KernelExplorer({
       }
 
       try {
-        // Check if this is a curated repo (pre-downloaded at build time)
         const isCurated = isCuratedRepo(owner, repo);
-        const identifier = getRepoIdentifier(owner, repo);
-
-        // For curated repos, skip IndexedDB check (they're in static files)
-        // For non-curated repos, check if repository exists in IndexedDB
         if (!isCurated) {
-          const exists = await repositoryExists('github', identifier);
-          if (!exists) {
-            // Repository not found locally, redirect to main page
-            router.push('/');
-            return;
-          }
+          notFound();
+          return;
         }
+        const identifier = getRepoIdentifier(owner, repo);
 
         // Repository exists, set it in context
         await setRepository('github', identifier, `${owner}/${repo}`);
@@ -268,65 +233,9 @@ export default function KernelExplorer({
           setSelectedVersion(branchToUse);
         }
 
-        // Check if tree structure exists
-        // For curated repos, check static files; for others, check IndexedDB
-        let treeExists = false;
-        if (isCurated) {
-          if (isStaticFileSourceMode(fileSourceMode)) {
-            const staticTree = await getTreeStructureFromStatic(
-              owner,
-              repo,
-              branchToUse,
-              fileSourceMode
-            );
-            treeExists = staticTree !== null && staticTree.length > 0;
-          } else {
-            treeExists = await hasTreeStructure('github', identifier, branchToUse);
-          }
-        } else {
-          treeExists = await hasTreeStructure('github', identifier, branchToUse);
-        }
+        const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
+        const treeExists = staticTree !== null && staticTree.length > 0;
         setIsTreeStructureReady(treeExists);
-
-        // If tree structure doesn't exist, wait for download to complete (only for non-curated repos)
-        if (!treeExists && !isCurated) {
-          // Clear any existing intervals
-          if (treeCheckIntervalRef.current) {
-            clearInterval(treeCheckIntervalRef.current);
-            treeCheckIntervalRef.current = null;
-          }
-          if (treeCheckTimeoutRef.current) {
-            clearTimeout(treeCheckTimeoutRef.current);
-            treeCheckTimeoutRef.current = null;
-          }
-
-          // Poll for tree structure to become available (download is in progress)
-          treeCheckIntervalRef.current = setInterval(async () => {
-            const treeReady = await hasTreeStructure('github', identifier, branchToUse);
-            if (treeReady) {
-              setIsTreeStructureReady(true);
-              if (treeCheckIntervalRef.current) {
-                clearInterval(treeCheckIntervalRef.current);
-                treeCheckIntervalRef.current = null;
-              }
-              if (treeCheckTimeoutRef.current) {
-                clearTimeout(treeCheckTimeoutRef.current);
-                treeCheckTimeoutRef.current = null;
-              }
-            }
-          }, 500); // Check every 500ms
-
-          // Cleanup interval after 5 minutes (timeout)
-          treeCheckTimeoutRef.current = setTimeout(
-            () => {
-              if (treeCheckIntervalRef.current) {
-                clearInterval(treeCheckIntervalRef.current);
-                treeCheckIntervalRef.current = null;
-              }
-            },
-            5 * 60 * 1000
-          );
-        }
       } catch (error) {
         console.error('Failed to setup repository:', error);
         // Redirect to home on error
@@ -534,27 +443,6 @@ export default function KernelExplorer({
       );
       const branchToUse =
         currentBranch || branch || selectedVersion || projectConfig?.defaultRevision || 'main';
-      const importedBundle = loadOpenCodeIntelBundle(owner, repo, branchToUse);
-      const importedLocation = findImportedSymbolLocation(
-        importedBundle,
-        candidatePaths,
-        searchPattern
-      );
-      if (importedLocation) {
-        debugLog('[explorar:open-file] resolved-symbol-line:lsp', {
-          filePath: importedLocation.filePath,
-          searchPattern,
-          branch: branchToUse,
-          line: importedLocation.line,
-          candidatePathCount: candidatePaths.length,
-        });
-        return {
-          resolvedFilePath: importedLocation.filePath,
-          resolvedSearchPattern: undefined,
-          resolvedScrollToLine: importedLocation.line,
-        };
-      }
-
       for (const candidatePath of candidatePaths) {
         try {
           const fileResult = await fetchFileContent(candidatePath);
@@ -635,33 +523,8 @@ export default function KernelExplorer({
         // For other directories, check if downloaded and download if needed, then expand
         setSelectedFile(normalizedPath);
 
-        // For arbitrary repos: fetch directory metadata from GitHub API if not cached.
-        // Curated repos skip this — directory structure comes from the static manifest.
         const handleDirectoryExpand = async () => {
           try {
-            if (!isCuratedRepo(owner || 'torvalds', repo || 'linux')) {
-              const identifier = getGitHubRepoIdentifier(owner || 'torvalds', repo || 'linux');
-              const config = owner && repo ? getProjectConfig(owner, repo) : null;
-              const defaultBranch = config?.defaultRevision || 'main';
-              const branchToUse = currentBranch || branch || defaultBranch;
-
-              const metadata = await getDirectoryMetadata(
-                'github',
-                identifier,
-                branchToUse,
-                normalizedPath
-              );
-
-              if (!metadata || metadata.length === 0) {
-                await downloadDirectoryContents(
-                  owner || 'torvalds',
-                  repo || 'linux',
-                  branchToUse,
-                  normalizedPath
-                );
-              }
-            }
-
             setDirectoryExpandRequest({ path: normalizedPath, id: Date.now() });
           } catch (error) {
             console.error('Failed to download directory:', error);
@@ -719,7 +582,7 @@ export default function KernelExplorer({
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, resolveSymbolNavigationLine, owner, repo, currentBranch, branch]
+    [tabs, resolveSymbolNavigationLine]
   );
 
   const guideOpenFileInTab = useCallback(
@@ -879,33 +742,6 @@ export default function KernelExplorer({
     }, 0);
   }, [initialFile, isTreeStructureReady, openFileInTab]);
 
-  // Show download progress for non-curated repos being fetched on-demand
-  const isCurated = owner && repo ? isCuratedRepo(owner, repo) : false;
-  const showDownloadProgress = downloadProgress && !isCurated;
-  if (showDownloadProgress) {
-    return (
-      <div className="min-h-screen bg-[var(--vscode-editor-background)] text-[var(--vscode-editor-foreground)] flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="text-lg mb-4">Downloading Repository Structure</div>
-          <div className="w-full bg-[var(--vscode-progressBar-background)] rounded-full h-2 mb-4">
-            <div
-              className="bg-[var(--vscode-progressBar-foreground)] h-2 rounded-full transition-all duration-300"
-              style={{ width: `${downloadProgress.progress}%` }}
-            />
-          </div>
-          <div className="text-sm opacity-70 mb-2">{downloadProgress.message}</div>
-          {downloadProgress.phase === 'downloading' &&
-            downloadProgress.filesProcessed &&
-            downloadProgress.totalFiles && (
-              <div className="text-xs opacity-50">
-                Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles} items
-              </div>
-            )}
-        </div>
-      </div>
-    );
-  }
-
   // Repository error
   if (repoError) {
     notFound();
@@ -960,10 +796,6 @@ export default function KernelExplorer({
               selectedFile={selectedFile}
               listDirectory={buildFileTree}
               titleLabel={repoLabel}
-              sourceMode={fileSourceMode}
-              onSourceModeChange={(mode) => {
-                setFileSourceMode(mode);
-              }}
               expandDirectoryRequest={directoryExpandRequest}
               onDirectoryExpand={(path: string) => {
                 setSelectedFile(path);

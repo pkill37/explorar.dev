@@ -26,11 +26,17 @@ export type CorpusState = {
   totalRepos: number;
 };
 
+type AvatarManifestEntry = {
+  version?: string;
+  url: string;
+};
+
 const REPOS_DIR = CORPUS_REPOS_DIR;
 
 // Max simultaneous git clones — GitHub allows a few concurrent connections.
 const DOWNLOAD_CONCURRENCY = 3;
 const AVATAR_DOWNLOAD_CONCURRENCY = 4;
+const AVATAR_MANIFEST_PATH = path.join(PUBLIC_AVATARS_DIR, '.avatar-manifest.json');
 
 // File extensions that cannot be rendered in Monaco. Removed at clone time so
 // they don't appear in the file tree or inflate the Cloudflare file count.
@@ -233,6 +239,30 @@ function getBuildSignature(config: CuratedRepoConfig): string {
   });
 }
 
+function getAvatarManifestKey(file: string): string {
+  return file;
+}
+
+function readAvatarManifest(): Record<string, AvatarManifestEntry> {
+  if (!fs.existsSync(AVATAR_MANIFEST_PATH)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(AVATAR_MANIFEST_PATH, 'utf-8')) as Record<
+      string,
+      AvatarManifestEntry
+    >;
+  } catch {
+    return {};
+  }
+}
+
+function writeAvatarManifest(manifest: Record<string, AvatarManifestEntry>): void {
+  fs.mkdirSync(AVATARS_DIR, { recursive: true });
+  fs.writeFileSync(AVATAR_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
 /**
  * Decide whether an existing download is still current.
  *
@@ -266,10 +296,23 @@ async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): P
 
 export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
   const repos = selectRepos(opts);
-  const avatarTargets = new Set(repos.map((repo) => repo.avatarFile ?? `${repo.owner}.png`));
-  const missingAvatars = [...avatarTargets].filter(
-    (file) => !fs.existsSync(path.join(AVATARS_DIR, file))
-  );
+  const avatarManifest = readAvatarManifest();
+  const missingAvatars = new Set<string>();
+
+  for (const repo of repos) {
+    const file = repo.avatarFile ?? `${repo.owner}.png`;
+    const destPath = path.join(AVATARS_DIR, file);
+    const manifestEntry = avatarManifest[getAvatarManifestKey(file)];
+
+    if (!fs.existsSync(destPath)) {
+      missingAvatars.add(file);
+      continue;
+    }
+
+    if (repo.avatarVersion && manifestEntry?.version !== repo.avatarVersion) {
+      missingAvatars.add(file);
+    }
+  }
 
   const staleRepos: string[] = [];
   for (const repo of repos) {
@@ -281,9 +324,9 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
   }
 
   return {
-    missingAvatars,
+    missingAvatars: [...missingAvatars],
     staleRepos,
-    totalAvatars: avatarTargets.size,
+    totalAvatars: new Set(repos.map((repo) => repo.avatarFile ?? `${repo.owner}.png`)).size,
     totalRepos: repos.length,
   };
 }
@@ -551,6 +594,7 @@ async function downloadAvatar(url: string, destPath: string): Promise<void> {
 
 async function downloadAllAvatars(): Promise<void> {
   fs.mkdirSync(AVATARS_DIR, { recursive: true });
+  const avatarManifest = readAvatarManifest();
 
   const avatarTargets = new Map<string, { file: string; url: string }>();
   for (const repo of CURATED_REPOS) {
@@ -570,17 +614,29 @@ async function downloadAllAvatars(): Promise<void> {
 
   const tasks = uniqueTargets.map(({ file, url }) => async () => {
     const destPath = path.join(AVATARS_DIR, file);
+    const repo = CURATED_REPOS.find(
+      (candidate) => (candidate.avatarFile ?? `${candidate.owner}.png`) === file
+    );
+    const manifestEntry = avatarManifest[getAvatarManifestKey(file)];
+    const hasVersion = Boolean(repo?.avatarVersion);
+    const isFresh =
+      fs.existsSync(destPath) && (!hasVersion || manifestEntry?.version === repo?.avatarVersion);
+
+    if (isFresh) {
+      processed++;
+      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar cached: ${file}`);
+      return;
+    }
 
     try {
-      if (fs.existsSync(destPath)) {
-        processed++;
-        console.log(`   [${processed}/${uniqueAvatarCount}] Avatar cached: ${file}`);
-        return;
-      }
-
       await downloadAvatar(url, destPath);
+      avatarManifest[getAvatarManifestKey(file)] = {
+        version: repo?.avatarVersion,
+        url,
+      };
+      writeAvatarManifest(avatarManifest);
       processed++;
-      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar downloaded: ${file}`);
+      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar refreshed: ${file}`);
     } catch (err) {
       processed++;
       console.warn(`   [${processed}/${uniqueAvatarCount}] Avatar failed (${file}): ${err}`);

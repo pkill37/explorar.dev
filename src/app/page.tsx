@@ -4,10 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTrustedVersion } from '@/lib/github-api';
 import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
-import { downloadBranch, DownloadProgress } from '@/lib/github-archive';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { CURATED_REPOS, getCuratedRepoPath, type CuratedRepoConfig } from '@/lib/curated-repos';
-import { isCuratedRepo } from '@/lib/repo-static';
 
 const HERO_SLOGANS = [
   'Shorten time-to-context on large codebases.',
@@ -61,7 +59,7 @@ function CommunityPanel() {
             <img
               src={badge.src}
               alt={badge.alt}
-              className="block h-5 w-auto max-w-full rounded-sm opacity-90 transition-opacity hover:opacity-100"
+              className="block h-7 w-auto max-w-full rounded-sm opacity-90 transition-opacity hover:opacity-100"
             />
           </a>
         ))}
@@ -75,8 +73,6 @@ export default function Home() {
   const { setRepository } = useRepository();
   const [repositories, setRepositories] = useState<RepositoryMetadata[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
 
   // Load existing repositories
   const loadData = async () => {
@@ -100,7 +96,6 @@ export default function Home() {
 
   // Handle repository download or open
   const handleRepositoryAction = async (githubRepo: CuratedRepoConfig) => {
-    const repoKey = `${githubRepo.owner}/${githubRepo.repo}`;
     const identifier = `${githubRepo.owner}~${githubRepo.repo}`;
     const existingRepo = repositories.find(
       (r) => r.source === 'github' && r.identifier === identifier
@@ -117,104 +112,19 @@ export default function Home() {
       return;
     }
 
-    // Otherwise, download it
-    setDownloadingRepo(repoKey);
     setError(null);
-
     try {
       const selectedBranch = getSelectedBranch(githubRepo);
       if (!selectedBranch) {
         throw new Error('No branch selected');
       }
 
-      if (!isCuratedRepo(githubRepo.owner, githubRepo.repo)) {
-        await downloadBranch(
-          githubRepo.owner,
-          githubRepo.repo,
-          selectedBranch,
-          setDownloadProgress
-        );
-        await loadData();
-      }
-
       await setRepository('github', identifier, githubRepo.displayName);
       router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed');
-    } finally {
-      setDownloadingRepo(null);
-      setDownloadProgress(null);
+      setError(err instanceof Error ? err.message : 'Failed to open repository');
     }
   };
-
-  // Show progress overlay if downloading
-  if (downloadProgress) {
-    return (
-      <div className="flex flex-col min-h-screen bg-gray-900 text-gray-100">
-        <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-          <div className="w-full max-w-md mx-auto">
-            <div className="p-8 bg-gradient-to-br from-gray-800/80 to-gray-800/60 border border-gray-700/50 rounded-2xl shadow-xl backdrop-blur-sm">
-              <div className="text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-full bg-gray-700/50 animate-pulse">
-                  <svg
-                    className="w-8 h-8 text-gray-300 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold mb-2 text-gray-100">Downloading Repository</h2>
-                <p className="text-sm text-gray-400 mb-6">
-                  {downloadProgress.message || 'Preparing...'}
-                </p>
-                <div className="w-full bg-gray-700/50 rounded-full h-3 mb-4 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-500 ease-out shadow-lg"
-                    style={{ width: `${downloadProgress.progress || 0}%` }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  {downloadProgress.phase === 'downloading' &&
-                    downloadProgress.bytesDownloaded &&
-                    downloadProgress.totalBytes && (
-                      <div className="text-sm text-gray-300 font-medium">
-                        {Math.round((downloadProgress.bytesDownloaded / 1024 / 1024) * 10) / 10} MB
-                        / {Math.round((downloadProgress.totalBytes / 1024 / 1024) * 10) / 10} MB
-                      </div>
-                    )}
-                  {downloadProgress.phase === 'storing' &&
-                    downloadProgress.filesProcessed &&
-                    downloadProgress.totalFiles && (
-                      <div className="text-sm text-gray-300 font-medium">
-                        Processing {downloadProgress.filesProcessed} / {downloadProgress.totalFiles}{' '}
-                        files
-                      </div>
-                    )}
-                  <div className="text-xs text-gray-500">
-                    {Math.round(downloadProgress.progress || 0)}% complete
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-950 text-gray-100 relative code-background">
@@ -278,7 +188,6 @@ export default function Home() {
           {/* Repo grid */}
           <div className="mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {CURATED_REPOS.map((repo) => {
-              const isDownloading = downloadingRepo === `${repo.owner}/${repo.repo}`;
               const selectedBranch = getSelectedBranch(repo);
               const selectedBranchLabel = selectedBranch ? formatDisplayRef(selectedBranch) : '';
               const avatarUrl = `/avatars/${repo.avatarFile ?? `${repo.owner}.png`}`;
@@ -287,7 +196,7 @@ export default function Home() {
                 <button
                   key={`${repo.owner}/${repo.repo}`}
                   onClick={() => !repo.dimmed && handleRepositoryAction(repo)}
-                  disabled={isDownloading || repo.dimmed}
+                  disabled={repo.dimmed}
                   className={`group relative p-5 bg-gray-900/60 border border-gray-800 rounded-xl transition-all duration-200 text-left overflow-hidden ${repo.dimmed ? 'opacity-25 grayscale cursor-default' : 'hover:bg-gray-800/70 hover:border-gray-700 cursor-pointer'}`}
                 >
                   <div className="flex gap-4">
@@ -338,30 +247,9 @@ export default function Home() {
                         {selectedBranchLabel}
                       </div>
                     )}
-                    {isDownloading ? (
-                      <div className="flex items-center gap-1.5 text-xs text-blue-400 ml-auto">
-                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          />
-                        </svg>
-                        Downloading…
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors ml-auto">
-                        Explore →
-                      </div>
-                    )}
+                    <div className="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors ml-auto">
+                      Explore →
+                    </div>
                   </div>
                 </button>
               );

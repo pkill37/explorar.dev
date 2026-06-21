@@ -38,16 +38,6 @@ async function openGuideFile(page: Page, path: string): Promise<void> {
     .click();
 }
 
-async function selectFileSource(
-  page: Page,
-  value: 'local-filesystem' | 'r2-bucket' | 'github-api'
-) {
-  const sourceMenuButton = page.getByLabel('Open file source menu').first();
-  await expect(sourceMenuButton).toBeVisible();
-  await sourceMenuButton.click();
-  await page.locator('select.vscode-source-select').first().selectOption(value);
-}
-
 async function routeStaticCorpus(page: Page, mainFileStatus: number): Promise<void> {
   await page.route('https://**/repos/littlekernel/lk/**', async (route) => {
     const url = route.request().url();
@@ -182,32 +172,5 @@ test.describe('Editor Loading', () => {
 
     await expect(page.getByText('Loading top/main.c...')).not.toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Failed to load file')).toBeVisible({ timeout: 15000 });
-  });
-
-  test('switching to api.github.com still renders the opened file in Monaco', async ({ page }) => {
-    await routeStaticCorpus(page, 404);
-    await routeGitHubContents(page, 200);
-
-    const response = await page.goto('/littlekernel/lk');
-    expect(response?.status()).toBe(200);
-
-    await selectFileSource(page, 'github-api');
-    await resetDebugLogs(page);
-    await openGuideFile(page, TEST_FILE_PATH);
-
-    await expectDebugLog(
-      page,
-      (entry) =>
-        entry.label === '[explorar:file-fetch-request] success' &&
-        entry.payload?.path === TEST_FILE_PATH &&
-        entry.payload?.resolvedSource === 'github-api',
-      `Expected GitHub API fetch success for ${TEST_FILE_PATH}`
-    );
-
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.locator('.monaco-editor .view-lines').first()).toContainText(
-      '#include <lk/main.h>',
-      { timeout: 15000 }
-    );
   });
 });

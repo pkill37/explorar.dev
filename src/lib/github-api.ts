@@ -1,30 +1,10 @@
-// GitHub API utilities for fetching source code from GitHub repositories
+// Curated repository file loading utilities.
 
-import { GitHubApiResponse, FileNode, GITHUB_CONFIG } from '@/types';
-import { getGitHubRepoIdentifier, isFileAvailable, getTreeStructure } from './repo-storage';
+import { FileNode, GITHUB_CONFIG } from '@/types';
+import { getGitHubRepoIdentifier } from './repo-storage';
 import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } from './repo-static';
-import { getHttpClient, isWebPlatform } from './platform';
-import { storeTreeStructure } from './repo-storage';
 import { getCuratedRepoRevision } from './curated-repos';
-import {
-  getFileSourceMode,
-  getFileSourceModeLabel,
-  InvalidR2PublicBaseUrlError,
-  isStaticFileSourceMode,
-  type FileSourceMode,
-} from './curated-content-url';
-import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
-import { debugLog } from './browser-debug';
-
-/**
- * Build headers for GitHub API requests
- */
-function buildGitHubHeaders(): HeadersInit {
-  return {
-    Accept: 'application/vnd.github.v3+json',
-    'User-Agent': 'Explorar.dev',
-  };
-}
+import type { FileFetchResult } from './file-fetch-debug';
 
 type GitHubConfig = {
   owner: string;
@@ -120,293 +100,33 @@ export class GitHubApiError extends Error {
   }
 }
 
-type GitHubContentsEntry = {
-  type: 'file' | 'dir';
-  name: string;
-  path: string;
-  size?: number;
-};
-
-async function performGitHubRequest(url: string, headers: HeadersInit): Promise<Response> {
-  if (isWebPlatform()) {
-    try {
-      const httpClient = getHttpClient();
-      return await httpClient.get(url, headers as Record<string, string>);
-    } catch {
-      return fetch(url, { headers });
-    }
-  }
-
-  return fetch(url, { headers });
-}
-
-async function readGitHubErrorDetail(response: Response): Promise<string> {
-  try {
-    const body = await response.clone().json();
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      return body.message;
-    }
-  } catch {
-    // Ignore JSON parse failures and try plain text.
-  }
-
-  try {
-    const text = (await response.clone().text()).trim();
-    if (text) {
-      return text;
-    }
-  } catch {
-    // Ignore text read failures.
-  }
-
-  return response.statusText || `HTTP ${response.status}`;
-}
-
-async function getGitHubJson<T>(url: string, context: string, headers: HeadersInit): Promise<T> {
-  const response = await performGitHubRequest(url, headers);
-  if (!response.ok) {
-    const detail = await readGitHubErrorDetail(response);
-    throw new GitHubApiError(`${context}: ${detail}`, response.status);
-  }
-  return response.json() as Promise<T>;
-}
-
-function buildFileTreeFromFlatPaths(
-  entries: Array<{ path: string; type: 'file' | 'directory'; size: number }>
-): FileNode[] {
-  const fileNodes: FileNode[] = [];
-  const nodeMap = new Map<string, FileNode>();
-
-  for (const entry of entries) {
-    const pathParts = entry.path.split('/').filter(Boolean);
-    const node: FileNode = {
-      name: pathParts[pathParts.length - 1],
-      path: entry.path,
-      type: entry.type,
-      size: entry.size,
-      isExpanded: false,
-      isLoaded: false,
-      children: entry.type === 'directory' ? [] : undefined,
-    };
-    nodeMap.set(entry.path, node);
-  }
-
-  for (const entry of entries) {
-    const node = nodeMap.get(entry.path);
-    if (!node) continue;
-
-    const pathParts = entry.path.split('/').filter(Boolean);
-    if (pathParts.length === 1) {
-      fileNodes.push(node);
-      continue;
-    }
-
-    const parentPath = pathParts.slice(0, -1).join('/');
-    const parent = nodeMap.get(parentPath);
-    if (parent) {
-      if (!parent.children) {
-        parent.children = [];
-      }
-      parent.children.push(node);
-    }
-  }
-
-  return fileNodes;
-}
-
-async function fetchTreeMetadataFromContentsApi(
-  owner: string,
-  repo: string,
-  branch: string,
-  headers: HeadersInit
-): Promise<FileNode[]> {
-  const allEntries: Array<{ path: string; type: 'file' | 'directory'; size: number }> = [];
-  const visitedDirectories = new Set<string>();
-
-  const walkDirectory = async (directoryPath: string): Promise<void> => {
-    if (visitedDirectories.has(directoryPath)) {
-      return;
-    }
-    visitedDirectories.add(directoryPath);
-
-    const encodedDirectoryPath = directoryPath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const contentsUrl = encodedDirectoryPath
-      ? `${currentConfig.apiBase}/${owner}/${repo}/contents/${encodedDirectoryPath}?ref=${encodeURIComponent(branch)}`
-      : `${currentConfig.apiBase}/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
-
-    const entries = await getGitHubJson<GitHubContentsEntry[]>(
-      contentsUrl,
-      `Failed to fetch contents for ${directoryPath || 'repository root'}`,
-      headers
-    );
-
-    for (const entry of entries) {
-      if (entry.type === 'dir') {
-        allEntries.push({
-          path: entry.path,
-          type: 'directory',
-          size: 0,
-        });
-        await walkDirectory(entry.path);
-        continue;
-      }
-
-      if (entry.type === 'file') {
-        allEntries.push({
-          path: entry.path,
-          type: 'file',
-          size: entry.size || 0,
-        });
-      }
-    }
-  };
-
-  await walkDirectory('');
-  return buildFileTreeFromFlatPaths(allEntries);
-}
-
 /**
- * Try to fetch file content from static files (local filesystem served over HTTP)
- * Always uses static files - no fallback to GitHub API
+ * Fetch file content from curated static files.
  */
 async function tryFetchFileFromStorage(
-  owner: string,
-  repo: string,
-  branch: string,
-  path: string,
-  source: Extract<FileSourceMode, 'local-filesystem' | 'r2-bucket'>
-): Promise<FileFetchResult | null> {
-  try {
-    try {
-      return await readFileFromStatic(owner, repo, branch, path, source);
-    } catch (error) {
-      if (error instanceof InvalidR2PublicBaseUrlError) {
-        throw error;
-      }
-      if (error instanceof Error && error.message.startsWith('File not found:')) {
-        console.warn(`File not found in ${source}: ${owner}/${repo}/${branch}/${path}`, error);
-        return null;
-      }
-      if (error instanceof Error) {
-        throw error;
-      }
-      console.warn(`File not found in ${source}: ${owner}/${repo}/${branch}/${path}`, error);
-      return null;
-    }
-  } catch (error) {
-    if (error instanceof InvalidR2PublicBaseUrlError) {
-      throw error;
-    }
-    console.error(`Error fetching file from ${source}:`, error);
-    return null;
-  }
-}
-
-/**
- * Fetch file content directly from GitHub API for a pinned ref.
- * Used as a fallback when curated static files are missing a subtree.
- */
-async function tryFetchFileFromGitHub(
   owner: string,
   repo: string,
   branch: string,
   path: string
 ): Promise<FileFetchResult | null> {
   try {
-    const fileUrl = `${currentConfig.apiBase}/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
-    const headers = buildGitHubHeaders();
-
-    let response: Response;
-    if (isWebPlatform()) {
-      try {
-        const httpClient = getHttpClient();
-        response = await httpClient.get(fileUrl, headers as Record<string, string>);
-      } catch {
-        response = await fetch(fileUrl, { headers });
-      }
-    } else {
-      response = await fetch(fileUrl, { headers });
-    }
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const fileData: GitHubApiResponse = await response.json();
-    if (fileData.type !== 'file' || !fileData.content || fileData.encoding !== 'base64') {
-      return null;
-    }
-
-    const content = atob(fileData.content.replace(/\n/g, ''));
-
-    // Store in IndexedDB for future use when possible.
     try {
-      const identifier = getGitHubRepoIdentifier(owner, repo);
-      const { storeFileInStorage } = await import('./repo-storage');
-      await storeFileInStorage('github', identifier, branch, path, content);
-    } catch {
-      // Cache write is best-effort only.
+      return await readFileFromStatic(owner, repo, branch, path);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('File not found:')) {
+        console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
+        return null;
+      }
+      if (error instanceof Error) {
+        throw error;
+      }
+      console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
+      return null;
     }
-
-    const result: FileFetchResult = {
-      content,
-      debugInfo: {
-        enabled: true,
-        source: 'github-api',
-        requestUrl: fileUrl,
-        responseUrl: response.url || undefined,
-        responseStatus: response.status,
-        contentLength: response.headers.get('content-length'),
-      },
-    };
-
-    logFileFetchDebugInfo(result.debugInfo);
-    return result;
-  } catch {
+  } catch (error) {
+    console.error('Error fetching file from r2-bucket:', error);
     return null;
   }
-}
-
-function buildSelectedSourceError(
-  owner: string,
-  repo: string,
-  branch: string,
-  path: string,
-  source: FileSourceMode,
-  repoMode: 'curated' | 'arbitrary',
-  cause?: unknown
-): GitHubApiError {
-  const sourceLabel = getFileSourceModeLabel(source);
-
-  if (repoMode === 'arbitrary' && source !== 'github-api') {
-    return new GitHubApiError(
-      `${sourceLabel} is only available for curated repositories.\n\n` +
-        `Switch the source selector to api.github.com to load ${owner}/${repo}@${branch}:${path}.`,
-      400
-    );
-  }
-
-  if (source === 'github-api') {
-    return new GitHubApiError(
-      `Failed to load "${path}" from api.github.com for ${owner}/${repo}@${branch}.`,
-      404
-    );
-  }
-
-  if (cause instanceof Error) {
-    return new GitHubApiError(
-      `Failed to load "${path}" from ${sourceLabel} for ${owner}/${repo}@${branch}.\n\n${cause.message}`,
-      404
-    );
-  }
-
-  return new GitHubApiError(
-    `Failed to load "${path}" from ${sourceLabel} for ${owner}/${repo}@${branch}.`,
-    404
-  );
 }
 
 export async function fetchRepositoryFile(
@@ -415,166 +135,21 @@ export async function fetchRepositoryFile(
   branch: string,
   path: string
 ): Promise<FileFetchResult> {
-  const source = getFileSourceMode();
-  const repoMode = getRepositoryMode(owner, repo);
-  debugLog('[explorar:file-fetch-request] start', {
-    owner,
-    repo,
-    branch,
-    path,
-    source,
-    repoMode,
-  });
-
-  if (source === 'github-api') {
-    const apiResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
-    if (apiResult) {
-      debugLog('[explorar:file-fetch-request] success', {
-        owner,
-        repo,
-        branch,
-        path,
-        source,
-        resolvedSource: 'github-api',
-        contentLength: apiResult.content.length,
-      });
-      return apiResult;
-    }
-
-    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
-  }
-
-  if (!isStaticFileSourceMode(source)) {
-    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
-  }
-
-  if (repoMode !== 'curated') {
-    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
-  }
-
   try {
-    const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path, source);
+    const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path);
     if (staticResult) {
-      debugLog('[explorar:file-fetch-request] success', {
-        owner,
-        repo,
-        branch,
-        path,
-        source,
-        resolvedSource: source,
-        contentLength: staticResult.content.length,
-      });
       return staticResult;
     }
   } catch (error) {
-    throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode, error);
+    throw error;
   }
 
-  // Curated static corpora may be intentionally sparse in local dev and R2.
-  // Fall back to GitHub for pinned refs when a file is missing from the staged payload.
-  const apiFallbackResult = await tryFetchFileFromGitHub(owner, repo, branch, path);
-  if (apiFallbackResult) {
-    debugLog('[explorar:file-fetch-request] fallback-success', {
-      owner,
-      repo,
-      branch,
-      path,
-      source,
-      resolvedSource: 'github-api',
-      contentLength: apiFallbackResult.content.length,
-    });
-    return apiFallbackResult;
-  }
-
-  debugLog('[explorar:file-fetch-request] failure', {
-    owner,
-    repo,
-    branch,
-    path,
-    source,
-    repoMode,
-  });
-  throw buildSelectedSourceError(owner, repo, branch, path, source, repoMode);
+  throw new GitHubApiError(
+    `Failed to load "${path}" from r2-bucket for ${owner}/${repo}@${branch}.`,
+    404
+  );
 }
 
-/**
- * Fetch full tree metadata for arbitrary GitHub repositories
- * Uses GitHub API with recursive tree endpoint to get complete file structure
- */
-export async function fetchFullTreeMetadata(
-  owner: string,
-  repo: string,
-  branch: string
-): Promise<FileNode[]> {
-  const headers = buildGitHubHeaders();
-
-  try {
-    // Resolve the ref through the commits endpoint so pinned SHAs, tags, and branch
-    // names all work. The branches endpoint only accepts named branches.
-    const commitUrl = `${currentConfig.apiBase}/${owner}/${repo}/commits/${encodeURIComponent(branch)}`;
-    const commitData = await getGitHubJson<{ commit?: { tree?: { sha?: string } } }>(
-      commitUrl,
-      `Failed to fetch commit for ${owner}/${repo}@${branch}`,
-      headers
-    );
-    const treeSha = commitData.commit?.tree?.sha;
-
-    if (!treeSha) {
-      throw new GitHubApiError('Failed to get tree SHA from branch', 500);
-    }
-
-    // Fetch recursive tree
-    const treeUrl = `${currentConfig.apiBase}/${owner}/${repo}/git/trees/${treeSha}?recursive=1`;
-    const treeData = await getGitHubJson<{
-      tree?: Array<{ path: string; type: 'tree' | 'blob'; size?: number }>;
-    }>(treeUrl, `Failed to fetch tree for ${owner}/${repo}@${branch}`, headers);
-    const tree = treeData.tree || [];
-    const fileNodes = buildFileTreeFromFlatPaths(
-      tree.map((item) => ({
-        path: item.path,
-        type: item.type === 'tree' ? 'directory' : 'file',
-        size: item.size || 0,
-      }))
-    );
-
-    // Store tree structure in IndexedDB
-    const identifier = getGitHubRepoIdentifier(owner, repo);
-    await storeTreeStructure('github', identifier, branch, fileNodes);
-
-    return fileNodes;
-  } catch (error) {
-    if (error instanceof GitHubApiError) {
-      console.warn(
-        `Falling back to GitHub contents API for ${owner}/${repo}@${branch}: ${error.message}`
-      );
-
-      try {
-        const fileNodes = await fetchTreeMetadataFromContentsApi(owner, repo, branch, headers);
-        const identifier = getGitHubRepoIdentifier(owner, repo);
-        await storeTreeStructure('github', identifier, branch, fileNodes);
-        return fileNodes;
-      } catch (fallbackError) {
-        if (fallbackError instanceof GitHubApiError) {
-          throw fallbackError;
-        }
-        throw new GitHubApiError(
-          `Failed to fetch full tree metadata via contents API: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
-          500
-        );
-      }
-    }
-
-    throw new GitHubApiError(
-      `Failed to fetch full tree metadata: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    );
-  }
-}
-
-/**
- * Fetch file content from local storage first, then GitHub API as fallback
- * Supports both curated (static files) and arbitrary (GitHub API) repos
- */
 export async function fetchFileContent(path: string): Promise<FileFetchResult> {
   // Validate configuration
   if (!currentConfig.owner || !currentConfig.repo) {
@@ -604,9 +179,6 @@ export async function fetchFileContent(path: string): Promise<FileFetchResult> {
   return fetchRepositoryFile(currentConfig.owner, currentConfig.repo, currentConfig.branch, path);
 }
 
-/**
- * Sort FileNode array: directories first (with folder icons), then files (with file icons), both alphabetically
- */
 export function sortFileNodes(nodes: FileNode[]): FileNode[] {
   return nodes
     .sort((a, b) => {
@@ -625,9 +197,6 @@ export function sortFileNodes(nodes: FileNode[]): FileNode[] {
     });
 }
 
-/**
- * Extract subtree from complete tree structure for a given path
- */
 function extractSubtree(tree: FileNode[], path: string): FileNode[] {
   if (!path) {
     return tree;
@@ -647,62 +216,13 @@ function extractSubtree(tree: FileNode[], path: string): FileNode[] {
   return currentNodes;
 }
 
-/**
- * Update isLoaded status for files in tree based on availability
- */
-async function updateFileLoadedStatus(
-  nodes: FileNode[],
-  owner: string,
-  repo: string,
-  branch: string
-): Promise<void> {
-  const identifier = getGitHubRepoIdentifier(owner, repo);
-
-  for (const node of nodes) {
-    if (node.type === 'file') {
-      node.isLoaded = await isFileAvailable('github', identifier, branch, node.path);
-    } else if (node.children) {
-      await updateFileLoadedStatus(node.children, owner, repo, branch);
-    }
-  }
-}
-
-/**
- * Build file tree from static files, stored tree structure, or GitHub API
- * Supports both curated (static) and arbitrary (GitHub API) repos
- */
 export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
   try {
     const { owner, repo, branch } = currentConfig;
     const mode = getRepositoryMode(owner, repo);
-    const source = getFileSourceMode();
 
-    if (source === 'github-api') {
-      const identifier = getGitHubRepoIdentifier(owner, repo);
-      let completeTree = await getTreeStructure('github', identifier, branch);
-
-      if (!completeTree || completeTree.length === 0) {
-        try {
-          completeTree = await fetchFullTreeMetadata(owner, repo, branch);
-        } catch (error) {
-          console.error('Failed to fetch full tree metadata:', error);
-          return [];
-        }
-      }
-
-      if (completeTree && completeTree.length > 0) {
-        let subtree = extractSubtree(completeTree, path);
-        await updateFileLoadedStatus(completeTree, owner, repo, branch);
-        subtree = extractSubtree(completeTree, path);
-        return subtree;
-      }
-
-      return [];
-    }
-
-    // For curated repos, use static files
     if (mode === 'curated') {
-      const staticTree = await getTreeStructureFromStatic(owner, repo, branch, source);
+      const staticTree = await getTreeStructureFromStatic(owner, repo, branch);
       if (staticTree && staticTree.length > 0) {
         // Extract subtree for requested path
         const subtree = extractSubtree(staticTree, path);
@@ -723,37 +243,6 @@ export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
       }
     }
 
-    // For arbitrary repos, use IndexedDB storage or fetch from GitHub API
-    const identifier = getGitHubRepoIdentifier(owner, repo);
-
-    // First, try to get complete tree structure from storage
-    let completeTree = await getTreeStructure('github', identifier, branch);
-
-    // If not in storage, fetch full tree metadata from GitHub API
-    if (!completeTree || completeTree.length === 0) {
-      try {
-        completeTree = await fetchFullTreeMetadata(owner, repo, branch);
-      } catch (error) {
-        console.error('Failed to fetch full tree metadata:', error);
-        // Return empty tree if fetch fails
-        return [];
-      }
-    }
-
-    if (completeTree && completeTree.length > 0) {
-      // Extract subtree for requested path
-      let subtree = extractSubtree(completeTree, path);
-
-      // Update isLoaded status for files based on availability
-      // We need to update the entire tree, not just the subtree
-      // So we'll update the complete tree and then extract
-      await updateFileLoadedStatus(completeTree, owner, repo, branch);
-      subtree = extractSubtree(completeTree, path);
-
-      return subtree;
-    }
-
-    // Fallback: return empty tree
     return [];
   } catch (error) {
     console.error(`Failed to build file tree for path: ${path}`, error);

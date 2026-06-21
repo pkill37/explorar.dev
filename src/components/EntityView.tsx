@@ -1,20 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchRepositoryFile } from '@/lib/github-api';
-import { getRepoIdentifier } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
 import { findSymbolsInFile, type SymbolReference } from '@/lib/cross-reference';
-import { getTreeStructure } from '@/lib/repo-storage';
 import { getRepositoryMode, getTreeStructureFromStatic } from '@/lib/repo-static';
-import {
-  getFileSourceMode,
-  getFileSourceModeServerSnapshot,
-  isStaticFileSourceMode,
-  subscribeToFileSourceMode,
-} from '@/lib/curated-content-url';
 import type { FileNode } from '@/types';
 
 // ─── Importance tiers ────────────────────────────────────────────────────────
@@ -794,11 +786,7 @@ export function EntityView({
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultRevision ?? 'main';
-  const fileSourceMode = useSyncExternalStore(
-    subscribeToFileSourceMode,
-    getFileSourceMode,
-    getFileSourceModeServerSnapshot
-  );
+  const fileSourceMode = 'r2-bucket' as const;
 
   // Per-key entity cache — key is chapterId or '__all__'
   const cacheRef = useRef<Map<string, ScoredEntity[]>>(new Map());
@@ -861,15 +849,10 @@ export function EntityView({
 
       try {
         const repoMode = getRepositoryMode(owner, repo);
-        const tree =
-          repoMode === 'curated'
-            ? await getTreeStructureFromStatic(
-                owner,
-                repo,
-                branch,
-                isStaticFileSourceMode(fileSourceMode) ? fileSourceMode : 'local-filesystem'
-              )
-            : await getTreeStructure('github', getRepoIdentifier(owner, repo), branch);
+        if (repoMode !== 'curated') {
+          throw new Error(`Repository ${owner}/${repo} is not curated`);
+        }
+        const tree = await getTreeStructureFromStatic(owner, repo, branch);
 
         if (cancelled) return;
 

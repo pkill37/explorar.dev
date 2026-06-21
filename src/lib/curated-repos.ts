@@ -23,6 +23,8 @@ export interface CuratedRepoConfig {
   avatarFile?: string;
   /** URL to fetch the avatar from at build time. Defaults to github.com/{owner}.png */
   buildAvatarUrl?: string;
+  /** Optional build-time version marker for refreshing a specific avatar asset. */
+  avatarVersion?: string;
 }
 
 export const CURATED_REPOS: CuratedRepoConfig[] = [
@@ -98,6 +100,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-sky-500/10 to-blue-500/10',
     category: 'Operating Systems',
     avatarFile: 'mrcxlinux.svg',
+    avatarVersion: '2',
     description:
       'Explore the Windows Server 2003 source tree, with focus on its build layout, core subsystem families, and server-oriented components.',
     seoDescription:

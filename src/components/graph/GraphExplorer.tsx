@@ -19,7 +19,6 @@ import { FileNode } from './FileNode';
 import { FolderNode } from './FolderNode';
 import { PairedNode } from './PairedNode';
 import { GraphControls } from './GraphControls';
-import { CodeIntelPanel } from './CodeIntelPanel';
 import { ZoomWatcher } from './ZoomWatcher';
 import { GraphLegend } from './GraphLegend';
 import {
@@ -32,7 +31,6 @@ import {
   FOLDER_NODE_HEIGHT,
   type FileNodeData,
   type FolderNodeData,
-  type PairedNodeData,
 } from '@/lib/graph-data';
 import {
   parseSymbols,
@@ -41,19 +39,11 @@ import {
   type FileSymbols,
 } from '@/lib/code-analysis';
 import { fetchRepositoryFile } from '@/lib/github-api';
+import { GitHubApiError } from '@/lib/github-api';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { GraphContext } from '@/contexts/GraphContext';
-import {
-  buildImportedEdges,
-  findQueryMatchedNodeIds,
-  getNodeEvidenceSummary,
-  getSelectedNodePaths,
-  loadOpenCodeIntelBundle,
-  parseOpenCodeIntel,
-  saveOpenCodeIntelBundle,
-  type OpenCodeIntelBundle,
-} from '@/lib/open-code-intel';
+import { getTreeStructureFromStatic, isCuratedRepo } from '@/lib/repo-static';
 
 // Defined at module scope to avoid ReactFlow "nodeTypes changed" warnings
 const nodeTypes: NodeTypes = {
@@ -164,6 +154,26 @@ interface ChapterMapEntry {
   graph?: string;
 }
 
+type StaticTreeNode = {
+  path: string;
+  type: 'file' | 'directory';
+  children?: StaticTreeNode[];
+};
+
+function collectStaticFilePaths(
+  nodes: StaticTreeNode[] | null | undefined,
+  output: Set<string>
+): void {
+  if (!nodes) return;
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      output.add(node.path);
+      continue;
+    }
+    collectStaticFilePaths(node.children, output);
+  }
+}
+
 interface GraphFlowProps {
   owner: string;
   repo: string;
@@ -192,17 +202,13 @@ function GraphFlow({
   const cwdRef = useRef('');
   cwdRef.current = cwd;
 
-  // Analysis edges are computed incrementally and merged with guide/imported edges.
+  // Analysis edges are computed incrementally and merged with guide edges.
   const analysisEdgesRef = useRef<Edge[]>([]);
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [symbolsMap, setSymbolsMap] = useState<Map<string, FileSymbols>>(new Map());
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [codeIntelBundle, setCodeIntelBundle] = useState<OpenCodeIntelBundle | null>(null);
-  const [graphQuery, setGraphQuery] = useState('');
-  const [matchedNodeIds, setMatchedNodeIds] = useState<string[]>([]);
-
   // ── Initial view: root depth=1 (no chapter active) ───────────────────────
   const initialView = useMemo(
     () => buildCwdView(allFileNodes, allFileEdges, ''),
@@ -212,29 +218,14 @@ function GraphFlow({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialView.nodes as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialView.edges);
-  const knownFilePathSet = useMemo(
-    () => new Set(allFileNodes.map((node) => node.id)),
-    [allFileNodes]
-  );
-  const importedEdges = useMemo(
-    () =>
-      codeIntelBundle
-        ? buildImportedEdges(codeIntelBundle).filter(
-            (edge) => knownFilePathSet.has(edge.source) && knownFilePathSet.has(edge.target)
-          )
-        : [],
-    [codeIntelBundle, knownFilePathSet]
-  );
-
   const getEffectiveFileEdges = useCallback(
     () => [
       ...allFileEdges.filter(
         (edge) => !edge.id.startsWith('analysis-') && !edge.id.startsWith('imported-')
       ),
       ...analysisEdgesRef.current,
-      ...importedEdges,
     ],
-    [allFileEdges, importedEdges]
+    [allFileEdges]
   );
 
   const rebuildCurrentView = useCallback(() => {
@@ -263,13 +254,8 @@ function GraphFlow({
   }, [allFileNodes, chapterMapEntries, getEffectiveFileEdges, setEdges, setNodes]);
 
   useEffect(() => {
-    setCodeIntelBundle(loadOpenCodeIntelBundle(owner, repo, branch));
-  }, [owner, repo, branch]);
-
-  useEffect(() => {
-    saveOpenCodeIntelBundle(owner, repo, branch, codeIntelBundle);
     rebuildCurrentView();
-  }, [owner, repo, branch, codeIntelBundle, rebuildCurrentView]);
+  }, [rebuildCurrentView]);
 
   // ── React to chapter change ───────────────────────────────────────────────
   const prevChapterRef = useRef<string | null | undefined>(undefined);
@@ -335,10 +321,25 @@ function GraphFlow({
     if (analysisRan.current || allFileNodes.length === 0 || !branch) return;
     analysisRan.current = true;
 
-    const allFilePaths = allFileNodes.map((n) => n.id);
-
     async function runAnalysis() {
-      console.log(`[GraphFlow] runAnalysis start: ${allFilePaths.length} files to fetch`);
+      const pathAvailability = new Set<string>();
+      const allFilePaths = allFileNodes.filter((n) => !n.data.isDirectory).map((n) => n.id);
+
+      if (isCuratedRepo(owner, repo)) {
+        try {
+          const staticTree = await getTreeStructureFromStatic(owner, repo, branch);
+          collectStaticFilePaths(staticTree as StaticTreeNode[] | null, pathAvailability);
+        } catch (error) {
+          console.warn('[GraphFlow] failed to load curated tree for analysis filtering', error);
+        }
+      }
+
+      const fetchablePaths =
+        pathAvailability.size > 0
+          ? allFilePaths.filter((path) => pathAvailability.has(path))
+          : allFilePaths;
+
+      console.log(`[GraphFlow] runAnalysis start: ${fetchablePaths.length} files to fetch`);
       console.time('[GraphFlow] runAnalysis total');
       setAnalysisLoading(true);
 
@@ -355,9 +356,9 @@ function GraphFlow({
 
       const BATCH = 12;
       console.time('[GraphFlow] fetch all batches');
-      for (let i = 0; i < allFilePaths.length; i += BATCH) {
-        const batch = allFilePaths.slice(i, i + BATCH);
-        const batchLabel = `[GraphFlow] fetch batch ${Math.floor(i / BATCH) + 1}/${Math.ceil(allFilePaths.length / BATCH)} (files ${i}–${Math.min(i + BATCH, allFilePaths.length) - 1})`;
+      for (let i = 0; i < fetchablePaths.length; i += BATCH) {
+        const batch = fetchablePaths.slice(i, i + BATCH);
+        const batchLabel = `[GraphFlow] fetch batch ${Math.floor(i / BATCH) + 1}/${Math.ceil(fetchablePaths.length / BATCH)} (files ${i}–${Math.min(i + BATCH, fetchablePaths.length) - 1})`;
         console.time(batchLabel);
         await Promise.all(
           batch.map(async (filePath) => {
@@ -375,6 +376,12 @@ function GraphFlow({
               contentsMap.set(filePath, text);
               newSymbolsMap.set(filePath, parseSymbols(filePath, text));
             } catch (err) {
+              if (err instanceof GitHubApiError && err.status === 404) {
+                return;
+              }
+              if (err instanceof Error && /File not found/i.test(err.message)) {
+                return;
+              }
               console.warn(`[GraphFlow] fetch error: ${filePath}`, err);
             }
           })
@@ -385,7 +392,7 @@ function GraphFlow({
       }
       console.timeEnd('[GraphFlow] fetch all batches');
       console.log(
-        `[GraphFlow] fetched ${contentsMap.size}/${allFilePaths.length} files, parsed ${newSymbolsMap.size} symbol maps`
+        `[GraphFlow] fetched ${contentsMap.size}/${fetchablePaths.length} files, parsed ${newSymbolsMap.size} symbol maps`
       );
       // Single state update after all batches — avoids per-batch re-renders
       setSymbolsMap(new Map(newSymbolsMap));
@@ -394,7 +401,7 @@ function GraphFlow({
       await yieldToMain();
 
       console.time('[GraphFlow] findRelationships');
-      const relationships = findRelationships(newSymbolsMap, allFilePaths, contentsMap);
+      const relationships = findRelationships(newSymbolsMap, fetchablePaths, contentsMap);
       console.timeEnd('[GraphFlow] findRelationships');
       console.log(`[GraphFlow] found ${relationships.length} relationships`);
 
@@ -447,71 +454,6 @@ function GraphFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allFileNodes, allFileEdges, owner, repo, branch, getEffectiveFileEdges]);
 
-  const selectedPaths = useMemo(
-    () =>
-      getSelectedNodePaths(
-        selectedFilePath,
-        nodes as Array<Node<FileNodeData | FolderNodeData | PairedNodeData>>
-      ),
-    [selectedFilePath, nodes]
-  );
-
-  const selectedEvidence = useMemo(
-    () => getNodeEvidenceSummary(selectedPaths, codeIntelBundle, edges),
-    [selectedPaths, codeIntelBundle, edges]
-  );
-
-  const displayNodes = useMemo(() => {
-    const matchedSet = new Set(matchedNodeIds);
-    const hasQueryMatches = matchedSet.size > 0;
-
-    return nodes.map((node) => {
-      if (!hasQueryMatches) {
-        return node;
-      }
-
-      const isMatched = matchedSet.has(node.id);
-      return {
-        ...node,
-        style: {
-          ...(node.style ?? {}),
-          opacity: isMatched ? 1 : 0.28,
-          boxShadow: isMatched ? '0 0 0 2px rgba(251,191,36,0.9)' : undefined,
-        },
-      };
-    });
-  }, [nodes, matchedNodeIds]);
-
-  const handleImportBundle = useCallback(
-    (raw: string) => {
-      const bundle = parseOpenCodeIntel(raw, repo);
-      setCodeIntelBundle(bundle);
-    },
-    [repo]
-  );
-
-  const handleClearBundle = useCallback(() => {
-    setCodeIntelBundle(null);
-    setMatchedNodeIds([]);
-  }, []);
-
-  const handleFocusQuery = useCallback(() => {
-    const matches = findQueryMatchedNodeIds(
-      graphQuery,
-      nodes as Array<Node<FileNodeData | FolderNodeData | PairedNodeData>>,
-      codeIntelBundle
-    );
-    setMatchedNodeIds(matches);
-    if (matches.length > 0) {
-      fitView({
-        nodes: matches.map((id) => ({ id })),
-        padding: 0.28,
-        duration: 480,
-        maxZoom: 2.4,
-      });
-    }
-  }, [codeIntelBundle, fitView, graphQuery, nodes]);
-
   // ── Node interaction ──────────────────────────────────────────────────────
 
   const handleNodeClick: NodeMouseHandler = useCallback(
@@ -558,7 +500,7 @@ function GraphFlow({
       {activeChapterId && <ChapterHint activeChapterId={activeChapterId} />}
 
       <ReactFlow
-        nodes={displayNodes}
+        nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -579,18 +521,6 @@ function GraphFlow({
           size={1}
           color="#222"
           style={{ background: '#0d0d0d' }}
-        />
-        <CodeIntelPanel
-          bundle={codeIntelBundle}
-          selectedNodeId={selectedFilePath}
-          selectedPaths={selectedPaths}
-          selectedEvidence={selectedEvidence}
-          query={graphQuery}
-          queryMatchCount={matchedNodeIds.length}
-          onQueryChange={setGraphQuery}
-          onFocusQuery={handleFocusQuery}
-          onImportBundle={handleImportBundle}
-          onClearBundle={handleClearBundle}
         />
         <ZoomWatcher selectedFilePath={selectedFilePath} onEnterFile={onEnterFile} />
         <GraphControls selectedFilePath={selectedFilePath} onEnterEditor={handleEnterEditor} />

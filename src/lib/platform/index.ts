@@ -3,7 +3,7 @@
  * Allows the codebase to work in both web and VSCode extension contexts
  */
 
-export type RepositoryMode = 'curated' | 'arbitrary' | 'workspace';
+export type RepositoryMode = 'curated' | 'workspace';
 
 export interface FileSystemProvider {
   readFile(path: string): Promise<string>;

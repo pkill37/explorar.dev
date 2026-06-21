@@ -3,7 +3,7 @@
 // are typically fetched from a direct public bucket/custom-domain origin.
 
 import type { FileNode } from '@/types';
-import { buildCuratedRepoUrl, type StaticFileSourceMode } from './curated-content-url';
+import { buildCuratedRepoUrl } from './curated-content-url';
 import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
 import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
 import { debugLog } from './browser-debug';
@@ -34,43 +34,31 @@ export function isCuratedRepo(owner: string, repo: string): boolean {
 }
 
 /**
- * Get repository mode: curated (static files) or arbitrary (GitHub API)
+ * Get repository mode: curated (static files)
  */
-export function getRepositoryMode(owner: string, repo: string): 'curated' | 'arbitrary' {
-  return isCuratedRepo(owner, repo) ? 'curated' : 'arbitrary';
+export function getRepositoryMode(owner: string, repo: string): 'curated' {
+  if (!isCuratedRepo(owner, repo)) {
+    throw new Error(`Repository ${owner}/${repo} is not curated`);
+  }
+
+  return 'curated';
 }
 
-export const getStaticFilePath = (
-  owner: string,
-  repo: string,
-  branch: string,
-  filePath: string,
-  source: StaticFileSourceMode = 'local-filesystem'
-) => buildCuratedRepoUrl(owner, repo, branch, filePath, source);
+export const getStaticFilePath = (owner: string, repo: string, branch: string, filePath: string) =>
+  buildCuratedRepoUrl(owner, repo, branch, filePath);
 
 function getStaticFileCandidates(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string,
-  source: StaticFileSourceMode
-): Array<{ url: string; resolvedSource: StaticFileSourceMode }> {
-  const candidates: Array<{ url: string; resolvedSource: StaticFileSourceMode }> = [
+  filePath: string
+): Array<{ url: string; resolvedSource: 'r2-bucket' }> {
+  const candidates: Array<{ url: string; resolvedSource: 'r2-bucket' }> = [
     {
-      url: getStaticFilePath(owner, repo, branch, filePath, source),
-      resolvedSource: source,
+      url: getStaticFilePath(owner, repo, branch, filePath),
+      resolvedSource: 'r2-bucket',
     },
   ];
-
-  if (source === 'r2-bucket') {
-    const sameOriginUrl = getStaticFilePath(owner, repo, branch, filePath, 'local-filesystem');
-    if (sameOriginUrl !== candidates[0].url) {
-      candidates.push({
-        url: sameOriginUrl,
-        resolvedSource: 'local-filesystem',
-      });
-    }
-  }
 
   return candidates;
 }
@@ -82,10 +70,9 @@ export async function readFileFromStatic(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string,
-  source: StaticFileSourceMode = 'local-filesystem'
+  filePath: string
 ): Promise<FileFetchResult> {
-  const candidates = getStaticFileCandidates(owner, repo, branch, filePath, source);
+  const candidates = getStaticFileCandidates(owner, repo, branch, filePath);
 
   let lastError: Error | null = null;
 
@@ -96,7 +83,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source,
+        source: 'r2-bucket',
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
       });
@@ -108,7 +95,7 @@ export async function readFileFromStatic(
           repo,
           branch,
           filePath,
-          source,
+          source: 'r2-bucket',
           resolvedSource: candidate.resolvedSource,
           url: candidate.url,
           status: response.status,
@@ -126,7 +113,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source,
+        source: 'r2-bucket',
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
         contentLength: content.length,
@@ -136,7 +123,7 @@ export async function readFileFromStatic(
         content,
         debugInfo: {
           enabled: true,
-          source: candidate.resolvedSource === 'r2-bucket' ? 'r2-bucket' : 'local-filesystem',
+          source: 'r2-bucket',
           requestUrl: candidate.url,
           responseUrl: response.url || undefined,
           responseStatus: response.status,
@@ -159,7 +146,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source,
+        source: 'r2-bucket',
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
         error: normalizedError.message,
@@ -199,8 +186,7 @@ function expandManifestNodes(nodes: ManifestNode[], parentPath: string = ''): Fi
 export async function getTreeStructureFromStatic(
   owner: string,
   repo: string,
-  branch: string,
-  source: StaticFileSourceMode = 'local-filesystem'
+  branch: string
 ): Promise<FileNode[] | null> {
   // Only try to fetch manifest for curated repos
   if (!isCuratedRepo(owner, repo)) {
@@ -211,7 +197,7 @@ export async function getTreeStructureFromStatic(
   const manifestFileNames = ['repo-manifest.json', '.repo-manifest.json'];
 
   for (const manifestFileName of manifestFileNames) {
-    const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName, source);
+    const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName);
 
     for (const candidate of candidates) {
       try {
@@ -226,7 +212,7 @@ export async function getTreeStructureFromStatic(
             owner,
             repo,
             branch,
-            source,
+            source: 'r2-bucket',
             resolvedSource: candidate.resolvedSource,
             url: candidate.url,
           });
@@ -241,7 +227,7 @@ export async function getTreeStructureFromStatic(
           owner,
           repo,
           branch,
-          source,
+          source: 'r2-bucket',
           resolvedSource: candidate.resolvedSource,
           url: candidate.url,
           status: response.status,
@@ -252,7 +238,7 @@ export async function getTreeStructureFromStatic(
           owner,
           repo,
           branch,
-          source,
+          source: 'r2-bucket',
           resolvedSource: candidate.resolvedSource,
           url: candidate.url,
           error: error instanceof Error ? error.message : String(error),

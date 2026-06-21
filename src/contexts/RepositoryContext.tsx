@@ -13,19 +13,12 @@ import React, {
 } from 'react';
 import {
   getAvailableBranches,
-  repositoryExists,
   getStorageUsage,
   parseGitHubRepoIdentifier,
 } from '@/lib/repo-storage';
-import {
-  downloadBranch,
-  getBranchDownloadStatus,
-  DownloadProgress,
-  BranchDownloadStatus,
-} from '@/lib/github-archive';
-import { getTrustedVersion, filterUnstableBranches } from '@/lib/github-api';
+import { DownloadProgress, BranchDownloadStatus } from '@/lib/github-archive';
+import { getTrustedVersion } from '@/lib/github-api';
 import { isCuratedRepo, getRepositoryMode as getRepoMode } from '@/lib/repo-static';
-import { downloadFullTreeMetadata } from '@/lib/github-archive';
 
 export interface RepositoryState {
   // Current repository
@@ -63,12 +56,8 @@ export interface RepositoryActions {
   refreshBranches: () => Promise<void>;
 
   // GitHub-specific actions
-  downloadBranchIfNeeded: (branch: string) => Promise<void>;
-  fetchFullTreeMetadata: (owner: string, repo: string, branch: string) => Promise<void>;
-
-  // Utility
   getRepoInfo: () => { owner?: string; repo?: string; repoId?: string } | null;
-  getRepositoryMode: () => 'curated' | 'arbitrary' | 'workspace' | null;
+  getRepositoryMode: () => 'curated' | 'workspace' | null;
 }
 
 interface RepositoryContextValue extends RepositoryState, RepositoryActions {}
@@ -118,64 +107,33 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // For curated GitHub repos, they're already available at build time
-        let isCurated = false;
         if (source === 'github') {
           const { owner, repo } = parseGitHubRepoIdentifier(identifier);
-          isCurated = isCuratedRepo(owner, repo);
-        }
-
-        // Check if repository exists (for non-curated repos, check IndexedDB)
-        if (!isCurated) {
-          console.log('[Repository Context] Checking if repository exists:', {
-            source,
-            identifier,
-            displayName,
-          });
-          const exists = await repositoryExists(source, identifier);
-          console.log('[Repository Context] Repository exists check result:', {
-            source,
-            identifier,
-            displayName,
-            exists,
-          });
-          if (!exists) {
-            console.error('[Repository Context] Repository not found in local storage:', {
-              source,
-              identifier,
-              displayName,
-            });
-            throw new Error(`Repository ${displayName} not found in local storage`);
+          if (!isCuratedRepo(owner, repo)) {
+            throw new Error(`Repository ${displayName} is not curated and is no longer supported`);
           }
         }
 
         // Get available branches
-        // For curated repos, use trusted branch directly
         let branches: string[] = [];
-        if (isCurated && source === 'github') {
+        if (source === 'github') {
           const { owner, repo } = parseGitHubRepoIdentifier(identifier);
           const trustedVersion = getTrustedVersion(owner, repo);
           branches = trustedVersion ? [trustedVersion] : [];
-        } else {
-          branches = await getAvailableBranches(source, identifier);
-        }
-
-        // Filter out main/master branches - they are unstable
-        if (source === 'github') {
-          branches = filterUnstableBranches(branches);
         }
 
         if (branches.length === 0) {
           throw new Error(`No stable branches found for repository ${displayName}`);
         }
 
-        // Get trusted branches for GitHub repos
-        let trustedBranches: string[] = [];
-        if (source === 'github') {
-          const { owner, repo } = parseGitHubRepoIdentifier(identifier);
-          const trustedVersion = getTrustedVersion(owner, repo);
-          trustedBranches = trustedVersion ? [trustedVersion] : [];
-        }
+        const trustedBranches =
+          source === 'github'
+            ? (() => {
+                const { owner, repo } = parseGitHubRepoIdentifier(identifier);
+                const trustedVersion = getTrustedVersion(owner, repo);
+                return trustedVersion ? [trustedVersion] : [];
+              })()
+            : [];
 
         // Set default branch (first trusted branch if available, otherwise first available stable branch)
         const defaultBranch =
@@ -183,9 +141,8 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
             ? trustedBranches.find((branch) => branches.includes(branch)) || branches[0]
             : branches[0];
 
-        // For curated repos, mark branch as available immediately
         const downloadStatus: Record<string, BranchDownloadStatus> = {};
-        if (isCurated && defaultBranch) {
+        if (defaultBranch) {
           downloadStatus[defaultBranch] = {
             isDownloading: false,
             isAvailable: true,
@@ -235,80 +192,6 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
     });
   }, []);
 
-  // Download branch if needed (GitHub repos only)
-  const downloadBranchIfNeeded = useCallback(
-    async (branch: string): Promise<void> => {
-      if (state.source !== 'github' || !state.identifier) {
-        return;
-      }
-
-      const { owner, repo } = parseGitHubRepoIdentifier(state.identifier);
-
-      // Check if this is a curated repo (already downloaded at build time)
-      if (isCuratedRepo(owner, repo)) {
-        // Curated repos are already available, mark as available
-        setState((prev) => ({
-          ...prev,
-          downloadStatus: {
-            ...prev.downloadStatus,
-            [branch]: { isDownloading: false, isAvailable: true },
-          },
-        }));
-        return;
-      }
-
-      // For non-curated repos, check download status
-      const status = await getBranchDownloadStatus(owner, repo, branch);
-
-      if (status.isAvailable || status.isDownloading) {
-        return; // Already available or downloading
-      }
-
-      // Start download with progress tracking
-      setState((prev) => ({
-        ...prev,
-        downloadStatus: {
-          ...prev.downloadStatus,
-          [branch]: { isDownloading: true, isAvailable: false },
-        },
-      }));
-
-      try {
-        await downloadBranch(owner, repo, branch, (progress) => {
-          setState((prev) => ({ ...prev, downloadProgress: progress }));
-        });
-
-        // Update status
-        setState((prev) => ({
-          ...prev,
-          downloadStatus: {
-            ...prev.downloadStatus,
-            [branch]: { isDownloading: false, isAvailable: true },
-          },
-          downloadProgress: null,
-        }));
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Download failed';
-
-        setState((prev) => ({
-          ...prev,
-          downloadStatus: {
-            ...prev.downloadStatus,
-            [branch]: {
-              isDownloading: false,
-              isAvailable: false,
-              error: errorMessage,
-            },
-          },
-          downloadProgress: null,
-        }));
-
-        throw error;
-      }
-    },
-    [state.source, state.identifier]
-  );
-
   // Switch to different branch
   const switchBranch = useCallback(
     async (branch: string): Promise<void> => {
@@ -319,11 +202,6 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // For GitHub repos, check if branch needs to be downloaded
-        if (state.source === 'github') {
-          await downloadBranchIfNeeded(branch);
-        }
-
         // Refresh available branches (in case new branch was downloaded)
         const branches = await getAvailableBranches(state.source, state.identifier);
 
@@ -347,7 +225,7 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
         throw error;
       }
     },
-    [state.source, state.identifier, downloadBranchIfNeeded]
+    [state.source, state.identifier]
   );
 
   // Refresh available branches
@@ -378,49 +256,8 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
     }
   }, [state.source, state.identifier]);
 
-  // Fetch full tree metadata for arbitrary repositories
-  const fetchFullTreeMetadata = useCallback(
-    async (owner: string, repo: string, branch: string): Promise<void> => {
-      try {
-        setState((prev) => ({
-          ...prev,
-          isLoading: true,
-          downloadProgress: {
-            phase: 'downloading',
-            progress: 0,
-            message: 'Fetching repository tree structure...',
-          },
-        }));
-
-        await downloadFullTreeMetadata(owner, repo, branch, (progress) => {
-          setState((prev) => ({
-            ...prev,
-            downloadProgress: progress,
-          }));
-        });
-
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          downloadProgress: null,
-        }));
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Failed to fetch tree metadata';
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error: errorMessage,
-          downloadProgress: null,
-        }));
-        throw error;
-      }
-    },
-    []
-  );
-
   // Get repository mode
-  const getRepositoryMode = useCallback((): 'curated' | 'arbitrary' | 'workspace' | null => {
+  const getRepositoryMode = useCallback((): 'curated' | 'workspace' | null => {
     if (!state.source || !state.identifier) {
       return null;
     }
@@ -430,8 +267,7 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
       return getRepoMode(owner, repo);
     }
 
-    // For uploaded repos, treat as arbitrary
-    return 'arbitrary';
+    return 'workspace';
   }, [state.source, state.identifier]);
 
   // Initialize setup status on mount
@@ -446,8 +282,6 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
     checkSetupStatus,
     switchBranch,
     refreshBranches,
-    downloadBranchIfNeeded,
-    fetchFullTreeMetadata,
     getRepoInfo,
     getRepositoryMode,
   };
