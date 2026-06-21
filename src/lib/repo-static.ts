@@ -44,7 +44,7 @@ export function getRepositoryMode(owner: string, repo: string): 'curated' {
   return 'curated';
 }
 
-export const getStaticFilePath = (owner: string, repo: string, branch: string, filePath: string) =>
+const getStaticFilePath = (owner: string, repo: string, branch: string, filePath: string) =>
   buildCuratedRepoUrl(owner, repo, branch, filePath);
 
 function getStaticFileCandidates(

@@ -12,7 +12,7 @@ declare global {
 
 const MAX_DEBUG_LOGS = 500;
 
-export function pushBrowserDebugLog(label: string, payload?: unknown): void {
+function pushBrowserDebugLog(label: string, payload?: unknown): void {
   if (typeof window === 'undefined') {
     return;
   }

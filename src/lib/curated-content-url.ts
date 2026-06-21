@@ -35,10 +35,6 @@ export function getR2BucketBaseUrl(): string {
   return '';
 }
 
-export function hasConfiguredPublicR2BaseUrl(): boolean {
-  return Boolean(getConfiguredPublicR2BaseUrl());
-}
-
 export function getCuratedContentBaseUrl(): string {
   return getR2BucketBaseUrl();
 }
