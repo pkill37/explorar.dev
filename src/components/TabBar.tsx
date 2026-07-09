@@ -8,6 +8,9 @@ interface TabBarProps {
   activeTabId: string | null;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
+  onDownloadStudyConfig: () => void;
+  onImportStudyConfig: () => void;
+  onCloseAllTabs: () => void;
   onMarkdownPreviewToggle?: () => void;
 }
 
@@ -16,6 +19,9 @@ const TabBar: React.FC<TabBarProps> = ({
   activeTabId,
   onTabSelect,
   onTabClose,
+  onDownloadStudyConfig,
+  onImportStudyConfig,
+  onCloseAllTabs,
   onMarkdownPreviewToggle,
 }) => {
   const getFileIcon = (path: string): string => {
@@ -76,6 +82,35 @@ const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className="vscode-tab-bar">
+      <button
+        type="button"
+        className="vscode-tab-bar-action"
+        onClick={onImportStudyConfig}
+        title="Import study config"
+        aria-label="Import study config"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        className="vscode-tab-bar-action"
+        onClick={onDownloadStudyConfig}
+        disabled={tabs.length === 0}
+        title="Download study config"
+        aria-label="Download study config"
+      >
+        ↓
+      </button>
+      <button
+        type="button"
+        className="vscode-tab-bar-action"
+        onClick={onCloseAllTabs}
+        disabled={tabs.length === 0}
+        title="Close all files"
+        aria-label="Close all files"
+      >
+        ×
+      </button>
       <div className="vscode-tab-strip">
         {tabs.map((tab) => (
           <div

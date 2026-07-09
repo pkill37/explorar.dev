@@ -3,9 +3,9 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { notFound } from 'next/navigation';
 import KernelExplorer from '@/components/KernelExplorer';
-import { GraphExplorer } from '@/components/graph/GraphExplorer';
 import { EntityView } from '@/components/EntityView';
 import GuidePanel from '@/components/GuidePanel';
+import LoadingScreen from '@/components/LoadingScreen';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
 import { debugLog } from '@/lib/browser-debug';
@@ -34,10 +34,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const projectConfig = getProjectConfig(owner, repo);
   if (!projectConfig) notFound();
 
-  const [mode, setMode] = useState<'graph' | 'editor' | 'entities'>('editor');
+  const [isMounted, setIsMounted] = useState(false);
+  const [mode, setMode] = useState<'editor' | 'search' | 'entities'>('editor');
   const [initialFile, setInitialFile] = useState<InitialFileTarget | null>(null);
-  // Keep KernelExplorer mounted once it has been rendered to preserve tab state
-  const [editorMounted, setEditorMounted] = useState(true);
   // Keep EntityView mounted once first activated to preserve per-chapter cache
   const [entitiesMounted, setEntitiesMounted] = useState(false);
 
@@ -59,7 +58,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           searchScope,
         }
       );
-      setEditorMounted(true);
       setMode('editor');
     },
     []
@@ -88,47 +86,26 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   );
 
   // ── Chapter graph state ─────────────────────────────────────────────────────
-  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
-  const getChapterNarrativePaths = useCallback(
-    (section: (typeof guideSections)[number], includeDocs: boolean) =>
-      (section.narrativePaths ?? []).filter((path) => {
-        if (includeDocs) return true;
-        const ext = path.split('.').pop()?.toLowerCase() ?? '';
-        return !['md', 'rst', 'txt', 'adoc', 'asciidoc', 'texi', 'texinfo', 'html', 'htm'].includes(
-          ext
-        );
-      }),
-    []
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(
+    () => defaultOpenIds[0] ?? guideSections[0]?.id ?? null
   );
   const chapterMapEntries = useMemo(
     () =>
-      guideSections.map((s) => ({
-        id: s.id,
-        files: getChapterNarrativePaths(s, false),
-        graph: s.graph,
+      guideSections.map((section) => ({
+        id: section.id,
+        files: section.narrativePaths ?? [],
       })),
-    [getChapterNarrativePaths, guideSections]
+    [guideSections]
   );
-  const graphChapterMapEntries = useMemo(
-    () =>
-      guideSections.map((s) => ({
-        id: s.id,
-        files: getChapterNarrativePaths(s, true),
-        graph: s.graph,
-      })),
-    [getChapterNarrativePaths, guideSections]
-  );
-
   useEffect(() => {
-    console.log('[RepositoryExplorerClient] surface state', {
-      owner,
-      repo,
-      mode,
-      activeChapterId: activeChapterId ?? '__all__',
-      editorMounted,
-      entitiesMounted,
-    });
-  }, [owner, repo, mode, activeChapterId, editorMounted, entitiesMounted]);
+    const timeoutId = window.setTimeout(() => {
+      setIsMounted(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   // ── Guide panel resize ──────────────────────────────────────────────────────
   const [guideWidth, setGuideWidth] = useState(GUIDE_DEFAULT_WIDTH);
@@ -179,8 +156,13 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     };
   }, []);
 
+  if (!isMounted) {
+    return <LoadingScreen />;
+  }
+
   return (
     <main
+      suppressHydrationWarning
       style={{
         width: '100vw',
         height: '100vh',
@@ -191,6 +173,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       }}
     >
       <h1
+        suppressHydrationWarning
         style={{
           position: 'absolute',
           width: 1,
@@ -205,43 +188,93 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       >
         {owner}/{repo} Explorer
       </h1>
-      {/* ── Main content area (graph or editor) ── */}
-      <div style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
-        {/* Editor view — first-class default surface */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            opacity: mode === 'editor' ? 1 : 0,
-            pointerEvents: mode === 'editor' ? 'auto' : 'none',
-            transform: mode === 'editor' ? 'scale(1)' : 'scale(1.015)',
-            transition: 'opacity 0.45s ease, transform 0.45s ease',
-            zIndex: mode === 'editor' ? 1 : 0,
-          }}
-        >
-          {(mode === 'editor' || editorMounted) && (
-            <KernelExplorer owner={owner} repo={repo} initialFile={initialFile} hideGuidePanel />
-          )}
-        </div>
+      {/* ── Activity bar ── */}
+      <div
+        style={{
+          width: 48,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 8,
+          padding: '10px 8px',
+          borderRight: '1px solid #1f1f1f',
+          background: '#111111',
+        }}
+      >
+        {[
+          {
+            id: 'editor',
+            title: 'File editor',
+            label: '</>',
+          },
+          {
+            id: 'search',
+            title: 'File search',
+            label: '⌕',
+          },
+          {
+            id: 'entities',
+            title: 'Entities',
+            label: '⬡',
+          },
+        ].map((tab) => {
+          const isActive = mode === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.id === 'entities') {
+                  setEntitiesMounted(true);
+                }
+                setMode(tab.id as typeof mode);
+              }}
+              title={tab.title}
+              aria-label={tab.title}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: '1px solid',
+                borderColor: isActive ? 'var(--vscode-text-accent, #0078d4)' : '#262626',
+                background: isActive ? 'rgba(0, 120, 212, 0.22)' : '#171717',
+                color: isActive ? '#fff' : '#a7a7a7',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'monospace',
+                fontSize: tab.id === 'entities' ? 15 : 11,
+                fontWeight: 700,
+                boxShadow: isActive ? '0 0 0 1px rgba(0,120,212,0.25)' : 'none',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Graph view */}
+      {/* ── Main content area ── */}
+      <div style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
+        {/* Explorer surface — used by both editor and search tabs */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            opacity: mode === 'graph' ? 1 : 0,
-            pointerEvents: mode === 'graph' ? 'auto' : 'none',
-            transition: 'opacity 0.45s ease',
-            zIndex: mode === 'graph' ? 1 : 0,
+            opacity: mode === 'entities' ? 0 : 1,
+            pointerEvents: mode === 'entities' ? 'none' : 'auto',
+            transition: 'opacity 0.35s ease',
+            zIndex: mode === 'entities' ? 0 : 1,
           }}
         >
-          <GraphExplorer
+          <KernelExplorer
             owner={owner}
             repo={repo}
-            onEnterFile={handleEnterFile}
-            activeChapterId={activeChapterId}
-            chapterMapEntries={graphChapterMapEntries}
-            guideSections={guideSections}
+            initialFile={initialFile}
+            hideGuidePanel
+            layoutMode={mode === 'search' ? 'search' : 'editor'}
+            onOpenFileRequest={handleEnterFile}
           />
         </div>
 
@@ -264,6 +297,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               activeChapterId={activeChapterId}
               chapterMapEntries={chapterMapEntries}
               guideSections={guideSections}
+              isActive={mode === 'entities'}
             />
           )}
         </div>
@@ -299,77 +333,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
           borderLeft: '1px solid var(--vscode-border)',
         }}
       >
-        {/* Mode toggle in the guide header area */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 10px',
-            borderBottom: '1px solid var(--vscode-border)',
-            flexShrink: 0,
-          }}
-        >
-          <button
-            onClick={() => {
-              setEditorMounted(true);
-              setMode('editor');
-            }}
-            title="Code editor"
-            style={{
-              fontSize: 10,
-              fontFamily: 'monospace',
-              padding: '3px 8px',
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'editor' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
-              color: mode === 'editor' ? '#fff' : 'var(--vscode-text-muted, #666)',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            {'</>'} Editor
-          </button>
-          <button
-            onClick={() => setMode('graph')}
-            title="File map"
-            style={{
-              fontSize: 10,
-              fontFamily: 'monospace',
-              padding: '3px 8px',
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'graph' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
-              color: mode === 'graph' ? '#fff' : 'var(--vscode-text-muted, #666)',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            ◈ Map
-          </button>
-          <button
-            onClick={() => {
-              setEntitiesMounted(true);
-              setMode('entities');
-            }}
-            title="Entity diagram"
-            style={{
-              fontSize: 10,
-              fontFamily: 'monospace',
-              padding: '3px 8px',
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              background:
-                mode === 'entities' ? 'var(--vscode-text-accent, #0078d4)' : 'transparent',
-              color: mode === 'entities' ? '#fff' : 'var(--vscode-text-muted, #666)',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            ⬡ Entities
-          </button>
-        </div>
-
         {/* Guide panel — fills remaining height */}
         <div
           style={{
@@ -382,7 +345,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
         >
           <GuidePanel
             sections={guideSections}
-            defaultOpenIds={defaultOpenIds}
+            activeChapterId={activeChapterId}
             onActiveChapterChange={setActiveChapterId}
           />
         </div>

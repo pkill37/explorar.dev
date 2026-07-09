@@ -127,7 +127,7 @@ fileRecommendations:
 
 Capabilities are the center of seL4's security model. The kernel does not ask "who are you?" in a global identity sense. It asks "what authority does this capability grant, and where can it be copied or derived?"
 
-`src/kernel/cspace.c` and the `src/object/*` tree are where that model becomes concrete. `cnode.c`, `untyped.c`, and `objecttype.c` define how the kernel stores, creates, and dispatches objects; `tcb.c`, `endpoint.c`, and `notification.c` implement the objects that most user-level systems actually build on.
+`src/kernel/cspace.c` and the `src/object/` tree are where that model becomes concrete. `src/object/cnode.c`, `src/object/untyped.c`, and `src/object/objecttype.c` define how the kernel stores, creates, and dispatches objects; `src/object/tcb.c`, `src/object/endpoint.c`, and `src/object/notification.c` implement the objects that most user-level systems actually build on.
 
 The important idea is that object creation is not free-form. Untyped memory is retyped into concrete kernel objects, which means authority and memory allocation are tied together from the start.
 
@@ -195,7 +195,7 @@ fileRecommendations:
 
 Scheduling in seL4 is smaller than in a monolithic kernel, but it is still the heart of the system. Threads, faults, preemption, and multiprocessor state all have to agree on who is runnable and who owns execution right now.
 
-`thread.c` and `faulthandler.c` cover the basic kernel execution model. `sporadic.c` matters because seL4 15.0.0 carries MCS-related scheduling support, which pushes the scheduler toward time-partitioned execution rather than a simple always-runnable model.
+`src/kernel/thread.c` and `src/kernel/faulthandler.c` cover the basic kernel execution model. `src/kernel/sporadic.c` matters because seL4 15.0.0 carries MCS-related scheduling support, which pushes the scheduler toward time-partitioned execution rather than a simple always-runnable model.
 
 The model files under `src/model/` and the SMP lock code show where the kernel keeps global state and how it prevents races as execution scales beyond one CPU.
 
@@ -204,14 +204,14 @@ id: ch6
 title: Chapter 6 — Ports and Configurations
 fileRecommendations:
   readingOrder:
-    - path: configs/X64_verified.cmake
-      description: x86-64 verified configuration entry point
+    - path: configs/AARCH64_verified.cmake
+      description: ARM64 configuration entry point
       type: source
     - path: configs/RISCV64_verified.cmake
       description: RISC-V 64-bit configuration entry point
       type: source
-    - path: configs/AARCH64_verified.cmake
-      description: ARM64 configuration entry point
+    - path: configs/X64_verified.cmake
+      description: x86-64 verified configuration entry point
       type: source
     - path: configs/ARM_MCS_verified.cmake
       description: ARM MCS configuration showing how scheduling policy is selected at build time

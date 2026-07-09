@@ -1,6 +1,11 @@
 import { debugLog } from './browser-debug';
 
-export type FileFetchSource = 'r2-bucket' | 'github-api' | 'local-filesystem' | 'unknown';
+export type FileFetchSource =
+  | 'r2-bucket'
+  | 'static-path'
+  | 'github-api'
+  | 'local-filesystem'
+  | 'unknown';
 
 export interface FileFetchDebugInfo {
   enabled: boolean;

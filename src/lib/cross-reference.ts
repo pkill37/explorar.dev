@@ -198,7 +198,7 @@ function combineFunctionSignature(lines: string[], lineIndex: number): string {
 }
 
 // Find all references to a symbol in the file
-function findReferences(
+export function findReferencesInContent(
   symbolName: string,
   content: string,
   filePath: string,
@@ -438,7 +438,7 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
 
   // Second pass: find references and related symbols for each symbol
   for (const symbol of symbols) {
-    symbol.references = findReferences(symbol.name, content, filePath, symbol.line);
+    symbol.references = findReferencesInContent(symbol.name, content, filePath, symbol.line);
     symbol.relatedSymbols = findRelatedSymbols(symbol.name, symbols, content);
   }
 

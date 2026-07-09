@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchRepositoryFile } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/lib/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
 import { findSymbolsInFile, type SymbolReference } from '@/lib/cross-reference';
-import { getRepositoryMode, getTreeStructureFromStatic } from '@/lib/repo-static';
+import {
+  getRepositoryMode,
+  getTreeStructureFromStatic,
+  resolveCorpusPathFromKnownFiles,
+} from '@/lib/repo-static';
 import type { FileNode } from '@/types';
 
 // ─── Importance tiers ────────────────────────────────────────────────────────
@@ -80,6 +84,22 @@ function buildFolderGroups(scored: ScoredEntity[]): FolderGroup[] {
       items: folderItems.get(folder) ?? [],
     }))
     .sort((a, b) => a.folder.localeCompare(b.folder));
+}
+
+function matchesEntityQuery(item: ScoredEntity, query: string): boolean {
+  if (!query) return true;
+
+  const haystack = [
+    item.entity.name,
+    item.entity.kind,
+    item.entity.filePath,
+    item.entity.language,
+    ...item.entity.fields.flatMap((field) => [field.name, field.type]),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return query.split(/\s+/).every((term) => haystack.includes(term));
 }
 
 function scoreEntities(entities: Array<CodeEntity & { line: number }>): ScoredEntity[] {
@@ -371,6 +391,7 @@ interface EntityViewProps {
   activeChapterId?: string | null;
   chapterMapEntries?: ChapterEntry[];
   guideSections?: GuideSection[];
+  isActive?: boolean;
 }
 
 const FETCH_CAP = 40;
@@ -431,6 +452,18 @@ function expandGuidePathsToSourceFiles(paths: string[], tree: FileNode[]): strin
       if (!deduped.has(exactNode.path)) {
         deduped.add(exactNode.path);
         resolved.push(exactNode.path);
+      }
+      continue;
+    }
+
+    const resolvedPath = resolveCorpusPathFromKnownFiles(
+      normalizedPath,
+      flatTree.filter((node) => node.type === 'file').map((node) => node.path)
+    );
+    if (resolvedPath && isLikelySourceFile(resolvedPath)) {
+      if (!deduped.has(resolvedPath)) {
+        deduped.add(resolvedPath);
+        resolved.push(resolvedPath);
       }
       continue;
     }
@@ -783,6 +816,7 @@ export function EntityView({
   activeChapterId,
   chapterMapEntries,
   guideSections,
+  isActive = true,
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultRevision ?? 'main';
@@ -793,7 +827,13 @@ export function EntityView({
 
   const [scored, setScored] = useState<ScoredEntity[]>([]);
   const [loading, setLoading] = useState(false);
-  const folderGroups = useMemo(() => buildFolderGroups(scored), [scored]);
+  const [entityFilter, setEntityFilter] = useState('');
+  const deferredEntityFilter = useDeferredValue(entityFilter.trim().toLowerCase());
+  const filteredScored = useMemo(
+    () => scored.filter((item) => matchesEntityQuery(item, deferredEntityFilter)),
+    [scored, deferredEntityFilter]
+  );
+  const folderGroups = useMemo(() => buildFolderGroups(filteredScored), [filteredScored]);
 
   // Stable key for the current view
   const currentKey = activeChapterId ?? '__all__';
@@ -831,6 +871,10 @@ export function EntityView({
   const [filesToFetch, setFilesToFetch] = useState<string[]>(selectedPaths);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     let cancelled = false;
 
     async function resolveFilesToFetch() {
@@ -839,10 +883,10 @@ export function EntityView({
         return;
       }
 
-      const hasDirectoryHints = selectedPaths.some(
-        (path) => path.endsWith('/') || !path.split('/').pop()?.includes('.')
+      const hasTreeResolutionHints = selectedPaths.some(
+        (path) => path.endsWith('/') || !path.includes('/')
       );
-      if (!hasDirectoryHints) {
+      if (!hasTreeResolutionHints) {
         setFilesToFetch(selectedPaths.filter(isLikelySourceFile));
         return;
       }
@@ -874,7 +918,7 @@ export function EntityView({
     return () => {
       cancelled = true;
     };
-  }, [owner, repo, branch, selectedPaths, fileSourceMode]);
+  }, [owner, repo, branch, selectedPaths, fileSourceMode, isActive]);
 
   useEffect(() => {
     console.log('[EntityView] files selected for scan', {
@@ -889,6 +933,12 @@ export function EntityView({
   }, [owner, repo, activeChapterId, selectedPaths, filesToFetch]);
 
   useEffect(() => {
+    if (!isActive) {
+      setScored([]);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function run() {
@@ -950,7 +1000,7 @@ export function EntityView({
     return () => {
       cancelled = true;
     };
-  }, [currentKey, branch, owner, repo, activeChapterId, filesToFetch]);
+  }, [currentKey, branch, owner, repo, activeChapterId, filesToFetch, isActive]);
 
   useEffect(() => {
     console.log('[EntityView] render state', {
@@ -1016,8 +1066,9 @@ export function EntityView({
     );
   }
 
-  const heroCount = scored.filter((s) => s.tier === 'hero').length;
-  const majorCount = scored.filter((s) => s.tier === 'major').length;
+  const heroCount = filteredScored.filter((s) => s.tier === 'hero').length;
+  const majorCount = filteredScored.filter((s) => s.tier === 'major').length;
+  const hasFilter = deferredEntityFilter.length > 0;
 
   const chapterLabel =
     activeChapterId && chapterMapEntries
@@ -1066,6 +1117,11 @@ export function EntityView({
           </span>
         )}
         <span style={{ color: '#555' }}>{scored.length} entities</span>
+        {hasFilter && (
+          <span style={{ color: '#666' }}>
+            <span style={{ color: '#888' }}>{filteredScored.length}</span> matched
+          </span>
+        )}
         {heroCount > 0 && (
           <span style={{ color: '#666' }}>
             <span style={{ color: '#888' }}>{heroCount}</span> core
@@ -1077,70 +1133,148 @@ export function EntityView({
           </span>
         )}
         <span style={{ color: '#555' }}>{folderGroups.length} folders</span>
-        <span style={{ color: '#333', marginLeft: 'auto', fontSize: 9 }}>
-          ×N = referenced by N entities · click to open file
-        </span>
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
+          <div style={{ position: 'relative', width: 260, maxWidth: '40vw' }}>
+            <input
+              aria-label="Filter entities"
+              type="search"
+              value={entityFilter}
+              onChange={(e) => setEntityFilter(e.target.value)}
+              placeholder="Filter entities"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                background: '#111',
+                color: '#e5e5e5',
+                border: '1px solid #2a2a2a',
+                borderRadius: 6,
+                padding: '5px 28px 5px 10px',
+                fontFamily: 'monospace',
+                fontSize: 11,
+                outline: 'none',
+              }}
+            />
+            {entityFilter && (
+              <button
+                type="button"
+                onClick={() => setEntityFilter('')}
+                aria-label="Clear entity filter"
+                title="Clear filter"
+                style={{
+                  position: 'absolute',
+                  right: 6,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 18,
+                  height: 18,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#2a2a2a',
+                  color: '#bdbdbd',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  lineHeight: '18px',
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <span style={{ color: '#333', fontSize: 9, whiteSpace: 'nowrap' }}>
+            ×N = referenced by N entities · click to open file
+          </span>
+        </div>
       </div>
 
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {folderGroups.map((group) => (
-          <section
-            key={group.folder}
+        {filteredScored.length === 0 ? (
+          <div
             style={{
-              border: `1px solid ${group.color}26`,
-              borderRadius: 10,
-              overflow: 'hidden',
+              minHeight: 240,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: '#555',
               background: '#101010',
-              boxShadow: `0 0 0 1px ${group.color}10 inset`,
+              border: '1px solid #1e1e1e',
+              borderRadius: 10,
             }}
           >
-            <div
+            No entities match the current filter.
+          </div>
+        ) : (
+          folderGroups.map((group) => (
+            <section
+              key={group.folder}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 14px',
-                background: `${group.color}14`,
-                borderBottom: `1px solid ${group.color}26`,
-                fontFamily: 'monospace',
+                border: `1px solid ${group.color}26`,
+                borderRadius: 10,
+                overflow: 'hidden',
+                background: '#101010',
+                boxShadow: `0 0 0 1px ${group.color}10 inset`,
               }}
             >
-              <span
+              <div
                 style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: group.color,
-                  boxShadow: `0 0 12px ${group.color}88`,
-                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  background: `${group.color}14`,
+                  borderBottom: `1px solid ${group.color}26`,
+                  fontFamily: 'monospace',
                 }}
-              />
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#e5e5e5' }}>
-                {group.folder}
-              </span>
-              <span style={{ fontSize: 10, color: '#8f8f8f' }}>{group.items.length} entities</span>
-            </div>
-            <div
-              style={{
-                padding: 12,
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 10,
-                alignItems: 'start',
-              }}
-            >
-              {group.items.map((item, index) => (
-                <EntityCard
-                  key={`${item.entity.filePath}::${item.entity.name}::${index}`}
-                  scored={item}
-                  onOpenFile={onOpenFile}
-                  color={group.color}
-                  folderLabel={group.folder}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: group.color,
+                    boxShadow: `0 0 12px ${group.color}88`,
+                    flexShrink: 0,
+                  }}
                 />
-              ))}
-            </div>
-          </section>
-        ))}
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#e5e5e5' }}>
+                  {group.folder}
+                </span>
+                <span style={{ fontSize: 10, color: '#8f8f8f' }}>
+                  {group.items.length} entities
+                </span>
+              </div>
+              <div
+                style={{
+                  padding: 12,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                  gap: 10,
+                  alignItems: 'start',
+                }}
+              >
+                {group.items.map((item, index) => (
+                  <EntityCard
+                    key={`${item.entity.filePath}::${item.entity.name}::${index}`}
+                    scored={item}
+                    onOpenFile={onOpenFile}
+                    color={group.color}
+                    folderLabel={group.folder}
+                  />
+                ))}
+              </div>
+            </section>
+          ))
+        )}
       </div>
     </div>
   );

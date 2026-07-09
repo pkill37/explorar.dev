@@ -16,7 +16,7 @@ interface Guide {
 interface GuidePanelProps {
   sections?: Section[];
   guides?: Guide[];
-  defaultOpenIds?: string[];
+  activeChapterId?: string | null;
   onActiveChapterChange?: (id: string | null) => void;
 }
 
@@ -29,7 +29,7 @@ function chapterNumber(id: string): number | null {
 export default function GuidePanel({
   sections,
   guides,
-  defaultOpenIds = [],
+  activeChapterId,
   onActiveChapterChange,
 }: GuidePanelProps) {
   const guideList: Guide[] =
@@ -41,55 +41,16 @@ export default function GuidePanel({
     const sectionIds = currentSections.map((section) => section.id).join('|');
     return `${selectedGuideId}:${sectionIds}`;
   }, [selectedGuideId, currentSections]);
-  const activeChapterStorageKey = `guide-panel-active-chapter:${storageScope}`;
   const scrollPositionStorageKey = `guide-panel-scroll-position:${storageScope}`;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // Single active chapter id (accordion: only one open at a time)
-  const [activeId, setActiveId] = useState<string | null>(() => {
-    // First of defaultOpenIds that exists in sections
-    return defaultOpenIds.find((id) => currentSections.some((s) => s.id === id)) ?? null;
-  });
-
-  // On mount, restore from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(activeChapterStorageKey);
-      if (saved && currentSections.some((s) => s.id === saved)) {
-        setActiveId(saved);
-        onActiveChapterChange?.(saved);
-        return;
-      }
-    } catch {
-      // ignore
-    }
-    // fallback: first of defaultOpenIds
-    const fallback = defaultOpenIds.find((id) => currentSections.some((s) => s.id === id)) ?? null;
-    if (fallback) {
-      setActiveId(fallback);
-      onActiveChapterChange?.(fallback);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChapterStorageKey, currentSections, defaultOpenIds]);
-
-  // Persist active chapter and notify graph whenever it changes
-  useEffect(() => {
-    try {
-      if (activeId) localStorage.setItem(activeChapterStorageKey, activeId);
-      else localStorage.removeItem(activeChapterStorageKey);
-    } catch {
-      // ignore
-    }
-    onActiveChapterChange?.(activeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, activeChapterStorageKey]);
+  const currentActiveId = activeChapterId ?? null;
 
   // Scroll active chapter into view when it opens
   useEffect(() => {
-    if (!activeId) return;
-    const el = sectionRefs.current[activeId];
+    if (!currentActiveId) return;
+    const el = sectionRefs.current[currentActiveId];
     if (el && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
       const elTop = el.offsetTop;
@@ -100,7 +61,7 @@ export default function GuidePanel({
         container.scrollTo({ top: Math.max(0, elTop - 16), behavior: 'smooth' });
       }
     }
-  }, [activeId]);
+  }, [currentActiveId]);
 
   // Save scroll position — debounced
   const handleScroll = useCallback(() => {
@@ -132,12 +93,12 @@ export default function GuidePanel({
     }
   }, [scrollPositionStorageKey]);
 
-  const toggle = useCallback((id: string) => {
-    setActiveId((prev) => {
-      const next = prev === id ? null : id;
-      return next;
-    });
-  }, []);
+  const toggle = useCallback(
+    (id: string) => {
+      onActiveChapterChange?.(currentActiveId === id ? null : id);
+    },
+    [currentActiveId, onActiveChapterChange]
+  );
 
   const [showShareMenu, setShowShareMenu] = useState(false);
 
@@ -174,7 +135,7 @@ export default function GuidePanel({
     }
   };
 
-  const activeIndex = currentSections.findIndex((s) => s.id === activeId);
+  const activeIndex = currentSections.findIndex((s) => s.id === currentActiveId);
   const total = currentSections.length;
 
   return (
@@ -203,18 +164,6 @@ export default function GuidePanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              color: 'var(--vscode-text-muted, #555)',
-              textTransform: 'uppercase',
-              flexShrink: 0,
-            }}
-          >
-            Guide
-          </span>
           {total > 0 && (
             <span
               style={{
@@ -253,86 +202,88 @@ export default function GuidePanel({
         </div>
 
         {/* Share button */}
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            onClick={() => setShowShareMenu(!showShareMenu)}
-            title="Share this page"
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--vscode-border)',
-              borderRadius: 3,
-              padding: '2px 6px',
-              cursor: 'pointer',
-              color: 'var(--vscode-text-muted, #555)',
-              fontSize: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-              e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
-              e.currentTarget.style.color = 'var(--vscode-text-primary)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.borderColor = 'var(--vscode-border)';
-              e.currentTarget.style.color = 'var(--vscode-text-muted, #555)';
-            }}
-          >
-            ↑ Share
-          </button>
-          {showShareMenu && (
-            <div
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              onClick={() => setShowShareMenu(!showShareMenu)}
+              title="Share this page"
               style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: 4,
-                background: 'var(--vscode-bg-secondary)',
+                background: 'transparent',
                 border: '1px solid var(--vscode-border)',
-                borderRadius: 4,
-                padding: 4,
-                zIndex: 1000,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                minWidth: 140,
+                borderRadius: 3,
+                padding: '2px 6px',
+                cursor: 'pointer',
+                color: 'var(--vscode-text-muted, #555)',
+                fontSize: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
               }}
-              onMouseLeave={() => setShowShareMenu(false)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--vscode-bg-hover)';
+                e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
+                e.currentTarget.style.color = 'var(--vscode-text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'var(--vscode-border)';
+                e.currentTarget.style.color = 'var(--vscode-text-muted, #555)';
+              }}
             >
-              {(['hackernews', 'twitter', 'reddit', 'linkedin', 'whatsapp'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => handleShare(p)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '6px 10px',
-                    background: 'transparent',
-                    border: 'none',
-                    borderRadius: 3,
-                    cursor: 'pointer',
-                    color: 'var(--vscode-text-primary)',
-                    fontSize: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  {p === 'hackernews' && '🟠 Hacker News'}
-                  {p === 'twitter' && '🐦 Twitter'}
-                  {p === 'reddit' && '🤖 Reddit'}
-                  {p === 'linkedin' && '💼 LinkedIn'}
-                  {p === 'whatsapp' && '💬 WhatsApp'}
-                </button>
-              ))}
-            </div>
-          )}
+              ↑ Share
+            </button>
+            {showShareMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  background: 'var(--vscode-bg-secondary)',
+                  border: '1px solid var(--vscode-border)',
+                  borderRadius: 4,
+                  padding: 4,
+                  zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  minWidth: 140,
+                }}
+                onMouseLeave={() => setShowShareMenu(false)}
+              >
+                {(['hackernews', 'twitter', 'reddit', 'linkedin', 'whatsapp'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => handleShare(p)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      color: 'var(--vscode-text-primary)',
+                      fontSize: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--vscode-bg-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {p === 'hackernews' && '🟠 Hacker News'}
+                    {p === 'twitter' && '🐦 Twitter'}
+                    {p === 'reddit' && '🤖 Reddit'}
+                    {p === 'linkedin' && '💼 LinkedIn'}
+                    {p === 'whatsapp' && '💬 WhatsApp'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -349,7 +300,7 @@ export default function GuidePanel({
         }}
       >
         {currentSections.map((s, idx) => {
-          const isActive = s.id === activeId;
+          const isActive = s.id === currentActiveId;
           const num = chapterNumber(s.id) ?? idx + 1;
           const ACCENT = 'var(--vscode-text-accent, #0078d4)';
 

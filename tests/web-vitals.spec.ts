@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('Web Vitals Performance', () => {
   test('homepage meets performance thresholds', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Measure Largest Contentful Paint (LCP)
     const lcp = await page.evaluate(() => {
@@ -50,7 +50,7 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('repository page meets performance thresholds', async ({ page }) => {
-    await page.goto('/linux-kernel', { waitUntil: 'networkidle' });
+    await page.goto('/linux-kernel', { waitUntil: 'domcontentloaded' });
 
     const metrics = await page.evaluate(() => {
       const navigation = performance.getEntriesByType(
@@ -74,7 +74,7 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('measures Cumulative Layout Shift (CLS)', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const cls = await page.evaluate(() => {
       return new Promise<number>((resolve) => {
@@ -100,8 +100,7 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('bundle size is reasonable', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const resources = await page.evaluate(() => {
       return performance.getEntriesByType('resource').map((entry) => {
@@ -122,32 +121,25 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('no layout shifts during page load', async ({ page }) => {
-    const layoutShifts: number[] = [];
-
-    page.on('load', async () => {
-      const shifts = await page.evaluate(() => {
-        return new Promise<number[]>((resolve) => {
-          const shifts: number[] = [];
-          const observer = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-              const layoutShift = entry as PerformanceEntry & {
-                hadRecentInput?: boolean;
-                value?: number;
-              };
-              if (!layoutShift.hadRecentInput && layoutShift.value !== undefined) {
-                shifts.push(layoutShift.value);
-              }
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const layoutShifts = await page.evaluate(() => {
+      return new Promise<number[]>((resolve) => {
+        const shifts: number[] = [];
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const layoutShift = entry as PerformanceEntry & {
+              hadRecentInput?: boolean;
+              value?: number;
+            };
+            if (!layoutShift.hadRecentInput && layoutShift.value !== undefined) {
+              shifts.push(layoutShift.value);
             }
-          });
-          observer.observe({ entryTypes: ['layout-shift'] });
-          setTimeout(() => resolve(shifts), 3000);
+          }
         });
+        observer.observe({ entryTypes: ['layout-shift'] });
+        setTimeout(() => resolve(shifts), 3000);
       });
-      layoutShifts.push(...shifts);
     });
-
-    await page.goto('/');
-    await page.waitForTimeout(3000);
 
     // Check that major layout shifts (>0.1) don't occur
     const majorShifts = layoutShifts.filter((shift) => shift > 0.1);

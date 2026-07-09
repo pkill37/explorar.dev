@@ -1,0 +1,99 @@
+import { expect, test } from '@playwright/test';
+
+import { CURATED_REPOS } from '@/lib/curated-repos';
+import { getCorpusBuildSignature } from '../scripts/corpus-build-signature';
+import {
+  buildRepoBucketPrefix,
+  buildRepoCodeIndexKey,
+  buildRepoManifestKey,
+  buildRepoRequiredArtifactKeys,
+  buildRepoSyncArgs,
+} from '../scripts/deploy-r2';
+
+test.describe('R2 deploy', () => {
+  test('builds repo object keys for every curated repo', () => {
+    for (const repo of CURATED_REPOS) {
+      expect(buildRepoBucketPrefix('explorar-repos', repo)).toBe(
+        `s3://explorar-repos/repos/${repo.owner}/${repo.repo}/${repo.revision}/`
+      );
+      expect(buildRepoManifestKey(repo)).toBe(
+        `repos/${repo.owner}/${repo.repo}/${repo.revision}/repo-manifest.json`
+      );
+      expect(buildRepoCodeIndexKey(repo)).toBe(
+        `repos/${repo.owner}/${repo.repo}/${repo.revision}/code-index.sqlite`
+      );
+      expect(buildRepoRequiredArtifactKeys(repo)).toEqual([
+        `repos/${repo.owner}/${repo.repo}/${repo.revision}/repo-manifest.json`,
+        `repos/${repo.owner}/${repo.repo}/${repo.revision}/code-index.sqlite`,
+      ]);
+    }
+  });
+
+  test('sync args are incremental and non-destructive', () => {
+    const args = buildRepoSyncArgs(
+      '/tmp/explorar-repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4',
+      's3://explorar-repos/repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/'
+    );
+
+    expect(args).toEqual([
+      's3',
+      'sync',
+      '/tmp/explorar-repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/',
+      's3://explorar-repos/repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/',
+      '--no-progress',
+      '--size-only',
+    ]);
+    expect(args).not.toContain('--delete');
+  });
+
+  test('corpus build signatures change when the generated tree changes', () => {
+    const repo = {
+      id: 'torvalds-linux',
+      owner: 'torvalds',
+      repo: 'linux',
+      ref: 'v6.1',
+      revision: 'v6.1',
+      guideId: 'linux-kernel-guide',
+    };
+
+    const signatureA = getCorpusBuildSignature(repo, [
+      {
+        name: 'arch',
+        type: 'd',
+        children: [
+          {
+            name: 'arm64',
+            type: 'd',
+            children: [{ name: 'entry.S', type: 'f' }],
+          },
+        ],
+      },
+    ]);
+
+    const signatureB = getCorpusBuildSignature(repo, [
+      {
+        name: 'arch',
+        type: 'd',
+        children: [
+          {
+            name: 'arm64',
+            type: 'd',
+            children: [
+              { name: 'entry.S', type: 'f' },
+              { name: 'entry.c', type: 'f' },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(signatureA).not.toBe(signatureB);
+    expect(JSON.parse(signatureA)).toMatchObject({
+      corpusBuildSignatureVersion: 1,
+      searchIndexVersion: 2,
+      owner: 'torvalds',
+      repo: 'linux',
+      revision: 'v6.1',
+    });
+  });
+});

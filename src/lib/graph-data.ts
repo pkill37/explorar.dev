@@ -1,6 +1,28 @@
 import Dagre from '@dagrejs/dagre';
-import type { Node, Edge } from '@xyflow/react';
 import type { GuideSection } from '@/lib/project-guides';
+
+interface XYPosition {
+  x: number;
+  y: number;
+}
+
+interface Node<Data = unknown> {
+  id: string;
+  type?: string;
+  position: XYPosition;
+  data: Data;
+}
+
+interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  type?: string;
+  data?: unknown;
+  animated?: boolean;
+  style?: Record<string, unknown>;
+  label?: string;
+}
 
 export interface FolderNodeData extends Record<string, unknown> {
   folderName: string;

@@ -133,6 +133,176 @@
   height: 100%;
 }
 
+.vscode-tree-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vscode-tree-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--vscode-bg-primary);
+  color: var(--vscode-text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.vscode-tree-search-input:focus {
+  border-color: var(--vscode-text-accent);
+  box-shadow: 0 0 0 1px rgba(86, 156, 214, 0.25);
+}
+
+.vscode-tree-search-clear {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  background: var(--vscode-bg-secondary);
+  color: var(--vscode-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.vscode-tree-search-clear:hover {
+  background: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.vscode-tree-search-toggle {
+  width: 32px;
+  height: 24px;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  background: var(--vscode-bg-secondary);
+  color: var(--vscode-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.vscode-tree-search-toggle:hover {
+  background: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.vscode-tree-search-toggle.is-active {
+  background: rgba(86, 156, 214, 0.16);
+  border-color: rgba(86, 156, 214, 0.55);
+  color: var(--vscode-text-accent);
+}
+
+.vscode-tree-search-meta {
+  font-size: 11px;
+  color: var(--vscode-text-secondary);
+}
+
+.vscode-tree-search-results {
+  padding: 2px 0 4px;
+  border-bottom: 1px solid var(--vscode-border);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.vscode-tree-search-empty {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--vscode-text-secondary);
+}
+
+.vscode-tree-search-group {
+  margin-bottom: 0;
+  border-top: 1px solid transparent;
+}
+
+.vscode-tree-search-group:last-child {
+  margin-bottom: 0;
+}
+
+.vscode-tree-search-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+  padding: 2px 16px 2px 8px;
+  min-height: 22px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--vscode-text-primary);
+  cursor: default;
+}
+
+.vscode-tree-search-group-header .name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-tree-search-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-left: 8px;
+  border-left: 1px solid var(--vscode-border);
+}
+
+.vscode-tree-search-row {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 0 10px;
+  text-align: left;
+  line-height: 18px;
+}
+
+.vscode-tree-search-row:hover {
+  background: var(--vscode-bg-hover);
+}
+
+.vscode-tree-search-row-line {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--vscode-text-secondary);
+  min-width: 28px;
+  text-align: right;
+  font-family: monospace;
+}
+
+.vscode-tree-search-row-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--vscode-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-tree-search-row .size {
+  font-size: 10px;
+  color: var(--vscode-text-tertiary);
+  margin-left: auto;
+}
+
 .vscode-file-item {
   display: flex;
   align-items: center;
@@ -191,6 +361,33 @@
   display: flex;
   overflow: hidden;
   height: 35px;
+}
+
+.vscode-tab-bar-action {
+  width: 28px;
+  min-width: 28px;
+  height: 100%;
+  border: none;
+  border-right: 1px solid var(--vscode-border);
+  background: var(--vscode-bg-secondary);
+  color: var(--vscode-text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vscode-tab-bar-action:hover:not(:disabled) {
+  background: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.vscode-tab-bar-action:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .vscode-tab-strip {

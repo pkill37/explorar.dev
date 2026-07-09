@@ -23,6 +23,14 @@ export interface EditorTab {
   searchPattern?: string; // Pattern to search for and highlight
 }
 
+export interface WorkspaceSearchResult {
+  file: string;
+  line: number;
+  column: number;
+  preview: string;
+  key: string;
+}
+
 export interface GitHubApiResponse {
   name: string;
   path: string;

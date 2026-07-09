@@ -5,7 +5,7 @@
  * R2 only needs the bucket-backed curated corpus:
  * - sync `repos/` into `repos/`
  * - use the Cloudflare R2 S3-compatible endpoint
- * - delete stale objects in that prefix
+ * - upload only changed objects, never mirror-delete the bucket
  */
 
 import { spawn, spawnSync } from 'child_process';
@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { loadDeployEnv } from './deploy-env';
+import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
 import { CURATED_REPOS } from '../src/lib/curated-repos';
 import { runPhase } from './tqdm';
@@ -23,6 +24,11 @@ type DeployEnv = {
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
+};
+
+type RepoManifest = {
+  buildSignature?: string;
+  tree?: CorpusBuildTreeNode[];
 };
 
 const R2_SYNC_CONCURRENCY = 2;
@@ -117,20 +123,30 @@ function runAwsCommandAsync(args: string[], env: DeployEnv, failureContext: stri
   });
 }
 
-function runAwsCommandQuiet(args: string[], env: DeployEnv): Promise<boolean> {
-  const endpointUrl = `https://${env.accountId}.r2.cloudflarestorage.com`;
-  const argsWithEndpoint = [...args, '--endpoint-url', endpointUrl];
-
+function runAwsHeadObjectQuiet(bucketName: string, key: string, env: DeployEnv): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    const child = spawn('aws', argsWithEndpoint, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        AWS_ACCESS_KEY_ID: env.accessKeyId,
-        AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
-        AWS_DEFAULT_REGION: 'auto',
-      },
-    });
+    const child = spawn(
+      'aws',
+      [
+        's3api',
+        'head-object',
+        '--bucket',
+        bucketName,
+        '--key',
+        key,
+        '--endpoint-url',
+        `https://${env.accountId}.r2.cloudflarestorage.com`,
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          AWS_ACCESS_KEY_ID: env.accessKeyId,
+          AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
+          AWS_DEFAULT_REGION: 'auto',
+        },
+      }
+    );
 
     let stderr = '';
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -147,7 +163,7 @@ function runAwsCommandQuiet(args: string[], env: DeployEnv): Promise<boolean> {
         return;
       }
 
-      if (code === 1) {
+      if (code === 254 || code === 1) {
         resolve(false);
         return;
       }
@@ -155,6 +171,169 @@ function runAwsCommandQuiet(args: string[], env: DeployEnv): Promise<boolean> {
       reject(new Error(`aws exited with status ${code ?? 'unknown'}: ${stderr.trim()}`));
     });
   });
+}
+
+function runAwsCommandCaptureStdout(args: string[], env: DeployEnv): Promise<string> {
+  const endpointUrl = `https://${env.accountId}.r2.cloudflarestorage.com`;
+  const argsWithEndpoint = [...args, '--endpoint-url', endpointUrl];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('aws', argsWithEndpoint, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        AWS_ACCESS_KEY_ID: env.accessKeyId,
+        AWS_SECRET_ACCESS_KEY: env.secretAccessKey,
+        AWS_DEFAULT_REGION: 'auto',
+      },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(new Error(`Failed to launch aws CLI: ${error.message}`));
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
+
+      reject(new Error(`aws exited with status ${code ?? 'unknown'}: ${stderr.trim()}`));
+    });
+  });
+}
+
+function readCurrentBuildSignatureFromManifestFile(
+  manifestPath: string,
+  repo: { id: string; owner: string; repo: string; ref: string; revision: string; guideId: string }
+): string | null {
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(raw) as RepoManifest;
+    if (!Array.isArray(manifest.tree)) {
+      return null;
+    }
+
+    return getCorpusBuildSignature(repo, manifest.tree);
+  } catch {
+    return null;
+  }
+}
+
+export function buildRepoBucketPrefix(
+  bucketName: string,
+  repo: { owner: string; repo: string; revision: string }
+): string {
+  return `s3://${bucketName}/repos/${repo.owner}/${repo.repo}/${repo.revision}/`;
+}
+
+export function buildRepoManifestKey(repo: {
+  owner: string;
+  repo: string;
+  revision: string;
+}): string {
+  return `repos/${repo.owner}/${repo.repo}/${repo.revision}/repo-manifest.json`;
+}
+
+export function buildRepoCodeIndexKey(repo: {
+  owner: string;
+  repo: string;
+  revision: string;
+}): string {
+  return `repos/${repo.owner}/${repo.repo}/${repo.revision}/code-index.sqlite`;
+}
+
+export function buildRepoRequiredArtifactKeys(repo: {
+  owner: string;
+  repo: string;
+  revision: string;
+}): string[] {
+  return [buildRepoManifestKey(repo), buildRepoCodeIndexKey(repo)];
+}
+
+export function buildRepoSyncArgs(repoDir: string, bucketPrefix: string): string[] {
+  return ['s3', 'sync', `${repoDir}/`, bucketPrefix, '--no-progress', ...R2_SYNC_COMPARISON_ARGS];
+}
+
+async function readRemoteBuildSignature(
+  env: DeployEnv,
+  repo: { owner: string; repo: string; revision: string }
+): Promise<string | null> {
+  const remoteManifestPath = `s3://${env.bucketName}/${buildRepoManifestKey(repo)}`;
+
+  const stdout = await runAwsCommandCaptureStdout(['s3', 'cp', remoteManifestPath, '-'], env);
+
+  try {
+    const manifest = JSON.parse(stdout) as RepoManifest;
+    const buildSignature = manifest.buildSignature?.trim();
+    return buildSignature || null;
+  } catch {
+    return null;
+  }
+}
+
+async function shouldSkipRepoDeploy(
+  env: DeployEnv,
+  repoDir: string,
+  repo: { id: string; owner: string; repo: string; ref: string; revision: string; guideId: string }
+): Promise<boolean> {
+  const localManifestPath = path.join(repoDir, 'repo-manifest.json');
+  const localBuildSignature = readCurrentBuildSignatureFromManifestFile(localManifestPath, repo);
+  if (!localBuildSignature) {
+    return false;
+  }
+
+  const remoteArtifactsExist = await Promise.all(
+    buildRepoRequiredArtifactKeys(repo).map((key) =>
+      runAwsHeadObjectQuiet(env.bucketName, key, env)
+    )
+  );
+
+  if (remoteArtifactsExist.some((exists) => !exists)) {
+    return false;
+  }
+
+  const remoteBuildSignature = await readRemoteBuildSignature(env, repo);
+  if (!remoteBuildSignature) {
+    return false;
+  }
+
+  return remoteBuildSignature === localBuildSignature;
+}
+
+async function ensureRepoArtifactsUploaded(
+  env: DeployEnv,
+  repo: { owner: string; repo: string; revision: string }
+): Promise<void> {
+  const checks = await Promise.all(
+    buildRepoRequiredArtifactKeys(repo).map(async (key) => ({
+      key,
+      exists: await runAwsHeadObjectQuiet(env.bucketName, key, env),
+    }))
+  );
+
+  const missingKeys = checks.filter(({ exists }) => !exists).map(({ key }) => key);
+  if (missingKeys.length > 0) {
+    fail(
+      `Missing uploaded corpus artifact(s) for ${repo.owner}/${repo.repo}@${repo.revision}: ${missingKeys.join(
+        ', '
+      )}`
+    );
+  }
 }
 
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -287,31 +466,23 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
 
   const tasks = CURATED_REPOS.map((repo) => async () => {
     const repoDir = path.join(CORPUS_REPOS_DIR, repo.owner, repo.repo, repo.revision);
-    const bucketPrefix = `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.revision}/`;
+    const bucketPrefix = buildRepoBucketPrefix(env.bucketName, repo);
     ensureCorpusDir(repoDir, `${repo.owner}/${repo.repo}@${repo.revision}`);
 
     const fileCount = countFiles(repoDir);
     const size = directorySizeBytes(repoDir);
 
-    const manifestExists = await runWithRetries(
-      `${repo.owner}/${repo.repo}@${repo.revision} existence check`,
-      () =>
-        runAwsCommandQuiet(
-          [
-            's3',
-            'ls',
-            `s3://${env.bucketName}/repos/${repo.owner}/${repo.repo}/${repo.revision}/repo-manifest.json`,
-          ],
-          env
-        ),
+    const manifestMatches = await runWithRetries(
+      `${repo.owner}/${repo.repo}@${repo.revision} remote manifest check`,
+      () => shouldSkipRepoDeploy(env, repoDir, repo),
       retryAttempts,
       retryBaseDelayMs
     );
 
-    if (manifestExists) {
+    if (manifestMatches) {
       skipped++;
       console.log(
-        `   Skipping ${repo.owner}/${repo.repo}@${repo.revision} (already present in R2)`
+        `   Skipping ${repo.owner}/${repo.repo}@${repo.revision} (matching build already present in R2)`
       );
       return;
     }
@@ -323,15 +494,7 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
           `${repo.owner}/${repo.repo}@${repo.revision} sync`,
           () =>
             runAwsCommandAsync(
-              [
-                's3',
-                'sync',
-                `${repoDir}/`,
-                bucketPrefix,
-                '--delete',
-                '--no-progress',
-                ...R2_SYNC_COMPARISON_ARGS,
-              ],
+              buildRepoSyncArgs(repoDir, bucketPrefix),
               env,
               `Corpus repo sync failed for ${repo.owner}/${repo.repo}@${repo.revision}`
             ),
@@ -345,6 +508,8 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
       },
       `${fileCount} files · ${formatBytes(size)}`
     );
+
+    await ensureRepoArtifactsUploaded(env, repo);
 
     completed++;
     console.log(`   Corpus repo progress: ${completed}/${CURATED_REPOS.length}`);

@@ -16,7 +16,11 @@ defaultOpenIds:
 ---
 
 # Little Kernel In The Mind
+
+Little Kernel is easiest to read as a compact embedded bootloader-first kernel. It sits in the boot chain before Linux, and the rest of the guide walks through that role, the boot flow, and the subsystems that make LK useful in production.
+
 ---
+
 id: ch1
 title: Chapter 1 — What LK Is and What It Optimizes For
 fileRecommendations:
@@ -103,7 +107,7 @@ LK's boot flow follows a layered initialization sequence. Understanding this ord
 
 **5. Apps initialization.** Multiple applications launch as separate kernel threads. On production devices the primary app is `mt_boot` (or `aboot`), which implements the fastboot protocol and handles Android image loading. The `shell` app provides a UART-accessible command interface when enabled.
 
-**6. Kernel load and handoff.** The active app loads the appropriate partition (`BOOTIMG`, `RECOVERY`, or `factory.img`). Before jumping to Linux, LK constructs a **tag memory block** containing: boot mode number, DRAM bank addresses and topology, kernel command line (including timing metrics like `pl_t` and `lk_t`), initrd location, and framebuffer geometry. Linux reads this block during early boot.
+**6. Kernel load and handoff.** The active app loads the appropriate partition (`BOOTIMG`, `RECOVERY`, or factory.img). Before jumping to Linux, LK constructs a **tag memory block** containing: boot mode number, DRAM bank addresses and topology, kernel command line (including timing metrics like `pl_t` and `lk_t`), initrd location, and framebuffer geometry. Linux reads this block during early boot.
 
 This sequence is the skeleton. Every subsystem chapter in this guide connects to a specific phase of it.
 
@@ -142,7 +146,7 @@ LK's directory layout is the main way the kernel separates responsibilities. Eac
 
 `arch/` owns CPU semantics: interrupt entry, exception handling, context switching, atomics, barriers, and MMU enablement. It may assume CPU behavior but not board wiring.
 
-`platform/` owns SoC and board-family bring-up: timers, interrupt controllers, UART selection, memory layout, clocks, and early display. Platform code on MediaTek SoCs lives under the `platform/mt*` subtree and handles hardware as specific as RGB565 framebuffer allocation for the Mali GPU display driver. It may assume interrupt controller and UART choices, but not product policy.
+`platform/` owns SoC and board-family bring-up: timers, interrupt controllers, UART selection, memory layout, clocks, and early display. Platform code on MediaTek SoCs lives under the platform/mt* subtree and handles hardware as specific as RGB565 framebuffer allocation for the Mali GPU display driver. It may assume interrupt controller and UART choices, but not product policy.
 
 `target/` names concrete deployment environments: the exact board that chooses one platform, one architecture path, and a particular hardware profile. `project/` composes features into a finished image.
 

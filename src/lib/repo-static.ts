@@ -3,26 +3,242 @@
 // are typically fetched from a direct public bucket/custom-domain origin.
 
 import type { FileNode } from '@/types';
-import { buildCuratedRepoUrl } from './curated-content-url';
+import { buildCuratedRepoStaticPath, buildCuratedRepoUrl } from './curated-content-url';
 import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
 import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
 import { debugLog } from './browser-debug';
+import {
+  CODE_INDEX_FILE_NAME,
+  CODE_INDEX_VERSION,
+  type CodeIndexDatabaseLike,
+  type CodeIndexMetadata,
+  type LoadedCodeIndex,
+} from './code-index';
 
 const STATIC_FETCH_TIMEOUT_MS = 5000;
+const SEARCH_INDEX_FETCH_TIMEOUT_MS = 15000;
+const codeIndexCache = new Map<string, Promise<LoadedCodeIndex | null>>();
+const treeStructureCache = new Map<string, Promise<FileNode[] | null>>();
+const CODE_INDEX_BROWSER_CACHE_NAME = 'explorar-code-index-v1';
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+export interface CodeIndexLoadProgress {
+  loadedBytes: number;
+  totalBytes: number | null;
+  source: 'cache' | 'network';
+}
+
+function getCodeIndexCacheKey(owner: string, repo: string, branch: string): string {
+  return getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME);
+}
+
+function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return merged;
+}
+
+async function readCachedCodeIndexBytes(
+  owner: string,
+  repo: string,
+  branch: string,
+  onProgress?: (progress: CodeIndexLoadProgress) => void
+): Promise<ArrayBuffer | null> {
+  if (typeof caches === 'undefined') {
+    return null;
+  }
+
+  try {
+    const cache = await caches.open(CODE_INDEX_BROWSER_CACHE_NAME);
+    const cached = await cache.match(getCodeIndexCacheKey(owner, repo, branch));
+    if (!cached || !cached.ok) {
+      return null;
+    }
+    const bytes = await cached.arrayBuffer();
+    onProgress?.({
+      loadedBytes: bytes.byteLength,
+      totalBytes: bytes.byteLength,
+      source: 'cache',
+    });
+    return bytes;
+  } catch (error) {
+    debugLog('[explorar:code-index-cache] read-error', {
+      owner,
+      repo,
+      branch,
+      filePath: CODE_INDEX_FILE_NAME,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function writeCachedCodeIndexBytes(
+  owner: string,
+  repo: string,
+  branch: string,
+  bytes: ArrayBuffer
+): Promise<void> {
+  if (typeof caches === 'undefined') {
+    return;
+  }
+
+  try {
+    const cache = await caches.open(CODE_INDEX_BROWSER_CACHE_NAME);
+    const response = new Response(bytes, {
+      headers: {
+        'content-type': 'application/octet-stream',
+      },
+    });
+    await cache.put(getCodeIndexCacheKey(owner, repo, branch), response);
+  } catch (error) {
+    debugLog('[explorar:code-index-cache] write-error', {
+      owner,
+      repo,
+      branch,
+      filePath: CODE_INDEX_FILE_NAME,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number = STATIC_FETCH_TIMEOUT_MS
+): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = globalThis.setTimeout(() => controller.abort(), STATIC_FETCH_TIMEOUT_MS);
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, { signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Timed out after ${STATIC_FETCH_TIMEOUT_MS}ms`);
+      throw new Error(`Timed out after ${timeoutMs}ms`);
     }
     throw error;
   } finally {
     globalThis.clearTimeout(timeoutId);
+  }
+}
+
+async function readBinaryFromStatic(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string,
+  timeoutMs: number = STATIC_FETCH_TIMEOUT_MS,
+  onProgress?: (progress: CodeIndexLoadProgress) => void
+): Promise<ArrayBuffer | null> {
+  if (filePath.endsWith('/')) {
+    return null;
+  }
+
+  if (filePath === CODE_INDEX_FILE_NAME) {
+    const cachedBytes = await readCachedCodeIndexBytes(owner, repo, branch, onProgress);
+    if (cachedBytes) {
+      debugLog('[explorar:binary-fetch-static] cache-hit', {
+        owner,
+        repo,
+        branch,
+        filePath,
+        cacheKey: getCodeIndexCacheKey(owner, repo, branch),
+      });
+      return cachedBytes;
+    }
+  }
+
+  const url = getStaticFilePath(owner, repo, branch, filePath);
+
+  try {
+    const response = await fetchWithTimeout(url, timeoutMs);
+    if (!response.ok) {
+      debugLog('[explorar:binary-fetch-static] response-error', {
+        owner,
+        repo,
+        branch,
+        filePath,
+        url,
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return null;
+    }
+
+    const totalBytesHeader = response.headers.get('content-length');
+    const totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
+
+    if (response.body?.getReader) {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loadedBytes = 0;
+
+      onProgress?.({
+        loadedBytes: 0,
+        totalBytes: Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0 ? totalBytes : null,
+        source: 'network',
+      });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        chunks.push(value);
+        loadedBytes += value.byteLength;
+        onProgress?.({
+          loadedBytes,
+          totalBytes:
+            Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0 ? totalBytes : null,
+          source: 'network',
+        });
+      }
+
+      const byteView = concatUint8Arrays(chunks);
+      const bytes = byteView.buffer.slice(
+        byteView.byteOffset,
+        byteView.byteOffset + byteView.byteLength
+      ) as ArrayBuffer;
+      onProgress?.({
+        loadedBytes: bytes.byteLength,
+        totalBytes:
+          Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0
+            ? totalBytes
+            : bytes.byteLength,
+        source: 'network',
+      });
+
+      if (filePath === CODE_INDEX_FILE_NAME) {
+        void writeCachedCodeIndexBytes(owner, repo, branch, bytes);
+      }
+      return bytes;
+    }
+
+    const bytes = await response.arrayBuffer();
+    onProgress?.({
+      loadedBytes: bytes.byteLength,
+      totalBytes:
+        Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0 ? totalBytes : bytes.byteLength,
+      source: 'network',
+    });
+    if (filePath === CODE_INDEX_FILE_NAME) {
+      void writeCachedCodeIndexBytes(owner, repo, branch, bytes);
+    }
+    return bytes;
+  } catch (error) {
+    debugLog('[explorar:binary-fetch-static] error', {
+      owner,
+      repo,
+      branch,
+      filePath,
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
 }
 
@@ -31,6 +247,78 @@ async function fetchWithTimeout(url: string): Promise<Response> {
  */
 export function isCuratedRepo(owner: string, repo: string): boolean {
   return isConfiguredCuratedRepo(owner, repo);
+}
+
+export function resolveCorpusPathFromKnownFiles(
+  filePath: string,
+  knownPaths: Iterable<string>
+): string | null {
+  const normalizedPath = filePath.replace(/\/+$/, '');
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const paths = Array.from(knownPaths);
+  if (paths.includes(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  if (normalizedPath.includes('/')) {
+    const basename = normalizedPath.split('/').pop();
+    if (!basename) return null;
+    const matches = paths.filter((candidate) => candidate.endsWith(`/${basename}`));
+    if (matches.length === 1) {
+      return matches[0];
+    }
+
+    const arm64Matches = matches.filter((candidate) => /(^|\/)arm64(\/|$)/.test(candidate));
+    return arm64Matches.length === 1 ? arm64Matches[0] : null;
+  }
+
+  const matches = paths.filter((candidate) => candidate.split('/').pop() === normalizedPath);
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  const arm64Matches = matches.filter((candidate) => /(^|\/)arm64(\/|$)/.test(candidate));
+  return arm64Matches.length === 1 ? arm64Matches[0] : null;
+}
+
+function collectFilePaths(tree: FileNode[] | null): string[] {
+  if (!tree) {
+    return [];
+  }
+
+  const paths: string[] = [];
+  const walk = (nodes: FileNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === 'file') {
+        paths.push(node.path);
+      }
+      if (node.children?.length) {
+        walk(node.children);
+      }
+    }
+  };
+
+  walk(tree);
+  return paths;
+}
+
+export async function resolveCorpusPathFromTree(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string
+): Promise<string | null> {
+  const normalizedPath = filePath.replace(/\/+$/, '');
+  if (!normalizedPath) {
+    return null;
+  }
+
+  const tree = await getTreeStructureFromStatic(owner, repo, branch);
+  const knownPaths = collectFilePaths(tree);
+  return resolveCorpusPathFromKnownFiles(normalizedPath, knownPaths);
 }
 
 /**
@@ -52,11 +340,15 @@ function getStaticFileCandidates(
   repo: string,
   branch: string,
   filePath: string
-): Array<{ url: string; resolvedSource: 'r2-bucket' }> {
-  const candidates: Array<{ url: string; resolvedSource: 'r2-bucket' }> = [
+): Array<{ url: string; resolvedSource: 'r2-bucket' | 'static-path' }> {
+  const candidates: Array<{ url: string; resolvedSource: 'r2-bucket' | 'static-path' }> = [
     {
       url: getStaticFilePath(owner, repo, branch, filePath),
       resolvedSource: 'r2-bucket',
+    },
+    {
+      url: buildCuratedRepoStaticPath(owner, repo, branch, filePath),
+      resolvedSource: 'static-path',
     },
   ];
 
@@ -72,6 +364,10 @@ export async function readFileFromStatic(
   branch: string,
   filePath: string
 ): Promise<FileFetchResult> {
+  if (filePath.endsWith('/')) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
   const candidates = getStaticFileCandidates(owner, repo, branch, filePath);
 
   let lastError: Error | null = null;
@@ -83,7 +379,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source: 'r2-bucket',
+        source: candidate.resolvedSource,
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
       });
@@ -95,7 +391,7 @@ export async function readFileFromStatic(
           repo,
           branch,
           filePath,
-          source: 'r2-bucket',
+          source: candidate.resolvedSource,
           resolvedSource: candidate.resolvedSource,
           url: candidate.url,
           status: response.status,
@@ -146,7 +442,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source: 'r2-bucket',
+        source: candidate.resolvedSource,
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
         error: normalizedError.message,
@@ -193,60 +489,164 @@ export async function getTreeStructureFromStatic(
     return null;
   }
 
-  // Try new manifest name first (repo-manifest.json), then fall back to old name (.repo-manifest.json)
-  const manifestFileNames = ['repo-manifest.json', '.repo-manifest.json'];
+  const cacheKey = `${owner}/${repo}@${branch}`;
+  const cached = treeStructureCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
-  for (const manifestFileName of manifestFileNames) {
-    const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName);
+  const treePromise = (async () => {
+    // Try new manifest name first (repo-manifest.json), then fall back to old name (.repo-manifest.json)
+    const manifestFileNames = ['repo-manifest.json', '.repo-manifest.json'];
 
-    for (const candidate of candidates) {
-      try {
-        const response = await fetchWithTimeout(candidate.url);
+    for (const manifestFileName of manifestFileNames) {
+      const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName);
 
-        if (response.ok) {
-          const manifest = await response.json();
-          const rawTree: ManifestNode[] | null = manifest.tree || null;
-          if (!rawTree) return null;
+      for (const candidate of candidates) {
+        try {
+          const response = await fetchWithTimeout(candidate.url);
 
-          debugLog('[explorar:manifest-fetch-static] success', {
+          if (response.ok) {
+            const manifest = await response.json();
+            const rawTree: ManifestNode[] | null = manifest.tree || null;
+            if (!rawTree) return null;
+
+            debugLog('[explorar:manifest-fetch-static] success', {
+              owner,
+              repo,
+              branch,
+              source: candidate.resolvedSource,
+              resolvedSource: candidate.resolvedSource,
+              url: candidate.url,
+            });
+
+            // New compact format uses short type keys ('f'/'d'); legacy format uses full FileNode shape
+            const isCompact =
+              rawTree.length > 0 && (rawTree[0].type === 'f' || rawTree[0].type === 'd');
+            return isCompact ? expandManifestNodes(rawTree) : (rawTree as unknown as FileNode[]);
+          }
+
+          debugLog('[explorar:manifest-fetch-static] response-error', {
             owner,
             repo,
             branch,
-            source: 'r2-bucket',
+            source: candidate.resolvedSource,
             resolvedSource: candidate.resolvedSource,
             url: candidate.url,
+            status: response.status,
+            statusText: response.statusText,
           });
-
-          // New compact format uses short type keys ('f'/'d'); legacy format uses full FileNode shape
-          const isCompact =
-            rawTree.length > 0 && (rawTree[0].type === 'f' || rawTree[0].type === 'd');
-          return isCompact ? expandManifestNodes(rawTree) : (rawTree as unknown as FileNode[]);
+        } catch (error) {
+          debugLog('[explorar:manifest-fetch-static] error', {
+            owner,
+            repo,
+            branch,
+            source: candidate.resolvedSource,
+            resolvedSource: candidate.resolvedSource,
+            url: candidate.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
-
-        debugLog('[explorar:manifest-fetch-static] response-error', {
-          owner,
-          repo,
-          branch,
-          source: 'r2-bucket',
-          resolvedSource: candidate.resolvedSource,
-          url: candidate.url,
-          status: response.status,
-          statusText: response.statusText,
-        });
-      } catch (error) {
-        debugLog('[explorar:manifest-fetch-static] error', {
-          owner,
-          repo,
-          branch,
-          source: 'r2-bucket',
-          resolvedSource: candidate.resolvedSource,
-          url: candidate.url,
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
     }
+
+    // Return null silently - missing manifests are expected for branches that weren't downloaded
+    return null;
+  })();
+
+  treeStructureCache.set(cacheKey, treePromise);
+
+  try {
+    const tree = await treePromise;
+    if (!tree) {
+      treeStructureCache.delete(cacheKey);
+    }
+    return tree;
+  } catch (error) {
+    treeStructureCache.delete(cacheKey);
+    throw error;
+  }
+}
+
+export async function getCodeIndexFromStatic(
+  owner: string,
+  repo: string,
+  branch: string,
+  options?: {
+    onProgress?: (progress: CodeIndexLoadProgress) => void;
+  }
+): Promise<LoadedCodeIndex | null> {
+  if (!isCuratedRepo(owner, repo)) {
+    return null;
   }
 
-  // Return null silently - missing manifests are expected for branches that weren't downloaded
-  return null;
+  const cacheKey = `${owner}/${repo}@${branch}`;
+  if (!codeIndexCache.has(cacheKey)) {
+    codeIndexCache.set(
+      cacheKey,
+      (async () => {
+        const bytes = await readBinaryFromStatic(
+          owner,
+          repo,
+          branch,
+          CODE_INDEX_FILE_NAME,
+          SEARCH_INDEX_FETCH_TIMEOUT_MS,
+          options?.onProgress
+        );
+
+        if (!bytes) {
+          return null;
+        }
+
+        const sqlJs = await import('sql.js');
+        const initSqlJs = sqlJs.default;
+        const SQL = await initSqlJs({
+          locateFile: (file: string) => `/sqljs/${file}`,
+        });
+
+        const db = new SQL.Database(new Uint8Array(bytes)) as unknown as CodeIndexDatabaseLike;
+        const metadataStatement = db.prepare(
+          'SELECT Version AS version, BuildSignature AS buildSignature, CreatedAt AS createdAt, Owner AS owner, Repo AS repo, Branch AS branch, FileCount AS fileCount FROM Metadata LIMIT 1'
+        );
+
+        try {
+          if (!metadataStatement.step()) {
+            return null;
+          }
+
+          const metadata = metadataStatement.getAsObject() as Partial<CodeIndexMetadata>;
+          if (metadata.version !== CODE_INDEX_VERSION) {
+            return null;
+          }
+
+          const handle: LoadedCodeIndex = {
+            db,
+            fileCount: Number(metadata.fileCount ?? 0),
+            buildSignature: String(metadata.buildSignature ?? ''),
+          };
+
+          debugLog('[explorar:code-index-static] success', {
+            owner,
+            repo,
+            branch,
+            filePath: CODE_INDEX_FILE_NAME,
+            url: getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME),
+            fileCount: handle.fileCount,
+          });
+
+          return handle;
+        } finally {
+          metadataStatement.free();
+        }
+      })()
+    );
+  }
+
+  const payload = await codeIndexCache.get(cacheKey)!;
+
+  if (!payload) {
+    return null;
+  }
+
+  return payload;
 }

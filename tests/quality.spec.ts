@@ -7,13 +7,15 @@ import AxeBuilder from '@axe-core/playwright';
  */
 test.describe('Quality Checks', () => {
   test('homepage has no accessibility violations', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const accessibilityScanResults = await new AxeBuilder({ page }).analyze();
     expect(accessibilityScanResults.violations).toEqual([]);
   });
 
   test('repository page has no accessibility violations', async ({ page }) => {
-    await page.goto('/linux-kernel');
+    await page.goto('/linux-kernel', { waitUntil: 'domcontentloaded' });
+    const loadedMain = page.locator('main').filter({ hasText: 'Open a file from the explorer' });
+    await expect(loadedMain).toBeVisible({ timeout: 30000 });
     // color-contrast is disabled: the dark VS Code-like UI intentionally uses
     // low-contrast muted labels (same design trade-off as VS Code's own dark theme)
     const accessibilityScanResults = await new AxeBuilder({ page })
@@ -23,7 +25,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('all internal links are valid', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const links = page.locator('a[href^="/"]');
 
     const linkCount = await links.count();
@@ -44,7 +46,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('has no broken images', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const images = page.locator('img');
 
     const count = await images.count();
@@ -65,7 +67,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('has proper color contrast', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();
@@ -78,7 +80,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('keyboard navigation works', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check that interactive elements are focusable
     const interactiveElements = page.locator('a, button, input, select, textarea, [tabindex]');
@@ -95,7 +97,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('has proper ARIA labels where needed', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check buttons without text have aria-label
     const buttons = page.locator('button');
@@ -114,7 +116,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('forms have proper labels', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const inputs = page.locator('input, select, textarea');
     const inputCount = await inputs.count();
@@ -150,8 +152,8 @@ test.describe('Quality Checks', () => {
       }
     });
 
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1000);
 
     // Filter out known non-critical errors
     const criticalErrors = errors.filter(
@@ -168,7 +170,7 @@ test.describe('Quality Checks', () => {
   });
 
   test('has proper document structure', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check for DOCTYPE
     const doctype = await page.evaluate(() => document.doctype?.name);

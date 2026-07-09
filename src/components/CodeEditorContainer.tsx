@@ -11,13 +11,20 @@ import { debugLog } from '@/lib/browser-debug';
 interface CodeEditorContainerProps {
   filePath: string;
   onContentLoad?: (content: string) => void;
-  onOpenFile?: (path: string, searchPattern?: string, scrollToLine?: number) => void;
+  onOpenFile?: (
+    path: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[]
+  ) => void;
   fetchFile?: (path: string) => Promise<FileFetchResult>;
   markdownViewMode?: 'source' | 'preview';
   onToggleMarkdownPreview?: () => void;
   scrollToLine?: number;
   searchPattern?: string;
   onCursorChange?: (line: number, column: number) => void;
+  workspaceFilePaths?: string[];
+  workspaceId?: string;
 }
 
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
@@ -32,6 +39,8 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   scrollToLine,
   searchPattern,
   onCursorChange,
+  workspaceFilePaths,
+  workspaceId,
 }) => {
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -117,8 +126,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       }
 
       setError(null);
-      setContent('');
-      setCurrentFilePath(filePath);
       setIsLoading(true);
 
       try {
@@ -162,6 +169,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
         });
         setError(errorMessage);
         setContent('');
+        setCurrentFilePath('');
         console.error('Failed to load file content:', err);
       } finally {
         if (!isStaleRequest()) {
@@ -205,10 +213,15 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
     <MonacoCodeEditor
       filePath={filePath}
       content={content}
+      contentFilePath={currentFilePath}
       isLoading={isLoading}
       scrollToLine={scrollToLine}
       searchPattern={searchPattern}
       onCursorChange={onCursorChange}
+      onOpenFile={onOpenFile}
+      fetchFile={fetchFile}
+      workspaceFilePaths={workspaceFilePaths}
+      workspaceId={workspaceId}
     />
   );
 };

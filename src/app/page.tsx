@@ -197,6 +197,11 @@ export default function Home() {
                   key={`${repo.owner}/${repo.repo}`}
                   onClick={() => !repo.dimmed && handleRepositoryAction(repo)}
                   disabled={repo.dimmed}
+                  aria-label={
+                    repo.dimmed
+                      ? `${repo.displayName} is currently unavailable`
+                      : `Open ${repo.displayName}`
+                  }
                   className={`group relative p-5 bg-gray-900/60 border border-gray-800 rounded-xl transition-all duration-200 text-left overflow-hidden ${repo.dimmed ? 'opacity-25 grayscale cursor-default' : 'hover:bg-gray-800/70 hover:border-gray-700 cursor-pointer'}`}
                 >
                   <div className="flex gap-4">
@@ -238,7 +243,7 @@ export default function Home() {
                   </div>
 
                   {/* Footer row */}
-                  <div className="mt-3 flex items-center justify-between">
+                  <div className="mt-3 flex items-center">
                     {selectedBranch && !repo.dimmed && (
                       <div
                         className="px-1.5 py-0.5 bg-gray-800 text-gray-400 text-[10px] font-mono rounded border border-gray-700/60"
@@ -247,9 +252,6 @@ export default function Home() {
                         {selectedBranchLabel}
                       </div>
                     )}
-                    <div className="text-[11px] text-gray-600 group-hover:text-gray-400 transition-colors ml-auto">
-                      Explore →
-                    </div>
                   </div>
                 </button>
               );

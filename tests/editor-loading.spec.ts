@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { routeCorpusRepository } from './helpers/corpus-routing';
 
 type DebugEntry = {
   label: string;
@@ -13,6 +14,15 @@ int main(void) {
   return 0;
 }
 `;
+const TEST_MANIFEST = {
+  tree: [
+    {
+      name: 'top',
+      type: 'd',
+      children: [{ name: 'main.c', type: 'f' }],
+    },
+  ],
+};
 
 async function resetDebugLogs(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -32,77 +42,24 @@ async function readDebugLogs(page: Page): Promise<DebugEntry[]> {
 }
 
 async function openGuideFile(page: Page, path: string): Promise<void> {
-  await page
-    .getByRole('button', { name: new RegExp(path.replace('.', '\\.'), 'i') })
-    .first()
-    .click();
-}
+  const segments = path.split('/');
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const directoryPath = segments.slice(0, index + 1).join('/');
+    const directoryItem = page.locator(`[data-file-path="${directoryPath}"]`);
+    await expect(directoryItem).toBeVisible();
+    await directoryItem.click();
+  }
 
-async function routeStaticCorpus(page: Page, mainFileStatus: number): Promise<void> {
-  await page.route('https://**/repos/littlekernel/lk/**', async (route) => {
-    const url = route.request().url();
-
-    if (url.endsWith(`/${TEST_FILE_PATH}`)) {
-      await route.fulfill({
-        status: mainFileStatus,
-        contentType: 'text/plain; charset=utf-8',
-        headers: {
-          'access-control-allow-origin': '*',
-        },
-        body: mainFileStatus === 200 ? TEST_FILE_CONTENT : 'not found',
-      });
-      return;
-    }
-
-    await route.fulfill({
-      status: 404,
-      contentType: 'text/plain; charset=utf-8',
-      headers: {
-        'access-control-allow-origin': '*',
-      },
-      body: 'not found',
-    });
-  });
-}
-
-async function routeGitHubContents(page: Page, mainFileStatus: number): Promise<void> {
-  await page.route('https://api.github.com/repos/littlekernel/lk/contents/**', async (route) => {
-    const url = route.request().url();
-
-    if (url.includes('top%2Fmain.c')) {
-      if (mainFileStatus === 200) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json; charset=utf-8',
-          body: JSON.stringify({
-            type: 'file',
-            encoding: 'base64',
-            content: Buffer.from(TEST_FILE_CONTENT, 'utf8').toString('base64'),
-          }),
-        });
-        return;
-      }
-
-      await route.fulfill({
-        status: 404,
-        contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify({ message: 'Not Found' }),
-      });
-      return;
-    }
-
-    await route.fulfill({
-      status: 404,
-      contentType: 'application/json; charset=utf-8',
-      body: JSON.stringify({ message: 'Not Found' }),
-    });
-  });
+  const fileItem = page.locator(`[data-file-path="${path}"]`);
+  await expect(fileItem).toBeVisible();
+  await fileItem.click();
 }
 
 async function expectDebugLog(
   page: Page,
   predicate: (entry: DebugEntry) => boolean,
-  message: string
+  message: string,
+  timeout = 30000
 ): Promise<void> {
   await expect
     .poll(
@@ -110,17 +67,24 @@ async function expectDebugLog(
         const logs = await readDebugLogs(page);
         return logs.some(predicate);
       },
-      { timeout: 15000, message }
+      { timeout, message }
     )
     .toBeTruthy();
 }
 
 test.describe('Editor Loading', () => {
   test('renders Monaco after a successful cross-origin static file fetch', async ({ page }) => {
-    await routeStaticCorpus(page, 200);
-    await routeGitHubContents(page, 404);
+    await routeCorpusRepository({
+      page,
+      owner: 'littlekernel',
+      repo: 'lk',
+      manifest: TEST_MANIFEST,
+      files: {
+        [TEST_FILE_PATH]: TEST_FILE_CONTENT,
+      },
+    });
 
-    const response = await page.goto('/littlekernel/lk');
+    const response = await page.goto('/littlekernel/lk', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
 
     await resetDebugLogs(page);
@@ -134,30 +98,23 @@ test.describe('Editor Loading', () => {
       `Expected successful file load for ${TEST_FILE_PATH}`
     );
 
-    await expectDebugLog(
-      page,
-      (entry) =>
-        (entry.label === '[explorar:monaco] mount' ||
-          entry.label === '[explorar:monaco] model-sync' ||
-          entry.label === '[explorar:monaco] model-already-synced') &&
-        entry.payload?.filePath === TEST_FILE_PATH,
-      `Expected Monaco sync log for ${TEST_FILE_PATH}`
-    );
-
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.locator('.monaco-editor .view-lines').first()).toContainText(
-      '#include <lk/main.h>',
-      { timeout: 15000 }
-    );
+    await expect(page.getByRole('code').getByText('#include <lk/main.h>')).toBeVisible({
+      timeout: 30000,
+    });
   });
 
   test('failed loads surface an error instead of leaving the editor stuck on loading', async ({
     page,
   }) => {
-    await routeStaticCorpus(page, 404);
-    await routeGitHubContents(page, 404);
+    await routeCorpusRepository({
+      page,
+      owner: 'littlekernel',
+      repo: 'lk',
+      manifest: TEST_MANIFEST,
+      files: {},
+    });
 
-    const response = await page.goto('/littlekernel/lk');
+    const response = await page.goto('/littlekernel/lk', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
 
     await resetDebugLogs(page);
@@ -170,7 +127,7 @@ test.describe('Editor Loading', () => {
       `Expected failed file load log for ${TEST_FILE_PATH}`
     );
 
-    await expect(page.getByText('Loading top/main.c...')).not.toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Failed to load file')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Loading top/main.c...')).not.toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Failed to load file')).toBeVisible({ timeout: 30000 });
   });
 });

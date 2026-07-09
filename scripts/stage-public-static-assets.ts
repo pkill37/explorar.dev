@@ -70,7 +70,9 @@ function listFilesRecursive(
 function buildSnapshot(mode: StageMode): StageSnapshot {
   const repoManifestPaths = listFilesRecursive(
     CORPUS_REPOS_DIR,
-    (absolutePath) => path.basename(absolutePath) === 'repo-manifest.json'
+    (absolutePath) =>
+      path.basename(absolutePath) === 'repo-manifest.json' ||
+      path.basename(absolutePath) === 'code-index.sqlite'
   );
 
   return {

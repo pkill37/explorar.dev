@@ -61,7 +61,7 @@ glibc serves multiple critical roles:
 - **Standard library**: Implements C11/C17 standard functions
 - **POSIX layer**: Implements POSIX specifications (threads, IPC, etc.)
 - **Optimization layer**: Provides architecture-specific optimized code
-- **Dynamic linker**: `ld.so` loads and links shared libraries
+- **Dynamic linker**: `elf/rtld.c` implements the runtime loader and links shared libraries
 
 **The Call Chain:**
 
@@ -575,25 +575,25 @@ Fast per-thread caching layer (added in glibc 2.26):
 
 **Week 1: Core Structures**
 
-1. `malloc/malloc.c:1000-1100` - Chunk structure definition
-2. `malloc/malloc.c:1400-1600` - Bin definitions
+1. `malloc/malloc.c` - Chunk structure definition (around lines 1000-1100)
+2. `malloc/malloc.c` - Bin definitions (around lines 1400-1600)
 3. `malloc/malloc-internal.h` - Internal macros and structures
 
 **Week 2: Allocation Logic**
 
-1. `malloc/malloc.c:3000-3500` - `_int_malloc()` main allocation
-2. `malloc/malloc.c:1800-2000` - Fastbin allocation
-3. `malloc/malloc.c:2100-2300` - Small bin allocation
+1. `malloc/malloc.c` - `_int_malloc()` main allocation (around lines 3000-3500)
+2. `malloc/malloc.c` - Fastbin allocation (around lines 1800-2000)
+3. `malloc/malloc.c` - Small bin allocation (around lines 2100-2300)
 
 **Week 3: Deallocation**
 
-1. `malloc/malloc.c:4000-4500` - `_int_free()` main deallocation
-2. `malloc/malloc.c:4600-4800` - Chunk consolidation
+1. `malloc/malloc.c` - `_int_free()` main deallocation (around lines 4000-4500)
+2. `malloc/malloc.c` - Chunk consolidation (around lines 4600-4800)
 
 **Week 4: Advanced Features**
 
 1. `malloc/arena.c` - Multi-arena management
-2. `malloc/malloc.c:5000-5500` - `malloc_consolidate()`
+2. `malloc/malloc.c` - `malloc_consolidate()` (around lines 5000-5500)
 3. `malloc/hooks.c` - Hook mechanism
 
 **Practical Exercises:**

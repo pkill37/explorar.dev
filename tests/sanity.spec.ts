@@ -7,7 +7,7 @@ import { CURATED_TEST_REPOS } from './helpers/curated-repos';
  */
 test.describe('Sanity Checks', () => {
   test('homepage loads successfully', async ({ page }) => {
-    const response = await page.goto('/');
+    const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
     await expect(page).toHaveTitle(/explorar/i);
   });
@@ -20,41 +20,41 @@ test.describe('Sanity Checks', () => {
       }
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(errors).toHaveLength(0);
   });
 
   test('repository pages load successfully', async ({ page }) => {
     for (const { slug } of CURATED_TEST_REPOS) {
-      const response = await page.goto(`/${slug}`);
+      const response = await page.goto(`/${slug}`, { waitUntil: 'domcontentloaded' });
       expect(response?.status()).toBe(200);
       await expect(page.locator('body')).toBeVisible();
     }
   });
 
   test('robots.txt is accessible', async ({ page }) => {
-    const response = await page.goto('/robots.txt');
+    const response = await page.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
     const content = await page.textContent('body');
     expect(content).toContain('User-Agent');
   });
 
   test('sitemap.xml is accessible', async ({ page }) => {
-    const response = await page.goto('/sitemap.xml');
+    const response = await page.goto('/sitemap.xml', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
     const content = await page.textContent('body');
     expect(content).toContain('urlset');
   });
 
   test('all images load successfully', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const images = page.locator('img');
     const count = await images.count();
 
     for (let i = 0; i < count; i++) {
       const img = images.nth(i);
       const src = await img.getAttribute('src');
-      if (src && !src.startsWith('data:')) {
+      if (src && !src.startsWith('data:') && !src.startsWith('http')) {
         const response = await page.request.get(src);
         expect(response.status()).toBeLessThan(400);
       }

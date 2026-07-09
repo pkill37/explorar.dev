@@ -2,7 +2,12 @@
 
 import { FileNode, GITHUB_CONFIG } from '@/types';
 import { getGitHubRepoIdentifier } from './repo-storage';
-import { readFileFromStatic, getTreeStructureFromStatic, getRepositoryMode } from './repo-static';
+import {
+  readFileFromStatic,
+  getTreeStructureFromStatic,
+  getRepositoryMode,
+  resolveCorpusPathFromTree,
+} from './repo-static';
 import { getCuratedRepoRevision } from './curated-repos';
 import type { FileFetchResult } from './file-fetch-debug';
 
@@ -109,13 +114,43 @@ async function tryFetchFileFromStorage(
   branch: string,
   path: string
 ): Promise<FileFetchResult | null> {
+  if (path.endsWith('/')) {
+    return null;
+  }
+
   try {
     try {
       return await readFileFromStatic(owner, repo, branch, path);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('File not found:')) {
-        console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
-        return null;
+        const resolvedPath = await resolveCorpusPathFromTree(owner, repo, branch, path);
+        if (!resolvedPath || resolvedPath === path) {
+          console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
+          return null;
+        }
+
+        try {
+          return await readFileFromStatic(owner, repo, branch, resolvedPath);
+        } catch (resolvedError) {
+          if (
+            resolvedError instanceof Error &&
+            resolvedError.message.startsWith('File not found:')
+          ) {
+            console.warn(
+              `File not found in r2-bucket: ${owner}/${repo}/${branch}/${resolvedPath}`,
+              resolvedError
+            );
+            return null;
+          }
+          if (resolvedError instanceof Error) {
+            throw resolvedError;
+          }
+          console.warn(
+            `File not found in r2-bucket: ${owner}/${repo}/${branch}/${resolvedPath}`,
+            resolvedError
+          );
+          return null;
+        }
       }
       if (error instanceof Error) {
         throw error;

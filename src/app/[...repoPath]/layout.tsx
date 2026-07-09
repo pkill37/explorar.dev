@@ -1,40 +1,15 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { notFound } from 'next/navigation';
-import { getCuratedRepo, getCuratedRepoBySlug, getCuratedRepoPath } from '@/lib/curated-repos';
+import { getCuratedRepoRouteParams, resolveCuratedRepoRoute } from '@/lib/curated-repos';
+
+export const dynamicParams = false;
+
+export async function generateStaticParams() {
+  return getCuratedRepoRouteParams();
+}
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
-
-function resolveRepoRoute(pathSegments: string[]) {
-  if (pathSegments.length === 1) {
-    const config = getCuratedRepoBySlug(pathSegments[0]);
-    if (!config) {
-      return null;
-    }
-
-    return {
-      config,
-      canonicalPath: `/${config.slug}`,
-      isLegacyPath: false,
-    };
-  }
-
-  if (pathSegments.length === 2) {
-    const [owner, repo] = pathSegments;
-    const config = getCuratedRepo(owner, repo);
-    if (!config) {
-      return null;
-    }
-
-    return {
-      config,
-      canonicalPath: getCuratedRepoPath(owner, repo),
-      isLegacyPath: true,
-    };
-  }
-
-  return null;
-}
 
 export async function generateMetadata({
   params,
@@ -42,7 +17,7 @@ export async function generateMetadata({
   params: Promise<{ repoPath: string[] }>;
 }): Promise<Metadata> {
   const { repoPath } = await params;
-  const resolved = resolveRepoRoute(repoPath);
+  const resolved = resolveCuratedRepoRoute(repoPath);
 
   if (!resolved) {
     return {};
@@ -127,7 +102,7 @@ export default async function RepositoryRouteLayout({
   params,
 }: RepositoryRouteLayoutProps) {
   const { repoPath } = await params;
-  const resolved = resolveRepoRoute(repoPath);
+  const resolved = resolveCuratedRepoRoute(repoPath);
 
   if (!resolved) {
     notFound();

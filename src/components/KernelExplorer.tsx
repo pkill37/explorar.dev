@@ -6,7 +6,7 @@ import TabBar from '@/components/TabBar';
 import CodeEditorContainer from '@/components/CodeEditorContainer';
 import GuidePanel from '@/components/GuidePanel';
 import StatusBar from '@/components/StatusBar';
-import { EditorTab } from '@/types';
+import { EditorTab, FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
   fetchFileContent,
@@ -19,7 +19,19 @@ import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { findSymbolsInFile } from '@/lib/cross-reference';
-import { isCuratedRepo, getTreeStructureFromStatic } from '@/lib/repo-static';
+import {
+  isCuratedRepo,
+  getCodeIndexFromStatic,
+  getTreeStructureFromStatic,
+  resolveCorpusPathFromKnownFiles,
+} from '@/lib/repo-static';
+import {
+  buildSearchPreview,
+  CODE_INDEX_PREVIEW_ENRICH_LIMIT,
+  CODE_INDEX_SEARCH_RESULT_LIMIT,
+  searchCodeIndexFiles,
+  type LoadedCodeIndex,
+} from '@/lib/code-index';
 import { debugLog } from '@/lib/browser-debug';
 import '@/app/vscode.css';
 
@@ -58,6 +70,28 @@ const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): strin
 
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
 
+function flattenFilePaths(nodes: FileNode[]): string[] {
+  const paths: string[] = [];
+
+  const visit = (entries: FileNode[]) => {
+    for (const entry of entries) {
+      if (entry.type === 'file') {
+        paths.push(entry.path);
+      }
+      if (entry.children?.length) {
+        visit(entry.children);
+      }
+    }
+  };
+
+  visit(nodes);
+  return paths;
+}
+
+function resolveWorkspaceFilePath(filePath: string, workspaceFilePaths: string[]): string | null {
+  return resolveCorpusPathFromKnownFiles(filePath, workspaceFilePaths);
+}
+
 interface KernelExplorerProps {
   owner?: string;
   repo?: string;
@@ -74,7 +108,45 @@ interface KernelExplorerProps {
     | null;
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
+  layoutMode?: 'editor' | 'search';
+  onOpenFileRequest?: (
+    filePath: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[]
+  ) => void;
 }
+
+type StudySpaceGuideState = {
+  activeChapterId: string | null;
+  scrollPosition: number | null;
+};
+
+type StudySpaceConfig = {
+  version: 1;
+  exportedAt: string;
+  repo: {
+    owner: string;
+    repo: string;
+    branch: string;
+    identifier: string | null;
+    label: string;
+  };
+  editor: {
+    tabs: EditorTab[];
+    activeTabId: string | null;
+    selectedFile: string;
+    selectedVersion: string;
+    workspaceSearchQuery: string;
+    sidebarWidth: number;
+    rightPanelWidth: number;
+    mobileView: 'explorer' | 'editor' | 'guide';
+    isSidebarOpen: boolean;
+    isRightPanelOpen: boolean;
+  };
+  guide: StudySpaceGuideState;
+  notes: string;
+};
 
 export default function KernelExplorer({
   owner,
@@ -82,6 +154,8 @@ export default function KernelExplorer({
   branch,
   initialFile,
   hideGuidePanel = false,
+  layoutMode = 'editor',
+  onOpenFileRequest,
 }: KernelExplorerProps) {
   const router = useRouter();
   const {
@@ -124,6 +198,8 @@ export default function KernelExplorer({
     return owner && repo ? getProjectConfig(owner, repo) : null;
   }, [owner, repo]);
 
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+
   // Panel width state - start with defaults to avoid hydration mismatch
   const [sidebarWidth, setSidebarWidth] = useState<number>(220);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(400);
@@ -147,9 +223,22 @@ export default function KernelExplorer({
 
   // Tree structure readiness state
   const [isTreeStructureReady, setIsTreeStructureReady] = useState<boolean>(false);
+  const [workspaceFilePaths, setWorkspaceFilePaths] = useState<string[]>([]);
+  const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState<string>('');
+  const [workspaceSearchResults, setWorkspaceSearchResults] = useState<WorkspaceSearchResult[]>([]);
+  const [workspaceSearchLoading, setWorkspaceSearchLoading] = useState<boolean>(false);
+  const [workspaceSearchError, setWorkspaceSearchError] = useState<string | null>(null);
+  const [workspaceSearchHasMore, setWorkspaceSearchHasMore] = useState<boolean>(false);
+  const [workspaceSearchIndex, setWorkspaceSearchIndex] = useState<LoadedCodeIndex | null>(null);
+  const [workspaceSearchIndexLoading, setWorkspaceSearchIndexLoading] = useState(false);
+  const [workspaceSearchIndexError, setWorkspaceSearchIndexError] = useState<string | null>(null);
+  const [workspaceSearchIndexProgress, setWorkspaceSearchIndexProgress] = useState<number>(0);
+  const [workspaceSearchIndexCached, setWorkspaceSearchIndexCached] = useState(false);
+  const [studyConfigNonce, setStudyConfigNonce] = useState<number>(0);
   // Refs for cleanup
-  const treeCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const treeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const workspaceSearchRequestIdRef = useRef(0);
+  const workspaceSearchPreviewCacheRef = useRef<Map<string, string>>(new Map());
+  const studyConfigInputRef = useRef<HTMLInputElement>(null);
   // Track which initialFile has already been opened so we don't re-open on re-renders
   const lastOpenedInitialFileRef = useRef<string | null>(null);
 
@@ -236,6 +325,7 @@ export default function KernelExplorer({
         const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
         const treeExists = staticTree !== null && staticTree.length > 0;
         setIsTreeStructureReady(treeExists);
+        setWorkspaceFilePaths(staticTree ? flattenFilePaths(staticTree) : []);
       } catch (error) {
         console.error('Failed to setup repository:', error);
         // Redirect to home on error
@@ -244,19 +334,67 @@ export default function KernelExplorer({
     };
 
     checkRepositorySetup();
-
-    // Cleanup function - runs when component unmounts or dependencies change
-    return () => {
-      if (treeCheckIntervalRef.current) {
-        clearInterval(treeCheckIntervalRef.current);
-        treeCheckIntervalRef.current = null;
-      }
-      if (treeCheckTimeoutRef.current) {
-        clearTimeout(treeCheckTimeoutRef.current);
-        treeCheckTimeoutRef.current = null;
-      }
-    };
   }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch, fileSourceMode]);
+
+  useEffect(() => {
+    if (layoutMode !== 'search') {
+      workspaceSearchRequestIdRef.current += 1;
+      setWorkspaceSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setWorkspaceSearchIndex(null);
+    setWorkspaceSearchIndexError(null);
+    setWorkspaceSearchIndexLoading(true);
+    setWorkspaceSearchIndexProgress(0);
+    setWorkspaceSearchIndexCached(false);
+    workspaceSearchPreviewCacheRef.current.clear();
+
+    void (async () => {
+      try {
+        const payload = await getCodeIndexFromStatic(owner || '', repo || '', selectedVersion, {
+          onProgress: (progress) => {
+            if (cancelled) return;
+            const computedProgress =
+              progress.source === 'cache'
+                ? 100
+                : progress.totalBytes && progress.totalBytes > 0
+                  ? Math.min(100, (progress.loadedBytes / progress.totalBytes) * 100)
+                  : 0;
+            setWorkspaceSearchIndexProgress(computedProgress);
+            setWorkspaceSearchIndexCached(progress.source === 'cache');
+          },
+        });
+        if (cancelled) return;
+        if (!payload) {
+          setWorkspaceSearchIndexError('Search index is unavailable for this repository.');
+          setWorkspaceSearchIndex(null);
+          setWorkspaceSearchIndexProgress(0);
+          setWorkspaceSearchIndexCached(false);
+          return;
+        }
+        setWorkspaceSearchIndexProgress(100);
+        setWorkspaceSearchIndex(payload);
+      } catch (error) {
+        if (cancelled) return;
+        setWorkspaceSearchIndexError(
+          error instanceof Error ? error.message : 'Failed to load search index'
+        );
+        setWorkspaceSearchIndex(null);
+        setWorkspaceSearchIndexProgress(0);
+        setWorkspaceSearchIndexCached(false);
+      } finally {
+        if (!cancelled) {
+          setWorkspaceSearchIndexLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [layoutMode, owner, repo, selectedVersion]);
 
   useEffect(() => {
     // Use setTimeout to avoid synchronous setState in effect
@@ -370,6 +508,38 @@ export default function KernelExplorer({
     }
   }, [selectedVersion, isHydrated, repoIdentifier]);
 
+  useEffect(() => {
+    if (!isHydrated || !repoIdentifier) {
+      if (!repoIdentifier) {
+        setWorkspaceSearchQuery('');
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(false);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      }
+      return;
+    }
+
+    const searchKey = getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier);
+    const savedSearchQuery = loadFromLocalStorage(searchKey, '') as string;
+    setWorkspaceSearchQuery(savedSearchQuery);
+  }, [isHydrated, repoIdentifier]);
+
+  useEffect(() => {
+    if (isHydrated && repoIdentifier) {
+      const searchKey = getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier);
+      saveToLocalStorage(searchKey, workspaceSearchQuery);
+    }
+  }, [isHydrated, repoIdentifier, workspaceSearchQuery]);
+
+  useEffect(() => {
+    if (!owner || !repo) {
+      return;
+    }
+
+    void setGitHubRepoWithDefaultBranch(owner, repo, selectedVersion);
+  }, [owner, repo, selectedVersion]);
+
   // Resize handlers
   const handleMouseDown = useCallback((panel: 'sidebar' | 'rightPanel') => {
     setIsResizing(panel);
@@ -445,8 +615,13 @@ export default function KernelExplorer({
         currentBranch || branch || selectedVersion || projectConfig?.defaultRevision || 'main';
       for (const candidatePath of candidatePaths) {
         try {
-          const fileResult = await fetchFileContent(candidatePath);
-          const parsedSymbols = findSymbolsInFile(fileResult.content, candidatePath);
+          const resolvedCandidatePath =
+            resolveWorkspaceFilePath(candidatePath, workspaceFilePaths) ?? candidatePath;
+          if (resolvedCandidatePath === candidatePath && !candidatePath.includes('/')) {
+            continue;
+          }
+          const fileResult = await fetchFileContent(resolvedCandidatePath);
+          const parsedSymbols = findSymbolsInFile(fileResult.content, resolvedCandidatePath);
           const normalizedQuery = searchPattern
             .trim()
             .replace(/\(\)$/, '')
@@ -458,7 +633,7 @@ export default function KernelExplorer({
 
           if (symbolMatch?.line) {
             debugLog('[explorar:open-file] resolved-symbol-line:local-parse', {
-              filePath: candidatePath,
+              filePath: resolvedCandidatePath,
               searchPattern,
               branch: branchToUse,
               line: symbolMatch.line,
@@ -467,7 +642,7 @@ export default function KernelExplorer({
               candidatePathCount: candidatePaths.length,
             });
             return {
-              resolvedFilePath: candidatePath,
+              resolvedFilePath: resolvedCandidatePath,
               resolvedSearchPattern: undefined,
               resolvedScrollToLine: symbolMatch.line,
             };
@@ -493,7 +668,7 @@ export default function KernelExplorer({
         resolvedScrollToLine: scrollToLine,
       };
     },
-    [owner, repo, currentBranch, branch, selectedVersion, projectConfig]
+    [owner, repo, currentBranch, branch, selectedVersion, projectConfig, workspaceFilePaths]
   );
 
   const openFileInTab = useCallback(
@@ -503,7 +678,18 @@ export default function KernelExplorer({
       scrollToLine?: number,
       searchScope?: string[]
     ) => {
-      let normalizedPath = filePath.replace(/\/+$/, '');
+      const resolvedWorkspacePath = resolveWorkspaceFilePath(filePath, workspaceFilePaths);
+      if (!resolvedWorkspacePath && !filePath.includes('/') && !filePath.endsWith('/')) {
+        debugLog('[explorar:open-file] unresolved-bare-path', {
+          filePath,
+          searchPattern,
+          scrollToLine,
+          searchScope,
+        });
+        return;
+      }
+
+      let normalizedPath = (resolvedWorkspacePath ?? filePath).replace(/\/+$/, '');
       const { resolvedFilePath, resolvedSearchPattern, resolvedScrollToLine } =
         await resolveSymbolNavigationLine(normalizedPath, searchPattern, scrollToLine, searchScope);
       normalizedPath = resolvedFilePath.replace(/\/+$/, '');
@@ -582,7 +768,7 @@ export default function KernelExplorer({
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, resolveSymbolNavigationLine]
+    [tabs, resolveSymbolNavigationLine, workspaceFilePaths]
   );
 
   const guideOpenFileInTab = useCallback(
@@ -591,6 +777,34 @@ export default function KernelExplorer({
     },
     [openFileInTab]
   );
+
+  const handleOpenFileFromExplorer = useCallback(
+    (filePath: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
+      if (layoutMode === 'search' && onOpenFileRequest) {
+        onOpenFileRequest(filePath, searchPattern, scrollToLine, searchScope);
+        return;
+      }
+      openFileInTab(filePath, searchPattern, scrollToLine, searchScope);
+    },
+    [layoutMode, onOpenFileRequest, openFileInTab]
+  );
+
+  const guideSections = useMemo(() => {
+    if (!projectConfig) {
+      return createGenericGuide(owner || 'torvalds', repo || 'linux');
+    }
+
+    const guideId = projectConfig.guides[0]?.id;
+    if (guideId) {
+      try {
+        return loadGuideFromMarkdown(guideId, guideOpenFileInTab);
+      } catch (error) {
+        console.error(`Failed to load guide ${guideId}:`, error);
+      }
+    }
+
+    return createGenericGuide(projectConfig.owner, projectConfig.repo);
+  }, [projectConfig, owner, repo, guideOpenFileInTab]);
 
   const onTabSelect = (tabId: string) => {
     setActiveTabId(tabId);
@@ -632,6 +846,167 @@ export default function KernelExplorer({
     },
     [activeTabId]
   );
+
+  const onCloseAllTabs = useCallback(() => {
+    setTabs([]);
+    setActiveTabId(null);
+    setSelectedFile('');
+  }, []);
+
+  useEffect(() => {
+    const searchIsActive = layoutMode === 'search';
+    if (!searchIsActive) {
+      workspaceSearchRequestIdRef.current += 1;
+      setWorkspaceSearchLoading(false);
+      return;
+    }
+
+    const normalizedQuery = workspaceSearchQuery.trim();
+    const requestId = ++workspaceSearchRequestIdRef.current;
+
+    if (!normalizedQuery) {
+      setWorkspaceSearchResults([]);
+      setWorkspaceSearchLoading(false);
+      setWorkspaceSearchError(null);
+      setWorkspaceSearchHasMore(false);
+      return;
+    }
+
+    if (workspaceSearchIndexError) {
+      setWorkspaceSearchResults([]);
+      setWorkspaceSearchLoading(false);
+      setWorkspaceSearchError(workspaceSearchIndexError);
+      setWorkspaceSearchHasMore(false);
+      return;
+    }
+
+    if (workspaceSearchIndexLoading) {
+      setWorkspaceSearchResults([]);
+      setWorkspaceSearchLoading(true);
+      setWorkspaceSearchError(null);
+      setWorkspaceSearchHasMore(false);
+      return;
+    }
+
+    if (!workspaceSearchIndex) {
+      setWorkspaceSearchLoading(true);
+      setWorkspaceSearchResults([]);
+      setWorkspaceSearchError(null);
+      setWorkspaceSearchHasMore(false);
+      return () => undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const runSearch = async () => {
+        setWorkspaceSearchLoading(true);
+        setWorkspaceSearchError(null);
+
+        try {
+          const indexedResults = searchCodeIndexFiles(
+            workspaceSearchIndex,
+            normalizedQuery,
+            CODE_INDEX_SEARCH_RESULT_LIMIT
+          );
+
+          if (workspaceSearchRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          const immediateResults = indexedResults.map((entry) => ({
+            file: entry.path,
+            line: 1,
+            column: 1,
+            preview: entry.isDocumentation ? 'Documentation match' : 'Source match',
+            key: `${entry.path}:1:1`,
+          }));
+
+          setWorkspaceSearchResults(immediateResults);
+          setWorkspaceSearchHasMore(indexedResults.length >= CODE_INDEX_SEARCH_RESULT_LIMIT);
+
+          const previewTargets = indexedResults.slice(0, CODE_INDEX_PREVIEW_ENRICH_LIMIT);
+          const previewResults = await Promise.all(
+            previewTargets.map(async (entry) => {
+              const cachedContent = workspaceSearchPreviewCacheRef.current.get(entry.path);
+              if (cachedContent) {
+                const preview = buildSearchPreview(cachedContent, normalizedQuery);
+                if (preview) {
+                  return {
+                    file: entry.path,
+                    line: preview.line,
+                    column: preview.column,
+                    preview: preview.preview,
+                    key: `${entry.path}:${preview.line}:${preview.column}`,
+                  } satisfies WorkspaceSearchResult;
+                }
+                return null;
+              }
+
+              try {
+                const fileResult = await fetchFileContent(entry.path);
+                workspaceSearchPreviewCacheRef.current.set(entry.path, fileResult.content);
+                const preview = buildSearchPreview(fileResult.content, normalizedQuery);
+                if (!preview) {
+                  return null;
+                }
+                return {
+                  file: entry.path,
+                  line: preview.line,
+                  column: preview.column,
+                  preview: preview.preview,
+                  key: `${entry.path}:${preview.line}:${preview.column}`,
+                } satisfies WorkspaceSearchResult;
+              } catch (error) {
+                debugLog('[explorar:workspace-search] preview-enrich-failed', {
+                  filePath: entry.path,
+                  query: normalizedQuery,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+                return null;
+              }
+            })
+          );
+
+          if (workspaceSearchRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          const mergedByFile = new Map<string, WorkspaceSearchResult>();
+          for (const result of immediateResults) {
+            mergedByFile.set(result.file, result);
+          }
+          for (const result of previewResults) {
+            if (!result) continue;
+            mergedByFile.set(result.file, result);
+          }
+
+          setWorkspaceSearchResults(Array.from(mergedByFile.values()));
+        } catch (error) {
+          if (workspaceSearchRequestIdRef.current !== requestId) {
+            return;
+          }
+          setWorkspaceSearchError(
+            error instanceof Error ? error.message : 'Failed to search workspace'
+          );
+          setWorkspaceSearchResults([]);
+          setWorkspaceSearchHasMore(false);
+        } finally {
+          if (workspaceSearchRequestIdRef.current === requestId) {
+            setWorkspaceSearchLoading(false);
+          }
+        }
+      };
+
+      void runSearch();
+    }, 150);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    layoutMode,
+    workspaceSearchIndex,
+    workspaceSearchIndexError,
+    workspaceSearchIndexLoading,
+    workspaceSearchQuery,
+  ]);
 
   const onEditorContentLoad = useCallback(
     (content: string) => {
@@ -683,26 +1058,260 @@ export default function KernelExplorer({
 
   // Track if we're currently refreshing to prevent loops
 
-  // Guide content - dynamically loaded based on project
-  const guideSections = useMemo(() => {
-    if (!projectConfig) {
-      // No project config - use generic guide
-      return createGenericGuide(owner || 'torvalds', repo || 'linux');
-    }
+  const guideStorageScope = useMemo(() => {
+    const sectionIds = guideSections.map((section) => section.id).join('|');
+    return `default:${sectionIds}`;
+  }, [guideSections]);
 
-    // Try to load guide from markdown
-    const guideId = projectConfig.guides[0]?.id;
-    if (guideId) {
-      try {
-        return loadGuideFromMarkdown(guideId, guideOpenFileInTab);
-      } catch (error) {
-        console.error(`Failed to load guide ${guideId}:`, error);
+  const guideActiveChapterStorageKey = useMemo(
+    () => `guide-panel-active-chapter:${guideStorageScope}`,
+    [guideStorageScope]
+  );
+  const guideScrollPositionStorageKey = useMemo(
+    () => `guide-panel-scroll-position:${guideStorageScope}`,
+    [guideStorageScope]
+  );
+  const guideDefaultChapterId = useMemo(() => {
+    const sectionIds = new Set(guideSections.map((section) => section.id));
+    const configuredDefault = projectConfig?.guides?.[0]?.defaultOpenIds?.find((id) =>
+      sectionIds.has(id)
+    );
+    return configuredDefault || guideSections[0]?.id || null;
+  }, [guideSections, projectConfig]);
+
+  const guideStateInitKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!guideSections.length) return;
+    if (guideStateInitKeyRef.current === guideActiveChapterStorageKey) return;
+
+    let nextActiveChapterId = guideDefaultChapterId;
+    try {
+      const savedActiveChapter = localStorage.getItem(guideActiveChapterStorageKey);
+      if (
+        savedActiveChapter &&
+        guideSections.some((section) => section.id === savedActiveChapter)
+      ) {
+        nextActiveChapterId = savedActiveChapter;
       }
+    } catch {
+      // ignore
     }
 
-    // Fallback to generic guide
-    return createGenericGuide(projectConfig.owner, projectConfig.repo);
-  }, [projectConfig, owner, repo, guideOpenFileInTab]);
+    setActiveChapterId(nextActiveChapterId);
+    guideStateInitKeyRef.current = guideActiveChapterStorageKey;
+  }, [guideActiveChapterStorageKey, guideDefaultChapterId, guideSections]);
+
+  useEffect(() => {
+    if (guideStateInitKeyRef.current !== guideActiveChapterStorageKey) return;
+    try {
+      if (activeChapterId) {
+        localStorage.setItem(guideActiveChapterStorageKey, activeChapterId);
+      } else {
+        localStorage.removeItem(guideActiveChapterStorageKey);
+      }
+    } catch {
+      // ignore
+    }
+  }, [activeChapterId, guideActiveChapterStorageKey]);
+
+  const readStudySpaceGuideState = useCallback((): StudySpaceGuideState => {
+    if (typeof window === 'undefined') {
+      return { activeChapterId: null, scrollPosition: null };
+    }
+
+    try {
+      const scrollPositionValue = localStorage.getItem(guideScrollPositionStorageKey);
+      const scrollPosition =
+        scrollPositionValue !== null && scrollPositionValue !== ''
+          ? Number.parseInt(scrollPositionValue, 10)
+          : null;
+
+      return {
+        activeChapterId,
+        scrollPosition: Number.isFinite(scrollPosition) ? scrollPosition : null,
+      };
+    } catch (error) {
+      console.warn('Failed to read guide state for export:', error);
+      return { activeChapterId, scrollPosition: null };
+    }
+  }, [activeChapterId, guideScrollPositionStorageKey]);
+
+  const buildStudySpaceConfig = useCallback((): StudySpaceConfig => {
+    const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
+    const studyNotesKey = getRepoScopedKey('kernel-explorer-study-notes', repoIdentifier ?? null);
+    const notes =
+      typeof window !== 'undefined' ? (loadFromLocalStorage(studyNotesKey, '') as string) : '';
+
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      repo: {
+        owner: owner || '',
+        repo: repo || '',
+        branch: currentBranch || selectedVersion || branch || '',
+        identifier: repoIdentifier,
+        label: repoLabel,
+      },
+      editor: {
+        tabs,
+        activeTabId: activeTab?.id ?? activeTabId,
+        selectedFile,
+        selectedVersion,
+        workspaceSearchQuery,
+        sidebarWidth,
+        rightPanelWidth,
+        mobileView,
+        isSidebarOpen,
+        isRightPanelOpen,
+      },
+      guide: readStudySpaceGuideState(),
+      notes,
+    };
+  }, [
+    activeTabId,
+    branch,
+    currentBranch,
+    isRightPanelOpen,
+    isSidebarOpen,
+    mobileView,
+    owner,
+    readStudySpaceGuideState,
+    repo,
+    repoIdentifier,
+    repoLabel,
+    rightPanelWidth,
+    selectedFile,
+    selectedVersion,
+    sidebarWidth,
+    tabs,
+    workspaceSearchQuery,
+  ]);
+
+  const applyStudySpaceConfig = useCallback(
+    (config: StudySpaceConfig): boolean => {
+      if (!config || config.version !== 1) {
+        throw new Error('Unsupported study config format');
+      }
+
+      if (repoIdentifier && config.repo.identifier && config.repo.identifier !== repoIdentifier) {
+        throw new Error('This study config belongs to a different repository');
+      }
+
+      const nextTabs = Array.isArray(config.editor.tabs) ? config.editor.tabs : [];
+      const nextActiveTabId =
+        nextTabs.find((tab) => tab.id === config.editor.activeTabId)?.id ?? nextTabs[0]?.id ?? null;
+      const nextSelectedFile =
+        config.editor.selectedFile ||
+        nextTabs.find((tab) => tab.id === nextActiveTabId)?.path ||
+        '';
+      const nextSelectedVersion = config.editor.selectedVersion || config.repo.branch || '';
+      const nextWorkspaceSearchQuery = config.editor.workspaceSearchQuery || '';
+
+      setTabs(nextTabs);
+      setActiveTabId(nextActiveTabId);
+      setSelectedFile(nextSelectedFile);
+      setSelectedVersion(nextSelectedVersion || selectedVersion);
+      setWorkspaceSearchQuery(nextWorkspaceSearchQuery);
+      setSidebarWidth(config.editor.sidebarWidth || sidebarWidth);
+      setRightPanelWidth(config.editor.rightPanelWidth || rightPanelWidth);
+      setMobileView(config.editor.mobileView || 'editor');
+      setIsSidebarOpen(config.editor.isSidebarOpen);
+      setIsRightPanelOpen(config.editor.isRightPanelOpen);
+
+      if (typeof window !== 'undefined') {
+        const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
+        const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
+        const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+        const selectedVersionKey = getRepoScopedKey(
+          'kernel-explorer-selected-version',
+          repoIdentifier
+        );
+
+        saveToLocalStorage(tabsKey, nextTabs);
+        saveToLocalStorage(activeTabKey, nextActiveTabId);
+        saveToLocalStorage(selectedFileKey, nextSelectedFile);
+        saveToLocalStorage(selectedVersionKey, nextSelectedVersion || selectedVersion);
+        saveToLocalStorage(
+          getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier),
+          nextWorkspaceSearchQuery
+        );
+        localStorage.setItem('kernel-explorer-sidebar-width', String(config.editor.sidebarWidth));
+        localStorage.setItem(
+          'kernel-explorer-right-panel-width',
+          String(config.editor.rightPanelWidth)
+        );
+
+        if (config.guide.activeChapterId) {
+          localStorage.setItem(guideActiveChapterStorageKey, config.guide.activeChapterId);
+          setActiveChapterId(config.guide.activeChapterId);
+        } else {
+          localStorage.removeItem(guideActiveChapterStorageKey);
+          setActiveChapterId(null);
+        }
+
+        if (config.guide.scrollPosition !== null && Number.isFinite(config.guide.scrollPosition)) {
+          localStorage.setItem(guideScrollPositionStorageKey, String(config.guide.scrollPosition));
+        } else {
+          localStorage.removeItem(guideScrollPositionStorageKey);
+        }
+      }
+
+      setStudyConfigNonce((current) => current + 1);
+      return true;
+    },
+    [
+      guideActiveChapterStorageKey,
+      guideScrollPositionStorageKey,
+      repoIdentifier,
+      rightPanelWidth,
+      selectedVersion,
+      sidebarWidth,
+    ]
+  );
+
+  const handleDownloadStudyConfig = useCallback(() => {
+    const config = buildStudySpaceConfig();
+    const blob = new Blob([`${JSON.stringify(config, null, 2)}\n`], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const safeLabel = (repoLabel || 'study-space').replace(/[^a-zA-Z0-9._-]+/g, '-');
+    anchor.href = url;
+    anchor.download = `${safeLabel}-${selectedVersion || 'session'}.study-space.json`;
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, [buildStudySpaceConfig, repoLabel, selectedVersion]);
+
+  const handleImportStudyConfigClick = useCallback(() => {
+    studyConfigInputRef.current?.click();
+  }, []);
+
+  const handleStudyConfigFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) {
+        return;
+      }
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text) as StudySpaceConfig;
+        applyStudySpaceConfig(parsed);
+      } catch (error) {
+        console.error('Failed to import study config:', error);
+        window.alert(
+          error instanceof Error ? error.message : 'Failed to import the selected study config'
+        );
+      }
+    },
+    [applyStudySpaceConfig]
+  );
 
   // Open explicit file targets as soon as they are requested.
   // Tree readiness is useful for directory expansion/highlighting, but should
@@ -754,7 +1363,12 @@ export default function KernelExplorer({
         <div
           className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
           suppressHydrationWarning
-          style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '40vw' }}
+          style={{
+            width: layoutMode === 'search' ? '100%' : `${sidebarWidth}px`,
+            minWidth: layoutMode === 'search' ? 0 : '180px',
+            maxWidth: layoutMode === 'search' ? 'none' : '40vw',
+            flex: layoutMode === 'search' ? '1 1 0%' : '0 0 auto',
+          }}
         >
           {isMobile && (
             <div
@@ -783,11 +1397,14 @@ export default function KernelExplorer({
               </button>
             </div>
           )}
-          <div className="vscode-sidebar-content">
+          <div
+            className="vscode-sidebar-content"
+            style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          >
             <FileTree
               key={`tree-${repoLabel}-${selectedVersion}-${fileSourceMode}`}
               onFileSelect={(filePath: string) => {
-                openFileInTab(filePath);
+                handleOpenFileFromExplorer(filePath);
                 // On mobile, switch to editor view when file is selected
                 if (isMobile) {
                   setMobileView('editor');
@@ -797,6 +1414,27 @@ export default function KernelExplorer({
               listDirectory={buildFileTree}
               titleLabel={repoLabel}
               expandDirectoryRequest={directoryExpandRequest}
+              searchQuery={workspaceSearchQuery}
+              onSearchQueryChange={setWorkspaceSearchQuery}
+              searchResults={workspaceSearchResults}
+              isSearchLoading={workspaceSearchLoading}
+              isSearchIndexLoading={workspaceSearchIndexLoading}
+              isSearchIndexReady={
+                !!workspaceSearchIndex && !workspaceSearchIndexLoading && !workspaceSearchIndexError
+              }
+              searchIndexProgress={workspaceSearchIndexProgress}
+              searchIndexCached={workspaceSearchIndexCached}
+              searchError={workspaceSearchError}
+              searchHasMore={workspaceSearchHasMore}
+              searchScopeLabel={repoLabel ? `${repoLabel}@${selectedVersion}` : selectedVersion}
+              searchScopeFileCount={workspaceSearchIndex?.fileCount ?? workspaceFilePaths.length}
+              onSearchResultSelect={(result) => {
+                handleOpenFileFromExplorer(result.file, workspaceSearchQuery, result.line);
+                if (isMobile) {
+                  setMobileView('editor');
+                }
+              }}
+              showSearch={layoutMode === 'search'}
               onDirectoryExpand={(path: string) => {
                 setSelectedFile(path);
               }}
@@ -804,54 +1442,70 @@ export default function KernelExplorer({
           </div>
         </div>
 
-        <div
-          className="resize-handle"
-          onMouseDown={() => handleMouseDown('sidebar')}
-          suppressHydrationWarning
-          style={{
-            width: '4px',
-            backgroundColor: isResizing === 'sidebar' ? 'var(--vscode-text-accent)' : 'transparent',
-            cursor: 'col-resize',
-            borderRight: '1px solid var(--vscode-border)',
-          }}
-        />
+        {layoutMode === 'editor' && (
+          <>
+            <div
+              className="resize-handle"
+              onMouseDown={() => handleMouseDown('sidebar')}
+              suppressHydrationWarning
+              style={{
+                width: '4px',
+                backgroundColor:
+                  isResizing === 'sidebar' ? 'var(--vscode-text-accent)' : 'transparent',
+                cursor: 'col-resize',
+                borderRight: '1px solid var(--vscode-border)',
+              }}
+            />
 
-        <div
-          className={`vscode-editor-container ${isMobile && mobileView !== 'editor' ? 'mobile-hidden' : ''}`}
-          style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column' }}
-        >
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onTabSelect={onTabSelect}
-            onTabClose={onTabClose}
-            onMarkdownPreviewToggle={toggleMarkdownPreview}
-          />
-          {activeTab ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-              <CodeEditorContainer
-                key={`editor-${activeTab.id}-${fileSourceMode}`}
-                filePath={activeTab.path}
-                onContentLoad={onEditorContentLoad}
-                onOpenFile={openFileInTab}
-                fetchFile={fetchFileContent}
-                markdownViewMode={activeTab.viewMode}
-                onToggleMarkdownPreview={toggleMarkdownPreview}
-                scrollToLine={activeTab.scrollToLine}
-                searchPattern={activeTab.searchPattern}
-                onCursorChange={(line, column) => {
-                  setEditorLine(line);
-                  setEditorColumn(column);
-                }}
+            <div
+              className={`vscode-editor-container ${isMobile && mobileView !== 'editor' ? 'mobile-hidden' : ''}`}
+              style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column' }}
+            >
+              <TabBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onTabSelect={onTabSelect}
+                onTabClose={onTabClose}
+                onDownloadStudyConfig={handleDownloadStudyConfig}
+                onImportStudyConfig={handleImportStudyConfigClick}
+                onCloseAllTabs={onCloseAllTabs}
+                onMarkdownPreviewToggle={toggleMarkdownPreview}
               />
+              <input
+                ref={studyConfigInputRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: 'none' }}
+                onChange={handleStudyConfigFileChange}
+              />
+              {activeTab ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <CodeEditorContainer
+                    filePath={activeTab.path}
+                    onContentLoad={onEditorContentLoad}
+                    onOpenFile={openFileInTab}
+                    fetchFile={fetchFileContent}
+                    workspaceFilePaths={workspaceFilePaths}
+                    workspaceId={`${repoLabel}@${selectedVersion}`}
+                    markdownViewMode={activeTab.viewMode}
+                    onToggleMarkdownPreview={toggleMarkdownPreview}
+                    scrollToLine={activeTab.scrollToLine}
+                    searchPattern={activeTab.searchPattern}
+                    onCursorChange={(line, column) => {
+                      setEditorLine(line);
+                      setEditorColumn(column);
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="vscode-empty-state">
+                  <div className="vscode-empty-icon">🐧</div>
+                  <div>Open a file from the explorer to begin</div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="vscode-empty-state">
-              <div className="vscode-empty-icon">🐧</div>
-              <div>Open a file from the explorer to begin</div>
-            </div>
-          )}
-        </div>
+          </>
+        )}
 
         {!hideGuidePanel && (
           <div
@@ -884,12 +1538,6 @@ export default function KernelExplorer({
               flexShrink: 0,
             }}
           >
-            {/* Right Panel Header */}
-            {!isMobile && (
-              <div className="right-panel-tabs">
-                <span className="right-panel-tab active">Guide</span>
-              </div>
-            )}
             {isMobile && (
               <div
                 style={{
@@ -900,7 +1548,6 @@ export default function KernelExplorer({
                   alignItems: 'center',
                 }}
               >
-                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Guide</h3>
                 <button
                   onClick={() => setMobileView('editor')}
                   style={{
@@ -929,11 +1576,10 @@ export default function KernelExplorer({
             >
               {(!isMobile || mobileView === 'guide') && (
                 <GuidePanel
+                  key={`guide-${studyConfigNonce}-${guideStorageScope}`}
                   sections={guideSections}
-                  defaultOpenIds={
-                    projectConfig?.guides?.[0]?.defaultOpenIds ||
-                    (guideSections.length > 0 ? [guideSections[0].id] : [])
-                  }
+                  activeChapterId={activeChapterId}
+                  onActiveChapterChange={setActiveChapterId}
                 />
               )}
             </div>

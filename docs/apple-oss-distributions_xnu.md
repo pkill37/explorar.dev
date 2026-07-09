@@ -172,9 +172,9 @@ Every Unix process in XNU has a dual identity. At the Mach level it is a **task*
 
 `fork()` in `bsd/kern/kern_fork.c` creates both halves simultaneously. It calls `task_create_internal()` to duplicate the Mach task (copying the address space via COW vm_map duplication), then allocates and initializes a new BSD `proc` structure, copies the file descriptor table, signal handlers, and credentials, and finally wires child to parent via the `p_pptr` / `p_children` lists. The child thread begins executing at the point `fork()` returns zero — in the same copied virtual address space.
 
-`execve()` is more destructive: it loads a new binary into the *existing* task. `kern_exec.c` calls `task_halt()` to pause all other threads, then replaces the `vm_map` with a fresh one containing mappings from the new binary's segments, resets the BSD `proc`'s signals and credentials as appropriate, and resumes execution at the new entry point. The Mach task identity (and thus the PID's Mach task port) is preserved across exec.
+`execve()` is more destructive: it loads a new binary into the *existing* task. `bsd/kern/kern_exec.c` calls `task_halt()` to pause all other threads, then replaces the `vm_map` with a fresh one containing mappings from the new binary's segments, resets the BSD `proc`'s signals and credentials as appropriate, and resumes execution at the new entry point. The Mach task identity (and thus the PID's Mach task port) is preserved across exec.
 
-File descriptors live entirely in the BSD layer (`filedesc.h`). The fd table maps integers to `fileproc` objects, each of which points to a `fileglob` that wraps a `vnode`, socket, pipe, or kqueue. The kernel object behind each fd is independent of BSD — sockets are `struct socket` objects from `bsd/net/`, vnodes are managed by VFS, pipes are `struct pipe` in `bsd/kern/sys_pipe.c`.
+File descriptors live entirely in the BSD layer (`bsd/sys/filedesc.h`). The fd table maps integers to `fileproc` objects, each of which points to a `fileglob` that wraps a `vnode`, socket, pipe, or kqueue. The kernel object behind each fd is independent of BSD — sockets are `struct socket` objects from `bsd/net/`, vnodes are managed by VFS, pipes are `struct pipe` in `bsd/kern/sys_pipe.c`.
 
 ---
 id: ch5
@@ -209,9 +209,9 @@ fileRecommendations:
 
 XNU's Virtual File System layer follows the same VFS abstraction pioneered in SunOS: a uniform `vnode` interface over heterogeneous filesystems. Every file, directory, device node, and named pipe is represented by a `vnode`. A vnode is a kernel object with an operations table (`vnode_op_desc`) — a vtable of function pointers the concrete filesystem fills in for `read`, `write`, `lookup`, `create`, `rename`, `fsync`, and so on.
 
-Path resolution (`vfs_lookup.c`) converts a string like `/usr/lib/dyld` into a vnode. It walks the path component by component: start at the mount's root vnode, call `VNOP_LOOKUP` on each directory vnode with the next name component, following mount points and symlinks as needed. The name cache (`vfs_cache.c`) short-circuits repeated lookups: successful `(parent_vnode, name)` → `child_vnode` mappings are cached in a hash table. A stat on a cached path involves no disk I/O.
+Path resolution (`bsd/vfs/vfs_lookup.c`) converts a string like `/usr/lib/dyld` into a vnode. It walks the path component by component: start at the mount's root vnode, call `VNOP_LOOKUP` on each directory vnode with the next name component, following mount points and symlinks as needed. The name cache (`bsd/vfs/vfs_cache.c`) short-circuits repeated lookups: successful `(parent_vnode, name)` → `child_vnode` mappings are cached in a hash table. A stat on a cached path involves no disk I/O.
 
-The filesystem plugin interface (`kpi_vfs.c`) is what APFS, HFS+, and any third-party filesystem implement. A filesystem registers with `vfs_fsadd()`, providing a `vfsops` (mount, unmount, sync, statfs) and a per-vnode `vnodeops` table. From that point the VFS layer routes all operations through the registered function pointers without knowing anything about the on-disk format.
+The filesystem plugin interface (`bsd/vfs/kpi_vfs.c`) is what APFS, HFS+, and any third-party filesystem implement. A filesystem registers with `vfs_fsadd()`, providing a `vfsops` (mount, unmount, sync, statfs) and a per-vnode `vnodeops` table. From that point the VFS layer routes all operations through the registered function pointers without knowing anything about the on-disk format.
 
 Unified Buffer Cache integrates VM and VFS: file data is cached in `vm_object` pages associated with the vnode's underlying pager. `read()` on a cached file hits the page cache and returns without disk I/O; `mmap()` of the same file shares those exact pages. Cache consistency is maintained because both paths go through the same `vm_object`.
 
@@ -289,7 +289,7 @@ fileRecommendations:
 
 XNU has two separate system call tables. BSD syscalls use small positive numbers (0–550) and enter through the platform's exception vector into `unix_syscall64()` in `bsd/dev/arm64/`. Mach traps use small negative numbers and dispatch through `mach_call_munger64()` into the trap table in `osfmk/kern/syscall_sw.c`. From user space the calling convention is identical — a `svc #0x80` instruction on arm64 — but the sign of the syscall number determines which table is consulted.
 
-On arm64 all kernel entries (syscalls, hardware exceptions, IRQs) flow through the exception vectors defined in `osfmk/arm64/`. A synchronous exception (including `svc`) saves all general-purpose registers onto the kernel stack and calls `sleh_synchronous()` in `sleh.c`. This function decodes the ESR_EL1 (Exception Syndrome Register) to determine the cause and dispatches accordingly: `svc` goes to the syscall handler, data abort goes to the VM fault handler, undefined instruction goes to signal delivery.
+On arm64 all kernel entries (syscalls, hardware exceptions, IRQs) flow through the exception vectors defined in `osfmk/arm64/`. A synchronous exception (including `svc`) saves all general-purpose registers onto the kernel stack and calls `sleh_synchronous()` in `osfmk/arm64/sleh.c`. This function decodes the ESR_EL1 (Exception Syndrome Register) to determine the cause and dispatches accordingly: `svc` goes to the syscall handler, data abort goes to the VM fault handler, undefined instruction goes to signal delivery.
 
 Mach traps are fast. `task_self_trap()` (trap -28) returns the calling task's task port name in a single kernel call. `mach_msg_trap()` (trap -31) is the IPC gateway: it validates the message, looks up port rights in the calling task's namespace, copies or maps the message body, and either enqueues the message on the target port or blocks the calling thread. All Mach IPC ultimately flows through this trap.
 
@@ -370,7 +370,7 @@ A recommended reading path:
 
 1. `osfmk/kern/startup.c` — follow the Mach init sequence; every `xxx_init()` names a Mach subsystem
 2. `bsd/kern/bsd_init.c` — watch BSD come online on top of a running Mach kernel
-3. `osfmk/ipc/ipc_port.c` and `mach_msg.c` — understand port rights and message delivery; IPC is the connective tissue
+3. `osfmk/ipc/ipc_port.c` and `osfmk/ipc/mach_msg.c` — understand port rights and message delivery; IPC is the connective tissue
 4. `bsd/kern/kern_fork.c` — the best example of the dual identity: one call creates both a Mach task and a BSD proc
 5. `osfmk/vm/vm_fault.c` — traces from hardware exception through VM lookup, pager call, PTE install, and code signing validation
 6. `iokit/Kernel/IOService.cpp` — read `matchPassive()`, `probeCandidates()`, and `startCandidate()` to see how driver matching works end-to-end

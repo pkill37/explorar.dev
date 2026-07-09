@@ -7,7 +7,7 @@ import { CURATED_TEST_SITEMAP_PATHS } from './helpers/curated-repos';
  */
 test.describe('SEO Checks', () => {
   test('homepage has required meta tags', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check for title
     const title = await page.title();
@@ -31,7 +31,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('repository pages have proper meta tags', async ({ page }) => {
-    await page.goto('/linux-kernel');
+    await page.goto('/linux-kernel', { waitUntil: 'domcontentloaded' });
 
     const title = await page.title();
     expect(title).toBeTruthy();
@@ -42,7 +42,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('has Open Graph meta tags', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const ogTitle = await page.locator('meta[property="og:title"]').getAttribute('content');
     const ogDescription = await page
@@ -56,7 +56,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('has Twitter Card meta tags', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const twitterCard = await page.locator('meta[name="twitter:card"]').getAttribute('content');
     const twitterTitle = await page.locator('meta[name="twitter:title"]').getAttribute('content');
@@ -66,7 +66,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('robots.txt is properly formatted', async ({ page }) => {
-    await page.goto('/robots.txt');
+    await page.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
     const content = await page.textContent('body');
 
     expect(content?.toLowerCase()).toContain('user-agent');
@@ -75,7 +75,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('sitemap.xml is valid', async ({ page }) => {
-    await page.goto('/sitemap.xml');
+    await page.goto('/sitemap.xml', { waitUntil: 'domcontentloaded' });
     const content = await page.textContent('body');
 
     expect(content).toContain('urlset');
@@ -85,7 +85,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('sitemap contains all repository pages', async ({ page }) => {
-    await page.goto('/sitemap.xml');
+    await page.goto('/sitemap.xml', { waitUntil: 'domcontentloaded' });
     const content = await page.textContent('body');
 
     for (const repo of CURATED_TEST_SITEMAP_PATHS) {
@@ -94,13 +94,13 @@ test.describe('SEO Checks', () => {
   });
 
   test('has canonical URLs', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
     expect(canonical).toBeTruthy();
   });
 
   test('has proper heading hierarchy', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check for h1
     const h1 = await page.locator('h1').count();
@@ -128,7 +128,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('has semantic HTML structure', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Check for semantic elements
     const main = await page.locator('main').count();
@@ -140,7 +140,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('has proper alt text for images', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const images = page.locator('img');
 
     const count = await images.count();
@@ -158,7 +158,7 @@ test.describe('SEO Checks', () => {
   });
 
   test('has proper lang attribute', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const lang = await page.locator('html').getAttribute('lang');
     expect(lang).toBeTruthy();
     expect(lang?.length).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileNode } from '@/types';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
   getFileIcon,
@@ -20,6 +20,22 @@ interface FileTreeProps {
   titleLabel?: string;
   onDirectoryExpand?: (path: string) => void;
   expandDirectoryRequest?: { path: string; id: number } | null;
+  searchQuery?: string;
+  searchIsRegex?: boolean;
+  onSearchQueryChange?: (query: string) => void;
+  onSearchIsRegexChange?: (isRegex: boolean) => void;
+  searchResults?: WorkspaceSearchResult[];
+  isSearchLoading?: boolean;
+  isSearchIndexLoading?: boolean;
+  isSearchIndexReady?: boolean;
+  searchIndexProgress?: number;
+  searchIndexCached?: boolean;
+  searchError?: string | null;
+  searchHasMore?: boolean;
+  searchScopeLabel?: string;
+  searchScopeFileCount?: number;
+  onSearchResultSelect?: (result: WorkspaceSearchResult) => void;
+  showSearch?: boolean;
 }
 
 interface FileTreeItemProps {
@@ -166,6 +182,22 @@ const FileTree: React.FC<FileTreeProps> = ({
   titleLabel,
   onDirectoryExpand,
   expandDirectoryRequest,
+  searchQuery = '',
+  searchIsRegex = false,
+  onSearchQueryChange,
+  onSearchIsRegexChange,
+  searchResults = [],
+  isSearchLoading = false,
+  isSearchIndexLoading = false,
+  isSearchIndexReady = false,
+  searchIndexProgress = 0,
+  searchIndexCached = false,
+  searchError = null,
+  searchHasMore = false,
+  searchScopeLabel,
+  searchScopeFileCount,
+  onSearchResultSelect,
+  showSearch = true,
 }) => {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [completeTree, setCompleteTree] = useState<FileNode[] | null>(null);
@@ -177,6 +209,55 @@ const FileTree: React.FC<FileTreeProps> = ({
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { setRateLimit } = useGitHubRateLimit();
+  const normalizedSearchQuery = searchQuery.trim();
+
+  const clampedSearchIndexProgress = Math.max(0, Math.min(100, searchIndexProgress));
+  const searchIndexStatusLabel = isSearchIndexReady
+    ? searchIndexCached
+      ? 'Cached index ready'
+      : 'Index ready'
+    : isSearchIndexLoading
+      ? `${clampedSearchIndexProgress.toFixed(1)}% loaded`
+      : searchError
+        ? 'Index unavailable'
+        : '';
+  const searchIndexBadgeLabel = searchIndexCached
+    ? 'cached'
+    : isSearchIndexLoading
+      ? 'loading'
+      : searchError
+        ? 'error'
+        : 'ready';
+
+  const groupedSearchResults = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        file: string;
+        fileName: string;
+        directory: string;
+        matches: WorkspaceSearchResult[];
+      }
+    >();
+
+    for (const result of searchResults) {
+      const existing = groups.get(result.file);
+      if (existing) {
+        existing.matches.push(result);
+        continue;
+      }
+
+      const lastSlashIndex = result.file.lastIndexOf('/');
+      groups.set(result.file, {
+        file: result.file,
+        fileName: lastSlashIndex === -1 ? result.file : result.file.slice(lastSlashIndex + 1),
+        directory: lastSlashIndex === -1 ? '' : result.file.slice(0, lastSlashIndex),
+        matches: [result],
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [searchResults]);
 
   // Handler to toggle directory expansion
   const handleToggleExpand = useCallback((path: string, isExpanded: boolean) => {
@@ -485,8 +566,8 @@ const FileTree: React.FC<FileTreeProps> = ({
             padding: '8px 10px',
             borderBottom: '1px solid var(--vscode-border)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            flexDirection: 'column',
+            alignItems: 'stretch',
             gap: '8px',
             flexShrink: 0,
           }}
@@ -507,6 +588,119 @@ const FileTree: React.FC<FileTreeProps> = ({
           >
             {titleLabel || 'Explorer'}
           </div>
+          {showSearch && onSearchQueryChange && (
+            <div className="vscode-tree-search">
+              <input
+                className="vscode-tree-search-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => onSearchQueryChange(event.target.value)}
+                placeholder="Search all files"
+                aria-label="Search all files"
+                spellCheck={false}
+              />
+              {onSearchIsRegexChange && (
+                <button
+                  type="button"
+                  className={`vscode-tree-search-toggle${searchIsRegex ? ' is-active' : ''}`}
+                  onClick={() => onSearchIsRegexChange(!searchIsRegex)}
+                  title={searchIsRegex ? 'Regex search on' : 'Regex search off'}
+                  aria-label={searchIsRegex ? 'Disable regex search' : 'Enable regex search'}
+                >
+                  .*
+                </button>
+              )}
+              {normalizedSearchQuery && (
+                <button
+                  type="button"
+                  className="vscode-tree-search-clear"
+                  onClick={() => onSearchQueryChange('')}
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
+          {showSearch && (isSearchIndexLoading || isSearchIndexReady || searchError) && (
+            <div
+              className="vscode-tree-search-meta"
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  fontSize: '11px',
+                  color: 'var(--vscode-text-secondary)',
+                }}
+              >
+                <span>{searchIndexStatusLabel || 'Loading repository index'}</span>
+                <span
+                  style={{
+                    color: isSearchIndexReady
+                      ? 'var(--vscode-text-success)'
+                      : searchError
+                        ? 'var(--vscode-text-error)'
+                        : 'var(--vscode-text-secondary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {searchIndexBadgeLabel}
+                </span>
+              </div>
+              <div
+                aria-hidden="true"
+                style={{
+                  height: '10px',
+                  borderRadius: '999px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${clampedSearchIndexProgress}%`,
+                    height: '100%',
+                    borderRadius: '999px',
+                    background: isSearchIndexReady
+                      ? 'linear-gradient(90deg, #16a34a, #22c55e)'
+                      : searchError
+                        ? 'linear-gradient(90deg, #b91c1c, #ef4444)'
+                        : 'linear-gradient(90deg, #2563eb, #38bdf8)',
+                    transition: 'width 300ms ease, background 250ms ease',
+                    boxShadow: isSearchIndexReady
+                      ? '0 0 18px rgba(34, 197, 94, 0.35)'
+                      : '0 0 18px rgba(56, 189, 248, 0.22)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {showSearch && normalizedSearchQuery && !isSearchIndexLoading && (
+            <div className="vscode-tree-search-meta">
+              {isSearchLoading ? (
+                <span>
+                  Searching {searchScopeFileCount ?? 'all'} file
+                  {(searchScopeFileCount ?? 0) === 1 ? '' : 's'}
+                  {searchScopeLabel ? ` in ${searchScopeLabel}` : ''}…
+                </span>
+              ) : searchError ? (
+                <span>{searchError}</span>
+              ) : (
+                <span>
+                  {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
+                  {searchHasMore ? ' (showing first 200)' : ''}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
       <div
@@ -525,19 +719,71 @@ const FileTree: React.FC<FileTreeProps> = ({
             <div style={{ fontSize: '12px', marginTop: '4px' }}>{error}</div>
           </div>
         ) : (
-          sortFileNodes(rootNodes).map((node) => (
-            <FileTreeItem
-              key={node.path}
-              node={node}
-              level={0}
-              onFileSelect={onFileSelect}
-              selectedFile={selectedFile}
-              listDirectory={listDirectory}
-              onDirectoryExpand={onDirectoryExpand}
-              expandedPaths={expandedPaths}
-              onToggleExpand={handleToggleExpand}
-            />
-          ))
+          <>
+            {showSearch && normalizedSearchQuery && (
+              <div className="vscode-tree-search-results">
+                {isSearchIndexLoading || isSearchLoading ? (
+                  <div className="vscode-tree-search-empty">
+                    <div style={{ marginTop: '8px' }}>
+                      {isSearchIndexLoading
+                        ? `${clampedSearchIndexProgress.toFixed(1)}% loaded`
+                        : `Searching ${searchScopeFileCount ?? 'all'} file${
+                            (searchScopeFileCount ?? 0) === 1 ? '' : 's'
+                          }${searchScopeLabel ? ` in ${searchScopeLabel}` : ''}...`}
+                    </div>
+                  </div>
+                ) : searchError ? (
+                  <div className="vscode-tree-search-empty">{searchError}</div>
+                ) : searchResults.length === 0 ? (
+                  <div className="vscode-tree-search-empty">No matches found.</div>
+                ) : (
+                  groupedSearchResults.map((group) => (
+                    <section key={group.file} className="vscode-tree-search-group">
+                      <div className="vscode-file-item vscode-tree-search-group-header">
+                        <span className="icon" aria-hidden="true">
+                          📄
+                        </span>
+                        <span className="name">{group.fileName}</span>
+                        <span className="size">{group.directory || 'root'}</span>
+                      </div>
+                      <div className="vscode-tree-search-group-list">
+                        {group.matches.map((match) => (
+                          <button
+                            key={match.key}
+                            type="button"
+                            className="vscode-file-item vscode-tree-search-row"
+                            onClick={() => onSearchResultSelect?.(match)}
+                            title={`${match.file}:${match.line}`}
+                          >
+                            <span className="icon vscode-tree-search-row-line" aria-hidden="true">
+                              L{match.line}
+                            </span>
+                            <span className="name vscode-tree-search-row-preview">
+                              {match.preview}
+                            </span>
+                            <span className="size">:{match.column}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ))
+                )}
+              </div>
+            )}
+            {sortFileNodes(rootNodes).map((node) => (
+              <FileTreeItem
+                key={node.path}
+                node={node}
+                level={0}
+                onFileSelect={onFileSelect}
+                selectedFile={selectedFile}
+                listDirectory={listDirectory}
+                onDirectoryExpand={onDirectoryExpand}
+                expandedPaths={expandedPaths}
+                onToggleExpand={handleToggleExpand}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>

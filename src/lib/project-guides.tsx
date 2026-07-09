@@ -9,6 +9,19 @@ export interface FileRecommendation {
   type?: 'docs' | 'source' | 'directory';
 }
 
+type RecommendationType = 'docs' | 'source' | 'directory';
+
+interface RecommendationItem extends FileRecommendation {
+  type: RecommendationType;
+}
+
+interface RecommendationGroup {
+  type: RecommendationType;
+  title: string;
+  items: RecommendationItem[];
+  accent: string;
+}
+
 export interface GuideSection {
   id: string;
   title: string;
@@ -56,14 +69,38 @@ export function createFileRecommendationsComponent(
   onFileClick: (path: string) => void
 ) {
   const normalizeDirectoryPath = (path: string) => (path.endsWith('/') ? path : `${path}/`);
-  const orderedItems =
+  const orderedItems: RecommendationItem[] =
     readingOrder.length > 0
-      ? readingOrder
+      ? readingOrder.map((file) => ({
+          ...file,
+          type: (file.type ?? 'source') as RecommendationType,
+        }))
       : [
           ...docs.map((file) => ({ ...file, type: 'docs' as const })),
           ...source.map((file) => ({ ...file, type: 'source' as const })),
           ...directories.map((file) => ({ ...file, type: 'directory' as const })),
         ];
+
+  const groups = [
+    {
+      type: 'docs',
+      title: 'Docs',
+      items: orderedItems.filter((file) => file.type === 'docs'),
+      accent: '#8b5cf6',
+    },
+    {
+      type: 'source',
+      title: 'Files',
+      items: orderedItems.filter((file) => file.type === 'source'),
+      accent: '#0ea5e9',
+    },
+    {
+      type: 'directory',
+      title: 'Directories',
+      items: orderedItems.filter((file) => file.type === 'directory'),
+      accent: '#f59e0b',
+    },
+  ].filter((group) => group.items.length > 0) as RecommendationGroup[];
 
   const getItemPath = (file: FileRecommendation) =>
     file.type === 'directory' ? normalizeDirectoryPath(file.path) : file.path;
@@ -92,115 +129,154 @@ export function createFileRecommendationsComponent(
 
   return (
     <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-      {orderedItems.length > 0 && (
-        <div>
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            Readings
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {orderedItems.map((file, index) => (
-              <button
-                key={`${index + 1}-${file.path}`}
-                onClick={() => onFileClick(getItemPath(file))}
+      {groups.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {groups.map((group) => (
+            <section
+              key={group.type}
+              style={{
+                border: `1px solid ${group.accent}33`,
+                borderRadius: '8px',
+                overflow: 'hidden',
+                background: 'var(--vscode-editor-background, #1e1e1e)',
+              }}
+            >
+              <div
                 style={{
-                  textAlign: 'left',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  background: 'var(--vscode-editor-background, #1e1e1e)',
-                  border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                  borderRadius: '4px',
-                  color: 'var(--vscode-foreground, #d4d4d4)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-list-hoverBackground, #2a2d2e)';
-                  e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--vscode-editor-background, #1e1e1e)';
-                  e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  background: `${group.accent}14`,
+                  borderBottom: `1px solid ${group.accent}26`,
                 }}
               >
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <span
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: 'var(--vscode-foreground, #d4d4d4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  {group.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: '10px',
+                    color: 'var(--vscode-descriptionForeground, #999)',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {group.items.length}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px' }}>
+                {group.items.map((file, index) => (
+                  <button
+                    key={`${group.type}-${index + 1}-${file.path}`}
+                    onClick={() => onFileClick(getItemPath(file))}
                     style={{
-                      minWidth: '20px',
-                      color: 'var(--vscode-descriptionForeground, #999)',
-                      fontFamily: 'monospace',
-                      marginTop: '1px',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      background:
+                        group.type === 'docs'
+                          ? 'rgba(139, 92, 246, 0.08)'
+                          : 'var(--vscode-editor-background, #1e1e1e)',
+                      border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                      borderRadius: '4px',
+                      color: 'var(--vscode-foreground, #d4d4d4)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background =
+                        'var(--vscode-list-hoverBackground, #2a2d2e)';
+                      e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background =
+                        group.type === 'docs'
+                          ? 'rgba(139, 92, 246, 0.08)'
+                          : 'var(--vscode-editor-background, #1e1e1e)';
+                      e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
                     }}
                   >
-                    {index + 1}.
-                  </span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          lineHeight: 1.45,
-                          color: 'var(--vscode-foreground, #d4d4d4)',
-                        }}
-                      >
-                        {file.description || getItemPath(file)}
-                      </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <span
                         style={{
-                          fontSize: '10px',
+                          minWidth: '20px',
                           color: 'var(--vscode-descriptionForeground, #999)',
-                          border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                          borderRadius: '999px',
-                          padding: '1px 6px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
+                          fontFamily: 'monospace',
+                          marginTop: '1px',
                         }}
                       >
-                        {getItemBadge(file)}
+                        {index + 1}.
                       </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              lineHeight: 1.45,
+                              color: 'var(--vscode-foreground, #d4d4d4)',
+                            }}
+                          >
+                            {file.description || getItemPath(file)}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--vscode-descriptionForeground, #999)',
+                              border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                              borderRadius: '999px',
+                              padding: '1px 6px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {getItemBadge(file)}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--vscode-descriptionForeground, #999)',
+                            marginTop: '4px',
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {getItemContext(file)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
+                            marginTop: '6px',
+                            fontFamily: 'monospace',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {getItemPath(file)}
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: 'var(--vscode-descriptionForeground, #999)',
-                        marginTop: '4px',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {getItemContext(file)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
-                        marginTop: '6px',
-                        fontFamily: 'monospace',
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {getItemPath(file)}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>

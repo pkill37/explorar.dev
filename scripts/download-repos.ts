@@ -8,6 +8,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
+import { buildCodeIndex } from './code-index-builder';
+import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
 import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
 
@@ -37,6 +39,8 @@ const REPOS_DIR = CORPUS_REPOS_DIR;
 const DOWNLOAD_CONCURRENCY = 3;
 const AVATAR_DOWNLOAD_CONCURRENCY = 4;
 const AVATAR_MANIFEST_PATH = path.join(PUBLIC_AVATARS_DIR, '.avatar-manifest.json');
+const DEFAULT_GIT_RETRY_ATTEMPTS = 3;
+const DEFAULT_GIT_RETRY_BASE_DELAY_MS = 2_000;
 
 // File extensions that cannot be rendered in Monaco. Removed at clone time so
 // they don't appear in the file tree or inflate the Cloudflare file count.
@@ -173,7 +177,8 @@ async function runCommand(
   cmd: string,
   args: string[],
   cwd?: string,
-  stdin?: string
+  stdin?: string,
+  extraEnv?: NodeJS.ProcessEnv
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -181,6 +186,7 @@ async function runCommand(
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        ...extraEnv,
         GIT_TERMINAL_PROMPT: '0',
       },
     });
@@ -199,6 +205,65 @@ async function runCommand(
       reject(new Error(`Command failed (${code}): ${cmd} ${args.join(' ')}\n${stderr.trim()}`));
     });
   });
+}
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name]?.trim();
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Invalid ${name}: expected a positive integer, received "${rawValue}"`);
+  }
+
+  return parsed;
+}
+
+function getGitRetryAttempts(): number {
+  return readPositiveIntEnv('GIT_DOWNLOAD_RETRY_ATTEMPTS', DEFAULT_GIT_RETRY_ATTEMPTS);
+}
+
+function getGitRetryBaseDelayMs(): number {
+  return readPositiveIntEnv('GIT_DOWNLOAD_RETRY_BASE_DELAY_MS', DEFAULT_GIT_RETRY_BASE_DELAY_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function runWithRetries<T>(
+  label: string,
+  operation: () => Promise<T>,
+  attempts: number,
+  baseDelayMs: number
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) {
+        break;
+      }
+
+      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `   ${label} failed on attempt ${attempt}/${attempts}: ${message}. Retrying in ${(
+          delayMs / 1000
+        ).toFixed(delayMs >= 10_000 ? 0 : 1)}s...`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 /**
@@ -225,17 +290,6 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
     child.stdout?.on('data', (d: Buffer) => (output += d.toString()));
     child.on('error', () => resolve(null));
     child.on('close', (code) => resolve(code === 0 ? output.trim() || null : null));
-  });
-}
-
-function getBuildSignature(config: CuratedRepoConfig): string {
-  return JSON.stringify({
-    id: config.id,
-    owner: config.owner,
-    repo: config.repo,
-    ref: config.ref,
-    revision: config.revision,
-    guideId: config.guideId,
   });
 }
 
@@ -280,18 +334,21 @@ async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): P
   if (!fs.existsSync(manifestPath)) return false;
 
   let storedSignature: string | undefined;
+  let manifestTree: CorpusBuildTreeNode[] | undefined;
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
-    storedSignature = (JSON.parse(raw) as { buildSignature?: string }).buildSignature;
+    const manifest = JSON.parse(raw) as { buildSignature?: string; tree?: CorpusBuildTreeNode[] };
+    storedSignature = manifest.buildSignature;
+    manifestTree = manifest.tree;
   } catch {
     return false;
   }
 
-  if (!storedSignature) {
+  if (!storedSignature || !Array.isArray(manifestTree)) {
     return false;
   }
 
-  return storedSignature === getBuildSignature(config);
+  return storedSignature === getCorpusBuildSignature(config, manifestTree);
 }
 
 export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
@@ -375,61 +432,87 @@ async function gitCloneShallow(
   depth: number
 ): Promise<string | null> {
   const { owner, repo, revision } = config;
-  if (fs.existsSync(repoDir)) {
-    fs.rmSync(repoDir, { recursive: true, force: true });
-  }
-
   const parentDir = path.dirname(repoDir);
   fs.mkdirSync(parentDir, { recursive: true });
 
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
+  const retryAttempts = getGitRetryAttempts();
+  const retryBaseDelayMs = getGitRetryBaseDelayMs();
 
-  if (isCommitSha(revision)) {
-    fs.mkdirSync(repoDir, { recursive: true });
-    await runCommand('git', ['init'], repoDir);
-    await runCommand('git', ['remote', 'add', 'origin', repoUrl], repoDir);
+  const removePartialCheckout = () => {
+    if (fs.existsSync(repoDir)) {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    }
+  };
 
-    await runCommand(
-      'git',
-      ['fetch', '--depth', String(depth), '--filter=blob:none', 'origin', revision],
-      repoDir
-    );
-    await runCommand('git', ['checkout', '--detach', 'FETCH_HEAD'], repoDir);
+  const cloneOnce = async (): Promise<string | null> => {
+    removePartialCheckout();
 
+    if (isCommitSha(revision)) {
+      fs.mkdirSync(repoDir, { recursive: true });
+      await runCommand('git', ['init'], repoDir);
+      await runCommand('git', ['remote', 'add', 'origin', repoUrl], repoDir);
+
+      await runCommand(
+        'git',
+        [
+          '-c',
+          'http.version=HTTP/1.1',
+          'fetch',
+          '--depth',
+          String(depth),
+          '--filter=blob:none',
+          'origin',
+          revision,
+        ],
+        repoDir
+      );
+      await runCommand('git', ['checkout', '--detach', 'FETCH_HEAD'], repoDir);
+
+      const sha = await getLocalSHA(repoDir);
+      const gitDir = path.join(repoDir, '.git');
+      if (fs.existsSync(gitDir)) {
+        fs.rmSync(gitDir, { recursive: true, force: true });
+      }
+
+      return sha;
+    }
+
+    const cloneArgs = [
+      '-c',
+      'advice.detachedHead=false',
+      '-c',
+      'http.version=HTTP/1.1',
+      'clone',
+      '--filter=blob:none',
+      '--depth',
+      String(depth),
+      '--single-branch',
+      '--branch',
+      revision,
+      repoUrl,
+      repoDir,
+    ];
+
+    await runCommand('git', cloneArgs);
+
+    // Capture SHA before deleting .git — used for future staleness checks.
     const sha = await getLocalSHA(repoDir);
+
     const gitDir = path.join(repoDir, '.git');
     if (fs.existsSync(gitDir)) {
       fs.rmSync(gitDir, { recursive: true, force: true });
     }
 
     return sha;
-  }
+  };
 
-  const cloneArgs = [
-    '-c',
-    'advice.detachedHead=false',
-    'clone',
-    '--filter=blob:none',
-    '--depth',
-    String(depth),
-    '--single-branch',
-    '--branch',
-    revision,
-    repoUrl,
-    repoDir,
-  ];
-
-  await runCommand('git', cloneArgs);
-
-  // Capture SHA before deleting .git — used for future staleness checks.
-  const sha = await getLocalSHA(repoDir);
-
-  const gitDir = path.join(repoDir, '.git');
-  if (fs.existsSync(gitDir)) {
-    fs.rmSync(gitDir, { recursive: true, force: true });
-  }
-
-  return sha;
+  return runWithRetries(
+    `git clone ${owner}/${repo}@${revision}`,
+    cloneOnce,
+    retryAttempts,
+    retryBaseDelayMs
+  );
 }
 
 // Full in-memory node (name + path for convenience during build)
@@ -543,8 +626,6 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
 async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promise<void> {
   const { owner, repo, revision } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, revision);
-  const buildSignature = getBuildSignature(config);
-
   console.log(`\nRepo ${owner}/${repo}@${revision}`);
 
   if (!fs.existsSync(REPOS_DIR)) {
@@ -568,7 +649,9 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
 
     console.log(`   Building file tree...`);
     const tree = buildFileTree(repoDir);
+    const buildSignature = getCorpusBuildSignature(config, tree);
     createManifest(repoDir, tree, buildSignature);
+    buildCodeIndex(repoDir, tree, buildSignature);
     console.log(`   Tree: ${tree.length} root entries`);
 
     console.log(`ready: ${owner}/${repo}@${revision}`);
@@ -657,6 +740,9 @@ async function main() {
   console.log(`Target directory: ${REPOS_DIR}`);
   console.log(`Clone mode: --filter=blob:none --single-branch --depth ${opts.depth}`);
   console.log(`Concurrency: ${DOWNLOAD_CONCURRENCY}`);
+  console.log(
+    `Retry policy: ${getGitRetryAttempts()} attempt(s) with exponential backoff from ${getGitRetryBaseDelayMs()}ms`
+  );
 
   if (opts.list) {
     console.log('\nCurated repos:');

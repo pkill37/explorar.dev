@@ -64,12 +64,12 @@ const KNOWN_EXTS = new Set([
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface FileRef {
+export interface FileRef {
   refPath: string;
   description: string;
 }
 
-interface Section {
+export interface Section {
   id: string;
   title: string;
   readingOrderRefs: FileRef[];
@@ -83,6 +83,7 @@ interface Section {
 // ─── File-content cache (avoid re-reading the same file) ─────────────────────
 
 const fileCache = new Map<string, string | null>();
+const pathIndexCache = new Map<string, Map<string, string[]>>();
 
 function cachedRead(absPath: string): string | null {
   if (fileCache.has(absPath)) return fileCache.get(absPath)!;
@@ -96,10 +97,67 @@ function cachedRead(absPath: string): string | null {
   }
 }
 
+export function buildPathIndex(repoRoot: string): Map<string, string[]> {
+  const cached = pathIndexCache.get(repoRoot);
+  if (cached) return cached;
+
+  const index = new Map<string, string[]>();
+  const stack = [''];
+
+  while (stack.length > 0) {
+    const relDir = stack.pop()!;
+    const absDir = path.join(repoRoot, relDir);
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const relPath = relDir ? path.join(relDir, entry.name) : entry.name;
+      const key = entry.name;
+      const paths = index.get(key) ?? [];
+      paths.push(relPath);
+      index.set(key, paths);
+      if (entry.isDirectory()) {
+        stack.push(relPath);
+      }
+    }
+  }
+
+  pathIndexCache.set(repoRoot, index);
+  return index;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function refExists(repoRoot: string, refPath: string): boolean {
-  return fs.existsSync(path.join(repoRoot, refPath));
+export function resolveRepoPath(repoRoot: string, refPath: string): string | null {
+  const normalized = refPath.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!normalized) return null;
+
+  const exactPath = path.join(repoRoot, normalized);
+  if (fs.existsSync(exactPath)) {
+    return normalized;
+  }
+
+  if (normalized.includes('/')) {
+    const basename = normalized.split('/').pop();
+    if (!basename) return null;
+    const matches = buildPathIndex(repoRoot).get(basename) ?? [];
+    if (matches.length === 1) return matches[0];
+    const arm64Matches = matches.filter((candidate) => /(^|\/)arm64(\/|$)/.test(candidate));
+    return arm64Matches.length === 1 ? arm64Matches[0] : null;
+  }
+
+  const matches = buildPathIndex(repoRoot).get(normalized) ?? [];
+  if (matches.length === 1) return matches[0];
+  const arm64Matches = matches.filter((candidate) => /(^|\/)arm64(\/|$)/.test(candidate));
+  return arm64Matches.length === 1 ? arm64Matches[0] : null;
+}
+
+export function refExists(repoRoot: string, refPath: string): boolean {
+  return resolveRepoPath(repoRoot, refPath) !== null;
 }
 
 /** Count newlines (matches `wc -l` semantics). */
@@ -120,18 +178,18 @@ function hasKnownExt(p: string): boolean {
   return KNOWN_EXTS.has(path.extname(p).toLowerCase());
 }
 
-/** True when the string looks like a relative repo path (has a slash + known ext or trailing /). */
+/** True when the string looks like a relative repo path or a bare file reference. */
 function looksLikeRepoPath(s: string): boolean {
-  if (!s.includes('/')) return false;
-  return hasKnownExt(s) || s.endsWith('/');
+  if (!s || s.includes('://') || s.startsWith('#')) return false;
+  return s.includes('/') || hasKnownExt(s) || s.endsWith('/');
 }
 
-function parseClaimed(raw: string): number {
+export function parseClaimed(raw: string): number {
   return parseInt(raw.replace(/,/g, ''), 10);
 }
 
 /** Extract all ```<lang> … ``` blocks from raw text. */
-function extractFencedBlocks(raw: string, lang: string): Array<{ code: string }> {
+export function extractFencedBlocks(raw: string, lang: string): Array<{ code: string }> {
   const blocks: Array<{ code: string }> = [];
   const fence = '```' + lang;
   const lines = raw.split('\n');
@@ -156,13 +214,13 @@ function extractFencedBlocks(raw: string, lang: string): Array<{ code: string }>
 // ─── Section parser ───────────────────────────────────────────────────────────
 
 /** Returns true if the line opens or closes a fenced code block (``` or ~~~). */
-function isFenceMarker(line: string): boolean {
+export function isFenceMarker(line: string): boolean {
   const t = line.trim();
   return t.startsWith('```') || t.startsWith('~~~');
 }
 
 /** Parse guide content (after gray-matter has stripped the doc frontmatter). */
-function parseSections(content: string): Section[] {
+export function parseSections(content: string): Section[] {
   const sections: Section[] = [];
   const lines = content.split('\n');
   let i = 0;
@@ -252,7 +310,7 @@ const LINE_COUNT_RE = /\(~([\d,]+)\s+lines[^)]*\)/g;
 const MD_LINK_RE = /\[(?:[^\]]*)\]\(([\w./\-@:]+)\)/g;
 const BACKTICK_RE = /`([^`\n]+)`/g;
 
-function checkGuide(
+export function checkGuide(
   repoRoot: string,
   sections: Section[]
 ): { errors: string[]; warnings: string[] } {
@@ -360,7 +418,7 @@ function checkGuide(
       for (const m of proseLine.matchAll(BACKTICK_RE)) {
         const span = m[1].trim();
         if (span.startsWith('/')) continue; // absolute path — example, not a repo path
-        if (!span.includes('/') || !hasKnownExt(span)) continue;
+        if (!looksLikeRepoPath(span)) continue;
         if (checkedPaths.has(span)) continue;
         checkedPaths.add(span);
         if (!refExists(repoRoot, span)) {
@@ -394,13 +452,13 @@ function checkGuide(
 }
 
 /** Remove all fenced code block content (``` ... ```) from text. */
-function stripFencedBlocks(text: string): string {
+export function stripFencedBlocks(text: string): string {
   return text.replace(/```[\w-]*\n[\s\S]*?```/g, '');
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-(() => {
+export function main(): number {
   let totalErrors = 0;
   let skipped = 0;
   let checked = 0;
@@ -491,6 +549,11 @@ function stripFencedBlocks(text: string): string {
 
   if (totalErrors > 0) {
     console.error(`${totalErrors} reference error${totalErrors !== 1 ? 's' : ''} found.`);
-    process.exit(1);
+    return 1;
   }
-})();
+  return 0;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  process.exit(main());
+}

@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import '@xyflow/react/dist/style.css';
 
 :root {
   --background: #ffffff;
@@ -258,6 +257,179 @@ body {
   border-radius: 4px;
   padding: 8px;
   margin: 4px 0;
+}
+
+/* App-owned xref panel */
+.explorar-editor-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.explorar-xref-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--vscode-border, #3f3f46) 80%, transparent);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white 6%) 0%,
+    color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 98%, black 2%) 100%
+  );
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+.explorar-xref-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-border, #3f3f46) 80%, transparent);
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 88%, white 12%);
+}
+
+.explorar-xref-panel-title-wrap {
+  min-width: 0;
+}
+
+.explorar-xref-panel-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+
+.explorar-xref-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.explorar-xref-panel-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 24%, transparent);
+  font-size: 11px;
+}
+
+.explorar-xref-panel-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+
+.explorar-xref-panel-subtitle {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-border, #3f3f46) 60%, transparent);
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 82%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorar-xref-panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+
+.explorar-xref-panel-empty {
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 90%, transparent);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+}
+
+.explorar-xref-group + .explorar-xref-group {
+  margin-top: 14px;
+}
+
+.explorar-xref-group-header {
+  margin-bottom: 8px;
+}
+
+.explorar-xref-group-file {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.explorar-xref-group-dir {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+
+.explorar-xref-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.explorar-xref-row {
+  appearance: none;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 82%, transparent);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.explorar-xref-row:hover,
+.explorar-xref-row.is-selected {
+  border-color: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 55%, transparent);
+  background: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 14%, transparent);
+}
+
+.explorar-xref-row-line {
+  font-size: 11px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+
+.explorar-xref-row-preview {
+  min-width: 0;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Markdown preview and guide body styles */

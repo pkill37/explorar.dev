@@ -44,8 +44,40 @@ function bar(ratio: number, width = 20): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
+function listSqliteIndexes(rootDir: string): FileStat[] {
+  const indexFiles: FileStat[] = [];
+
+  if (!fs.existsSync(rootDir)) {
+    return indexFiles;
+  }
+
+  for (const repoOwner of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    if (!repoOwner.isDirectory()) continue;
+    const ownerDir = path.join(rootDir, repoOwner.name);
+
+    for (const repoName of fs.readdirSync(ownerDir, { withFileTypes: true })) {
+      if (!repoName.isDirectory()) continue;
+      const repoDir = path.join(ownerDir, repoName.name);
+
+      for (const revision of fs.readdirSync(repoDir, { withFileTypes: true })) {
+        if (!revision.isDirectory()) continue;
+        const indexPath = path.join(repoDir, revision.name, 'code-index.sqlite');
+        if (!fs.existsSync(indexPath) || !fs.statSync(indexPath).isFile()) continue;
+        indexFiles.push({
+          path: indexPath,
+          size: fs.statSync(indexPath).size,
+          ext: '.sqlite',
+        });
+      }
+    }
+  }
+
+  return indexFiles.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 function main() {
   const outDir = path.join(process.cwd(), 'out');
+  const corpusRoot = path.join(process.cwd(), 'repos');
 
   console.log('\n' + '═'.repeat(60));
   console.log('  SHELL BUILD REPORT');
@@ -115,6 +147,17 @@ function main() {
     const rel = path.relative(outDir, f.path);
     const truncated = rel.length > 46 ? '…' + rel.slice(-45) : rel;
     console.log(`  ${truncated.padEnd(46)}  ${fmt(f.size).padStart(9)}`);
+  }
+
+  const sqliteIndexes = listSqliteIndexes(corpusRoot);
+  console.log('\n  SQLITE INDEX FILES');
+  console.log('  ' + '─'.repeat(56));
+  if (sqliteIndexes.length === 0) {
+    console.log('  (none found)');
+  } else {
+    for (const file of sqliteIndexes) {
+      console.log(`  ${path.relative(process.cwd(), file.path).padEnd(80)}  ${fmt(file.size)}`);
+    }
   }
 
   console.log('\n' + '═'.repeat(60) + '\n');

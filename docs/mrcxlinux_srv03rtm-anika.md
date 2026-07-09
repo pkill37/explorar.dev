@@ -363,7 +363,7 @@ fileRecommendations:
 
 This chapter ties together device-facing code and the trust material around it.
 
-The driver tree is not just code. `drivers/archive.txt` records curated payloads, `drivers/project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia/project.mk`, `multimedia/directx/project.mk`, and `printscan/project.mk` show the same pattern in other product surfaces: a feature is a build contract plus a directory family, not just a set of `.c` files.
+The driver tree is not just code. `drivers/archive.txt` records curated payloads, `drivers/project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia/project.mk`, `multimedia/directx/project.mk`, and `printscan/project.mk` show the same pattern in other product surfaces: a feature is a build contract plus a directory family, not just a set of .c files.
 
 `certutil/generate.sh` is important here because it turns build trust into a reproducible step. In a tree like this, signing and packaging are part of the subsystem story, not an afterthought.
 

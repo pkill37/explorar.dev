@@ -52,3 +52,12 @@ export function buildCuratedRepoUrl(
 
   return `${baseUrl}${buildRepoPath(owner, repo, branch, filePath)}`;
 }
+
+export function buildCuratedRepoStaticPath(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string
+): string {
+  return buildRepoPath(owner, repo, branch, filePath);
+}

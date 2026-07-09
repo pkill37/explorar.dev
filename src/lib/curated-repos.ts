@@ -44,7 +44,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     buildAvatarUrl:
       'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/256px-Tux.svg.png',
     description:
-      'Explore the Linux kernel source code. Study kernel architecture, system calls, device drivers, and core subsystems.',
+      'Linux kernel source code, with kernel architecture, system calls, device drivers, and core subsystems.',
     seoDescription:
       'Explore the Linux kernel source code interactively. Study kernel architecture, system calls, device drivers, and core subsystems with guided learning paths.',
     seoKeywords: [
@@ -72,7 +72,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-gray-500/10 to-slate-500/10',
     category: 'Operating Systems',
     description:
-      "Explore Apple's XNU kernel: the hybrid Mach/BSD core powering macOS and iOS. Study Mach IPC, virtual memory, I/O Kit drivers, and the BSD subsystem.",
+      "Apple's XNU kernel, the hybrid Mach/BSD core powering macOS and iOS. Study Mach IPC, virtual memory, I/O Kit drivers, and the BSD subsystem.",
     seoDescription:
       "Explore Apple's XNU kernel source code interactively. Study Mach IPC, virtual memory, I/O Kit drivers, BSD internals, and the hybrid kernel architecture behind macOS and iOS.",
     seoKeywords: [
@@ -100,9 +100,9 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-sky-500/10 to-blue-500/10',
     category: 'Operating Systems',
     avatarFile: 'mrcxlinux.svg',
-    avatarVersion: '2',
+    avatarVersion: '3',
     description:
-      'Explore the Windows Server 2003 source tree, with focus on its build layout, core subsystem families, and server-oriented components.',
+      'Windows Server 2003 source tree, with focus on its build layout, core subsystem families, and server-oriented components.',
     seoDescription:
       'Explore the Windows Server 2003 source tree interactively. Study the build layout, subsystem organization, server components, networking stack, and developer tooling behind the NT 5.2 codebase.',
     seoKeywords: [
@@ -130,7 +130,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-emerald-500/10 to-cyan-500/10',
     category: 'Operating Systems',
     description:
-      'Explore LK, a small SMP-aware embedded kernel used in bootloaders and bring-up environments across many architectures.',
+      'LK, a small SMP-aware embedded kernel used in bootloaders and bring-up environments across many architectures.',
     seoDescription:
       'Explore the Little Kernel (LK) embedded kernel source code. Study its tiny kernel core, platform ports, target configuration model, and modular embedded build system.',
     seoKeywords: [
@@ -158,7 +158,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-slate-500/10 to-zinc-500/10',
     category: 'Operating Systems',
     description:
-      'Explore seL4, the formally verified microkernel with a capability-based kernel model, generated ABI bindings, and architecture-specific ports.',
+      'seL4, the formally verified microkernel with a capability-based kernel model, generated ABI bindings, and architecture-specific ports.',
     seoDescription:
       'Explore the seL4 microkernel source code interactively. Study capability-based isolation, kernel boot flow, generated syscalls, scheduling, and architecture ports in seL4 15.0.0.',
     seoKeywords: [
@@ -186,7 +186,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-sky-500/10 to-cyan-500/10',
     category: 'Operating Systems',
     description:
-      'Explore ReactOS, a Windows-compatible open source operating system focused on NT kernel, Win32, and driver compatibility.',
+      'ReactOS, a Windows-compatible open source operating system focused on NT kernel, Win32, and driver compatibility.',
     seoDescription:
       'Explore the ReactOS source code interactively. Study its NT kernel architecture, Win32 subsystem, driver model, boot flow, and Windows compatibility layers.',
     seoKeywords: [
@@ -214,7 +214,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-yellow-500/10 to-blue-500/10',
     category: 'Languages',
     description:
-      'Explore the Python interpreter source code. Learn how Python works under the hood, from bytecode execution to garbage collection.',
+      'Python interpreter source code, from bytecode execution to garbage collection and runtime behavior.',
     seoDescription:
       'Explore Python CPython interpreter source code. Learn how Python works under the hood, from bytecode execution to garbage collection and runtime internals.',
     seoKeywords: [
@@ -245,7 +245,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     buildAvatarUrl:
       'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Heckert_GNU_white.svg/256px-Heckert_GNU_white.svg.png',
     description:
-      'Explore the GNU C Library source code. Study standard C library implementations, system calls, and POSIX compliance.',
+      'GNU C Library source code, including standard C library implementations, system calls, and POSIX compliance.',
     seoDescription:
       'Explore the GNU C Library (glibc) source code. Study standard C library implementations, system calls, POSIX compliance, and C runtime behavior.',
     seoKeywords: [
@@ -275,7 +275,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     avatarFile: 'llvm-dragon.png',
     buildAvatarUrl: 'https://llvm.org/img/DragonMedium.png',
     description:
-      'Explore the LLVM compiler infrastructure. Study compiler design, optimization passes, and code generation.',
+      'LLVM compiler infrastructure, including compiler design, optimization passes, and code generation.',
     seoDescription:
       'Explore the LLVM compiler infrastructure source code. Study compiler design, optimization passes, code generation, and modern compiler architecture.',
     seoKeywords: [
@@ -359,6 +359,54 @@ export function getCuratedRepoId(owner: string, repo: string): string {
 export function getCuratedRepoPath(owner: string, repo: string): string {
   const config = getCuratedRepo(owner, repo);
   return config ? `/${config.slug}` : `/${owner}/${repo}`;
+}
+
+export interface CuratedRepoRouteResolution {
+  config: CuratedRepoConfig;
+  canonicalPath: string;
+  isLegacyPath: boolean;
+}
+
+export interface CuratedRepoRouteParams {
+  repoPath: string[];
+}
+
+export function getCuratedRepoRouteParams(): CuratedRepoRouteParams[] {
+  return CURATED_REPOS.flatMap((repo) => [
+    { repoPath: [repo.slug] },
+    { repoPath: [repo.owner, repo.repo] },
+  ]);
+}
+
+export function resolveCuratedRepoRoute(pathSegments: string[]): CuratedRepoRouteResolution | null {
+  if (pathSegments.length === 1) {
+    const config = getCuratedRepoBySlug(pathSegments[0]);
+    if (!config) {
+      return null;
+    }
+
+    return {
+      config,
+      canonicalPath: `/${config.slug}`,
+      isLegacyPath: false,
+    };
+  }
+
+  if (pathSegments.length === 2) {
+    const [owner, repo] = pathSegments;
+    const config = getCuratedRepo(owner, repo);
+    if (!config) {
+      return null;
+    }
+
+    return {
+      config,
+      canonicalPath: getCuratedRepoPath(owner, repo),
+      isLegacyPath: true,
+    };
+  }
+
+  return null;
 }
 
 validateCuratedRepos(CURATED_REPOS);

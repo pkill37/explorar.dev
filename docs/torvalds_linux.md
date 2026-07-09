@@ -82,8 +82,8 @@ fileRecommendations:
     - path: Documentation/driver-api/
       description: Driver development API
       type: docs
-    - path: arch/x86/entry/entry_64.S
-      description: SYSCALL/SYSRET and interrupt entry for x86-64
+    - path: arch/arm64/kernel/entry.S
+      description: Syscall and interrupt entry for arm64
       type: source
     - path: mm/mmap.c
       description: Virtual memory area management — mmap() implementation
@@ -101,19 +101,19 @@ fileRecommendations:
 
 Six directories account for nearly all kernel behavior.
 
-**`kernel/`** holds the scheduler (under `kernel/sched/`), process creation (`fork.c`), signal delivery (`signal.c`), and timers. The CFS scheduler alone spans `fair.c` (~12k lines), `core.c` (~11k lines), and `rt.c` for real-time policies.
+**`kernel/`** holds the scheduler (under `kernel/sched/`), process creation (`kernel/fork.c`), signal delivery (`kernel/signal.c`), and timers. The CFS scheduler alone spans `kernel/sched/fair.c` (~12k lines), `kernel/sched/core.c` (~11k lines), and `kernel/sched/rt.c` for real-time policies.
 
-**`mm/`** owns physical and virtual memory. `page_alloc.c` is the buddy allocator for page-granularity requests; `slub.c` is the slab allocator for small kernel objects; `mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
+**`mm/`** owns physical and virtual memory. `mm/page_alloc.c` is the buddy allocator for page-granularity requests; `mm/slub.c` is the slab allocator for small kernel objects; `mm/mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
 
-**`fs/`** provides the Virtual Filesystem Switch — a uniform interface over all filesystems. `namei.c` resolves paths to dentries; `open.c` and `read_write.c` implement the syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
+**`fs/`** provides the Virtual Filesystem Switch — a uniform interface over all filesystems. `fs/namei.c` resolves paths to dentries; `fs/open.c` and `fs/read_write.c` implement the syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
 
 **`net/`** implements the full TCP/IP stack. Socket buffers (`sk_buff`) flow through `net/core/dev.c` (device layer), `net/ipv4/tcp.c` (protocol), and `net/netfilter/` (packet filtering).
 
 **The driver subsystem** (~20M lines) abstracts every hardware category through a bus-device-driver model registered with `kobject`/sysfs.
 
-**`arch/x86/`** contains everything that can't be written portably: syscall entry (`arch/x86/entry/entry_64.S`), page-fault handling (`arch/x86/mm/fault.c`), SMP bring-up, and KVM virtualization.
+**`arch/arm64/`** contains everything that can't be written portably: syscall entry (`arch/arm64/kernel/entry.S`), page-fault handling (`arch/arm64/mm/fault.c`), SMP bring-up, and KVM virtualization.
 
-Subsystems interact through well-defined interfaces. A `read(2)` syscall enters via `entry_64.S`, dispatches through `fs/read_write.c:vfs_read()`, lands in the filesystem's `->read_iter()` hook, hits the page cache in `mm/filemap.c`, and issues block I/O through `block/bio.c` to a driver.
+Subsystems interact through well-defined interfaces. A `read(2)` syscall enters via `arch/arm64/kernel/entry.S`, dispatches through `fs/read_write.c` via `vfs_read()`, lands in the filesystem's `->read_iter()` hook, hits the page cache in `mm/filemap.c`, and issues block I/O through `block/bio.c` to a driver.
 
 ---
 id: ch3
@@ -129,8 +129,8 @@ fileRecommendations:
     - path: Documentation/core-api/memory-allocation.rst
       description: Which allocator to use and when
       type: docs
-    - path: Documentation/x86/x86_64/mm.rst
-      description: x86-64 virtual address space layout
+    - path: Documentation/arm64/
+      description: arm64 virtual address space and memory layout documentation
       type: docs
     - path: Documentation/virt/
       description: Virtual memory documentation
@@ -148,19 +148,19 @@ fileRecommendations:
 
 The kernel doesn't view memory as a flat map — it tracks it as a responsibility. Every byte of physical RAM is represented by a `struct page`. Every range of a process's virtual address space is a `struct vm_area_struct` (VMA). The process as a whole carries a `struct mm_struct` linking them together.
 
-Physical memory is organized into NUMA nodes → zones → page blocks → pages. The buddy allocator (`page_alloc.c`) satisfies page-granularity requests, splitting and coalescing power-of-two blocks to fight fragmentation. Smaller allocations go through SLUB (`slub.c`), which maintains per-CPU caches of fixed-size objects.
+Physical memory is organized into NUMA nodes → zones → page blocks → pages. The buddy allocator (`mm/page_alloc.c`) satisfies page-granularity requests, splitting and coalescing power-of-two blocks to fight fragmentation. Smaller allocations go through SLUB (`mm/slub.c`), which maintains per-CPU caches of fixed-size objects.
 
-Virtual memory is lazily populated. `mmap()` creates a VMA and returns immediately; no physical page is allocated until a first access triggers a page fault. The fault handler (`arch/x86/mm/fault.c`) checks permissions, allocates a page, and installs a PTE. Copy-on-write for `fork()` uses the same mechanism: child VMAs share parent pages (read-only), and a write fault splits them.
+Virtual memory is lazily populated. `mm/mmap.c` creates a VMA and returns immediately; no physical page is allocated until a first access triggers a page fault. The fault handler (`arch/arm64/mm/fault.c`) checks permissions, allocates a page, and installs a PTE. Copy-on-write for `fork()` uses the same mechanism: child VMAs share parent pages (read-only), and a write fault splits them.
 
-Isolation is enforced structurally. Each process has its own `mm_struct` and its own page tables. The kernel is mapped into every process's address space at high virtual addresses, but those pages carry supervisor-only PTEs — inaccessible from ring 3. The canonical x86-64 layout is documented in `Documentation/x86/x86_64/mm.rst`.
+Isolation is enforced structurally. Each process has its own `mm_struct` and its own page tables. The kernel is mapped into every process's address space at high virtual addresses, but those pages carry supervisor-only PTEs — inaccessible from ring 3. The canonical arm64 layout is documented in `Documentation/arm64/`.
 
 ---
 id: ch4
 title: Chapter 4 — From Power-On to PID 1
 fileRecommendations:
   readingOrder:
-    - path: Documentation/x86/boot.rst
-      description: x86 boot protocol — from BIOS/UEFI to the kernel entry
+    - path: Documentation/arm64/
+      description: arm64 boot and early bring-up documentation
       type: docs
     - path: Documentation/admin-guide/kernel-parameters.rst
       description: Every boot parameter the kernel accepts
@@ -174,8 +174,8 @@ fileRecommendations:
     - path: init/main.c
       description: start_kernel() — subsystem initialization sequence
       type: source
-    - path: arch/x86/boot/main.c
-      description: Early x86 boot — real mode setup before protected mode
+    - path: arch/arm64/kernel/head.S
+      description: Early arm64 boot — image entry and setup before start_kernel()
       type: source
     - path: init/init_task.c
       description: Statically-allocated init process (PID 0 → PID 1)
@@ -184,13 +184,13 @@ fileRecommendations:
 
 The boot sequence splits into two worlds: architecture-specific and architecture-neutral.
 
-The firmware (BIOS/UEFI) loads the bootloader, which decompresses the kernel image and jumps to `arch/x86/boot/main.c`. This code runs in real mode, probes hardware, switches to protected mode, then long mode, and finally jumps to `start_kernel()` in `init/main.c`.
+The firmware (BIOS/UEFI) loads the bootloader, which decompresses the kernel image and jumps to `arch/arm64/kernel/head.S`. That entry code sets up the early execution environment, establishes the processor state needed for kernel execution, and finally jumps to `start_kernel()` in `init/main.c`.
 
 `start_kernel()` is the first function that looks like normal C. It initializes subsystems in strict dependency order: memory first (so everything else can allocate), then the scheduler, IRQs, the VFS, and network. Each `xxx_init()` call is a one-time setup; a panic here means the system cannot boot.
 
 The last act of `start_kernel()` is `rest_init()`, which creates kernel thread PID 1 running `kernel_init()`. This thread mounts the root filesystem, executes the init binary (`/sbin/init` or systemd), and transitions to user space. From this point the kernel is purely reactive — it only runs when something asks it to.
 
-Running `./hello` from a shell involves the shell calling `execve(2)`, which reaches `fs/exec.c`. The kernel reads the ELF header, maps segments as VMAs, sets up the stack with `argv`/`envp`, and returns to user space at `_start` — not `main()`.
+Running ./hello from a shell involves the shell calling `execve(2)`, which reaches `fs/exec.c`. The kernel reads the ELF header, maps segments as VMAs, sets up the stack with `argv`/`envp`, and returns to user space at `_start` - not `main()`.
 
 ---
 id: ch5
@@ -209,8 +209,8 @@ fileRecommendations:
     - path: Documentation/virt/kvm/api.rst
       description: KVM API reference
       type: docs
-    - path: arch/x86/entry/entry_64.S
-      description: SYSCALL entry — where user space crosses into the kernel
+    - path: arch/arm64/kernel/entry.S
+      description: Syscall entry — where user space crosses into the kernel
       type: source
     - path: kernel/sys.c
       description: Generic system call implementations
@@ -220,13 +220,13 @@ fileRecommendations:
       type: source
 ---
 
-There are three paths into the kernel: **syscalls** (intentional, from user space), **hardware interrupts** (asynchronous, from devices), and **exceptions** (synchronous CPU faults — page fault, divide-by-zero, breakpoints). All three converge on `arch/x86/entry/entry_64.S`.
+There are three paths into the kernel: **syscalls** (intentional, from user space), **hardware interrupts** (asynchronous, from devices), and **exceptions** (synchronous CPU faults — page fault, divide-by-zero, breakpoints). All three converge on `arch/arm64/kernel/entry.S`.
 
-A syscall uses the `SYSCALL` instruction, which atomically loads the kernel stack pointer, switches to ring 0, and jumps to the entry point. `entry_64.S` saves all registers onto the kernel stack, then `do_syscall_64()` indexes `sys_call_table` by syscall number and calls the handler. On return, registers are restored and `SYSRET` drops back to ring 3.
+A syscall uses the `svc #0` exception instruction, which transitions from user mode into the kernel and jumps to the entry point. `arch/arm64/kernel/entry.S` saves registers onto the kernel stack, then the syscall dispatcher indexes `sys_call_table` by syscall number and calls the handler. On return, registers are restored and `eret` drops back to user space.
 
-Hardware interrupts use a separate path. Each vector in the IDT (Interrupt Descriptor Table) points to a handler in `entry_64.S`. IRQ handlers run in **interrupt context** — no sleeping, no blocking locks, fast completion. Slow work is deferred to softirqs, tasklets, or workqueues.
+Hardware interrupts use a separate path. Each vector in the exception table points to a handler in `arch/arm64/kernel/entry.S`. IRQ handlers run in **interrupt context** — no sleeping, no blocking locks, fast completion. Slow work is deferred to softirqs, tasklets, or workqueues.
 
-In virtualization, a guest OS sees its own `entry_64.S` and believes it runs on bare metal. But when the guest executes a privileged instruction, the CPU performs a VMEXIT, saving guest registers and handing control to KVM on the host. KVM inspects the exit reason, emulates or delegates, then resumes the guest with `VMRESUME` — all without leaving host kernel mode.
+In virtualization, a guest OS sees its own `arch/arm64/kernel/entry.S` and believes it runs on bare metal. But when the guest executes a privileged instruction, the CPU performs a VMEXIT, saving guest registers and handing control to KVM on the host. KVM inspects the exit reason, emulates or delegates, then resumes the guest with the arm64 return path — all without leaving host kernel mode.
 
 ---
 id: ch6
@@ -301,7 +301,7 @@ fileRecommendations:
       type: source
 ---
 
-Signals are the kernel's oldest delivery mechanism. `kill()` queues a `siginfo_t` on the target task's signal queue. Delivery happens at the next return from kernel mode: `entry_64.S` checks `TIF_SIGPENDING` on every kernel exit and, if set, calls `do_signal()` to dispatch. Signal handlers run in user space — the kernel builds a special stack frame so the handler returns through `sigreturn(2)`.
+Signals are the kernel's oldest delivery mechanism. `kill()` queues a `siginfo_t` on the target task's signal queue. Delivery happens at the next return from kernel mode: `arch/arm64/kernel/entry.S` checks `TIF_SIGPENDING` on every kernel exit and, if set, calls `do_signal()` to dispatch. Signal handlers run in user space — the kernel builds a special stack frame so the handler returns through `sigreturn(2)`.
 
 User-space mutexes are built on **futexes** (fast userspace mutexes). The fast path is a single atomic compare-and-swap in user memory — the kernel is never involved. Only on contention does `futex(2)` enter the kernel to park the waiting thread. Uncontested locks cost ~5 ns with zero syscalls; contended locks pay one syscall to sleep and one to wake.
 
@@ -323,8 +323,8 @@ fileRecommendations:
     - path: Documentation/core-api/timekeeping.rst
       description: Kernel time sources and timer subsystem
       type: docs
-    - path: Documentation/x86/
-      description: x86 architecture documentation
+    - path: Documentation/arm64/
+      description: arm64 architecture documentation
       type: docs
     - path: Documentation/virt/kvm/
       description: KVM — hardware-assisted virtualization
@@ -375,7 +375,7 @@ The mental model from these chapters — kernel as a reactive system, memory as 
 A recommended path for reading code:
 
 1. `init/main.c` — follow `start_kernel()` top-to-bottom; every call names a subsystem
-2. `arch/x86/entry/entry_64.S` — trace a single syscall from `SYSCALL` to `SYSRET`
+2. `arch/arm64/kernel/entry.S` — trace a single syscall from `svc #0` to `eret`
 3. `kernel/fork.c` — read `kernel_clone()` to see how a task is assembled from parts
 4. `mm/mmap.c` — read `do_mmap()` to see how a VMA is created and registered
 5. `kernel/sched/fair.c` — read `enqueue_task_fair()` and `pick_next_task_fair()`
