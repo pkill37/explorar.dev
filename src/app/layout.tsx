@@ -4,8 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { GitHubRateLimitProvider } from '@/contexts/GitHubRateLimitContext';
 import { RepositoryProvider } from '@/contexts/RepositoryContext';
-import { initializeWebPlatform } from '@/lib/platform/web';
-import { config } from '@/lib/config';
+import { initializeWebPlatform } from '@/shared/platform/web';
+import { config } from '@/shared/config';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -21,7 +21,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://explorar.dev';
 const siteName = 'explorar.dev';
 const defaultTitle = 'Explore Source Code | explorar.dev';
 const defaultDescription =
-  'Interactive source code browser with guided learning paths. Explore LK, XNU, the Linux kernel, CPython, LLVM, glibc, and any GitHub repository.';
+  'Interactive source code browser with guided learning paths for curated repositories and any GitHub repository.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -31,15 +31,7 @@ export const metadata: Metadata = {
   },
   description: defaultDescription,
   keywords: [
-    'Linux kernel',
-    'Little Kernel',
-    'LK kernel',
-    'XNU',
-    'kernel exploration',
     'source code browser',
-    'kernel learning',
-    'Linux development',
-    'kernel study',
     'CPython',
     'glibc',
     'LLVM',

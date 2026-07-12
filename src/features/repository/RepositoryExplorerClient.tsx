@@ -2,12 +2,12 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { notFound } from 'next/navigation';
-import KernelExplorer from '@/components/KernelExplorer';
-import { EntityView } from '@/components/EntityView';
-import GuidePanel from '@/components/GuidePanel';
+import RepositoryWorkspaceExplorer from './components/RepositoryWorkspaceExplorer';
+import { EntityView } from './components/EntityView';
+import GuidePanel from './components/GuidePanel';
 import LoadingScreen from '@/components/LoadingScreen';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
-import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
+import { loadGuideFromMarkdown } from '@/features/guides/guide-loader';
 import { debugLog } from '@/lib/browser-debug';
 import '@/app/vscode.css';
 
@@ -268,7 +268,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             zIndex: mode === 'entities' ? 0 : 1,
           }}
         >
-          <KernelExplorer
+          <RepositoryWorkspaceExplorer
             owner={owner}
             repo={repo}
             initialFile={initialFile}

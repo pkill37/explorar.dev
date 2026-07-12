@@ -208,10 +208,18 @@ const FileTree: React.FC<FileTreeProps> = ({
   const handledRequestRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchIndexCollapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchIndexHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchIndexAnimationFrameRef = useRef<number | null>(null);
   const { setRateLimit } = useGitHubRateLimit();
   const normalizedSearchQuery = searchQuery.trim();
 
   const clampedSearchIndexProgress = Math.max(0, Math.min(100, searchIndexProgress));
+  const [displayedSearchIndexProgress, setDisplayedSearchIndexProgress] = useState(0);
+  const [isSearchIndexIndicatorVisible, setIsSearchIndexIndicatorVisible] = useState(false);
+  const [isSearchIndexIndicatorCollapsing, setIsSearchIndexIndicatorCollapsing] = useState(false);
+  const shouldShowSearchIndexIndicator =
+    showSearch && (isSearchIndexLoading || isSearchIndexReady || !!searchError);
   const searchIndexStatusLabel = isSearchIndexReady
     ? searchIndexCached
       ? 'Cached index ready'
@@ -228,6 +236,77 @@ const FileTree: React.FC<FileTreeProps> = ({
       : searchError
         ? 'error'
         : 'ready';
+  const searchIndexBarProgress = searchError ? 100 : displayedSearchIndexProgress;
+
+  useEffect(() => {
+    if (searchIndexCollapseTimeoutRef.current) {
+      clearTimeout(searchIndexCollapseTimeoutRef.current);
+      searchIndexCollapseTimeoutRef.current = null;
+    }
+    if (searchIndexHideTimeoutRef.current) {
+      clearTimeout(searchIndexHideTimeoutRef.current);
+      searchIndexHideTimeoutRef.current = null;
+    }
+
+    if (!shouldShowSearchIndexIndicator) {
+      setIsSearchIndexIndicatorCollapsing((current) => (current ? false : current));
+      setIsSearchIndexIndicatorVisible((current) => (current ? false : current));
+      return;
+    }
+
+    setIsSearchIndexIndicatorVisible((current) => (current ? current : true));
+    setIsSearchIndexIndicatorCollapsing((current) => (current ? false : current));
+
+    if (!isSearchIndexLoading && (isSearchIndexReady || searchError)) {
+      searchIndexCollapseTimeoutRef.current = setTimeout(() => {
+        setIsSearchIndexIndicatorCollapsing((current) => (current ? current : true));
+        searchIndexHideTimeoutRef.current = setTimeout(() => {
+          setIsSearchIndexIndicatorVisible((current) => (current ? false : current));
+        }, 280);
+      }, 2600);
+    }
+
+    return () => {
+      if (searchIndexCollapseTimeoutRef.current) {
+        clearTimeout(searchIndexCollapseTimeoutRef.current);
+        searchIndexCollapseTimeoutRef.current = null;
+      }
+      if (searchIndexHideTimeoutRef.current) {
+        clearTimeout(searchIndexHideTimeoutRef.current);
+        searchIndexHideTimeoutRef.current = null;
+      }
+    };
+  }, [isSearchIndexLoading, isSearchIndexReady, searchError, shouldShowSearchIndexIndicator]);
+
+  useEffect(() => {
+    if (searchIndexAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(searchIndexAnimationFrameRef.current);
+      searchIndexAnimationFrameRef.current = null;
+    }
+
+    if (!shouldShowSearchIndexIndicator) {
+      setDisplayedSearchIndexProgress((current) => (current === 0 ? current : 0));
+      return;
+    }
+
+    const targetProgress = searchError
+      ? 100
+      : isSearchIndexReady
+        ? 100
+        : clampedSearchIndexProgress;
+    searchIndexAnimationFrameRef.current = requestAnimationFrame(() => {
+      setDisplayedSearchIndexProgress((current) =>
+        current === targetProgress ? current : targetProgress
+      );
+    });
+
+    return () => {
+      if (searchIndexAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(searchIndexAnimationFrameRef.current);
+        searchIndexAnimationFrameRef.current = null;
+      }
+    };
+  }, [clampedSearchIndexProgress, isSearchIndexReady, searchError, shouldShowSearchIndexIndicator]);
 
   const groupedSearchResults = useMemo(() => {
     const groups = new Map<
@@ -623,61 +702,29 @@ const FileTree: React.FC<FileTreeProps> = ({
               )}
             </div>
           )}
-          {showSearch && (isSearchIndexLoading || isSearchIndexReady || searchError) && (
+          {isSearchIndexIndicatorVisible && (
             <div
-              className="vscode-tree-search-meta"
-              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              className={`vscode-tree-search-index-status${
+                isSearchIndexIndicatorCollapsing ? ' is-collapsing' : ''
+              }`}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                  fontSize: '11px',
-                  color: 'var(--vscode-text-secondary)',
-                }}
-              >
+              <div className="vscode-tree-search-index-status-header">
                 <span>{searchIndexStatusLabel || 'Loading repository index'}</span>
                 <span
-                  style={{
-                    color: isSearchIndexReady
-                      ? 'var(--vscode-text-success)'
-                      : searchError
-                        ? 'var(--vscode-text-error)'
-                        : 'var(--vscode-text-secondary)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}
+                  className={`vscode-tree-search-index-badge${
+                    isSearchIndexReady ? ' is-ready' : searchError ? ' is-error' : ''
+                  }`}
                 >
                   {searchIndexBadgeLabel}
                 </span>
               </div>
-              <div
-                aria-hidden="true"
-                style={{
-                  height: '10px',
-                  borderRadius: '999px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  overflow: 'hidden',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
-                }}
-              >
+              <div className="vscode-tree-search-index-track" aria-hidden="true">
                 <div
+                  className={`vscode-tree-search-index-bar${
+                    isSearchIndexReady ? ' is-ready' : searchError ? ' is-error' : ''
+                  }`}
                   style={{
-                    width: `${clampedSearchIndexProgress}%`,
-                    height: '100%',
-                    borderRadius: '999px',
-                    background: isSearchIndexReady
-                      ? 'linear-gradient(90deg, #16a34a, #22c55e)'
-                      : searchError
-                        ? 'linear-gradient(90deg, #b91c1c, #ef4444)'
-                        : 'linear-gradient(90deg, #2563eb, #38bdf8)',
-                    transition: 'width 300ms ease, background 250ms ease',
-                    boxShadow: isSearchIndexReady
-                      ? '0 0 18px rgba(34, 197, 94, 0.35)'
-                      : '0 0 18px rgba(56, 189, 248, 0.22)',
+                    width: `${searchIndexBarProgress}%`,
                   }}
                 />
               </div>

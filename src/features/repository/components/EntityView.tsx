@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchRepositoryFile } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
-import { getGuideByRepo } from '@/lib/guides/docs-loader';
+import { getGuideByRepo } from '@/features/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
 import { findSymbolsInFile, type SymbolReference } from '@/lib/cross-reference';
 import {

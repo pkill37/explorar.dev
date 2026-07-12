@@ -1,11 +1,11 @@
 'use client';
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { notFound, useRouter } from 'next/navigation';
-import FileTree from '@/components/FileTree';
-import TabBar from '@/components/TabBar';
-import CodeEditorContainer from '@/components/CodeEditorContainer';
-import GuidePanel from '@/components/GuidePanel';
-import StatusBar from '@/components/StatusBar';
+import FileTree from './FileTree';
+import TabBar from './TabBar';
+import CodeEditorContainer from './CodeEditorContainer';
+import GuidePanel from './GuidePanel';
+import StatusBar from './StatusBar';
 import { EditorTab, FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
@@ -16,7 +16,7 @@ import {
   getRepoIdentifier,
 } from '@/lib/github-api';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
-import { loadGuideFromMarkdown } from '@/lib/guides/guide-loader';
+import { loadGuideFromMarkdown } from '@/features/guides/guide-loader';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { findSymbolsInFile } from '@/lib/cross-reference';
 import {
@@ -68,6 +68,8 @@ const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): strin
   return `${baseKey}-${repoIdentifier}`;
 };
 
+const EXPLORER_STORAGE_KEY_PREFIX = 'repository-workspace-explorer';
+
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
 
 function flattenFilePaths(nodes: FileNode[]): string[] {
@@ -92,7 +94,7 @@ function resolveWorkspaceFilePath(filePath: string, workspaceFilePaths: string[]
   return resolveCorpusPathFromKnownFiles(filePath, workspaceFilePaths);
 }
 
-interface KernelExplorerProps {
+interface RepositoryWorkspaceExplorerProps {
   owner?: string;
   repo?: string;
   branch?: string;
@@ -148,7 +150,7 @@ type StudySpaceConfig = {
   notes: string;
 };
 
-export default function KernelExplorer({
+export default function RepositoryWorkspaceExplorer({
   owner,
   repo,
   branch,
@@ -156,7 +158,7 @@ export default function KernelExplorer({
   hideGuidePanel = false,
   layoutMode = 'editor',
   onOpenFileRequest,
-}: KernelExplorerProps) {
+}: RepositoryWorkspaceExplorerProps) {
   const router = useRouter();
   const {
     setRepository,
@@ -178,7 +180,7 @@ export default function KernelExplorer({
     owner && repo ? `${owner}/${repo}` : ''
   );
 
-  // Kernel version state - use default branch from project config.
+  // Repository version state - use default branch from project config.
   // Also initialises currentConfig synchronously (setGitHubRepoWithDefaultBranch has
   // no awaits, so its body runs synchronously) so that FileTree's mount effect reads
   // the correct repo rather than the module-level default (torvalds/linux).
@@ -236,7 +238,15 @@ export default function KernelExplorer({
   const [workspaceSearchIndexCached, setWorkspaceSearchIndexCached] = useState(false);
   const [studyConfigNonce, setStudyConfigNonce] = useState<number>(0);
   // Refs for cleanup
-  const workspaceSearchRequestIdRef = useRef(0);
+  const workspaceSearchIndexRequestIdRef = useRef(0);
+  const workspaceSearchResultsRequestIdRef = useRef(0);
+  const workspaceSearchLoadKeyRef = useRef<string | null>(null);
+  const workspaceSearchIndexProgressRef = useRef<number>(0);
+  const workspaceSearchIndexPendingProgressRef = useRef<number | null>(null);
+  const workspaceSearchIndexProgressFrameRef = useRef<number | null>(null);
+  const workspaceSearchIndexCachedRef = useRef<boolean>(false);
+  const workspaceSearchIndexCacheHitRef = useRef<boolean>(false);
+  const workspaceSearchIndexProgressSeenRef = useRef<boolean>(false);
   const workspaceSearchPreviewCacheRef = useRef<Map<string, string>>(new Map());
   const studyConfigInputRef = useRef<HTMLInputElement>(null);
   // Track which initialFile has already been opened so we don't re-open on re-renders
@@ -309,17 +319,23 @@ export default function KernelExplorer({
         if (branch && branch !== currentBranch) {
           try {
             await switchBranch(branch);
-            setSelectedVersion(branch);
+            if (selectedVersion !== branch) {
+              setSelectedVersion(branch);
+            }
             branchToUse = branch;
           } catch (error) {
             console.warn('Failed to switch to requested branch:', error);
             // Use current branch instead
             branchToUse = currentBranch || defaultBranch;
-            setSelectedVersion(branchToUse);
+            if (selectedVersion !== branchToUse) {
+              setSelectedVersion(branchToUse);
+            }
           }
         } else {
           branchToUse = currentBranch || defaultBranch;
-          setSelectedVersion(branchToUse);
+          if (selectedVersion !== branchToUse) {
+            setSelectedVersion(branchToUse);
+          }
         }
 
         const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
@@ -334,50 +350,175 @@ export default function KernelExplorer({
     };
 
     checkRepositorySetup();
-  }, [owner, repo, branch, router, setRepository, switchBranch, currentBranch, fileSourceMode]);
+  }, [
+    owner,
+    repo,
+    branch,
+    router,
+    setRepository,
+    switchBranch,
+    currentBranch,
+    selectedVersion,
+    fileSourceMode,
+  ]);
 
   useEffect(() => {
     if (layoutMode !== 'search') {
-      workspaceSearchRequestIdRef.current += 1;
+      workspaceSearchIndexRequestIdRef.current += 1;
+      workspaceSearchLoadKeyRef.current = null;
       setWorkspaceSearchLoading(false);
       return;
     }
 
     let cancelled = false;
+    const loadKey = `${owner || ''}/${repo || ''}@${selectedVersion}`;
+    if (workspaceSearchLoadKeyRef.current === loadKey) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    workspaceSearchLoadKeyRef.current = loadKey;
+    workspaceSearchIndexRequestIdRef.current += 1;
+    const requestId = workspaceSearchIndexRequestIdRef.current;
+    debugLog('[explorar:search-index] load-start', {
+      requestId,
+      owner,
+      repo,
+      branch: selectedVersion,
+      loadKey,
+      layoutMode,
+    });
     setWorkspaceSearchIndex(null);
     setWorkspaceSearchIndexError(null);
     setWorkspaceSearchIndexLoading(true);
     setWorkspaceSearchIndexProgress(0);
     setWorkspaceSearchIndexCached(false);
+    workspaceSearchIndexProgressRef.current = 0;
+    workspaceSearchIndexPendingProgressRef.current = null;
+    if (workspaceSearchIndexProgressFrameRef.current !== null) {
+      cancelAnimationFrame(workspaceSearchIndexProgressFrameRef.current);
+      workspaceSearchIndexProgressFrameRef.current = null;
+    }
+    workspaceSearchIndexCachedRef.current = false;
+    workspaceSearchIndexCacheHitRef.current = false;
+    workspaceSearchIndexProgressSeenRef.current = false;
     workspaceSearchPreviewCacheRef.current.clear();
 
     void (async () => {
+      const scheduleProgressUpdate = (nextProgress: number): void => {
+        if (workspaceSearchIndexProgressRef.current === nextProgress) {
+          return;
+        }
+
+        workspaceSearchIndexProgressRef.current = nextProgress;
+        workspaceSearchIndexPendingProgressRef.current = nextProgress;
+
+        if (workspaceSearchIndexProgressFrameRef.current !== null) {
+          return;
+        }
+
+        workspaceSearchIndexProgressFrameRef.current = requestAnimationFrame(() => {
+          workspaceSearchIndexProgressFrameRef.current = null;
+          const pendingProgress = workspaceSearchIndexPendingProgressRef.current;
+          if (pendingProgress === null) return;
+          setWorkspaceSearchIndexProgress((currentProgress) =>
+            currentProgress === pendingProgress ? currentProgress : pendingProgress
+          );
+        });
+      };
+
       try {
         const payload = await getCodeIndexFromStatic(owner || '', repo || '', selectedVersion, {
           onProgress: (progress) => {
-            if (cancelled) return;
+            if (cancelled || workspaceSearchIndexRequestIdRef.current !== requestId) return;
             const computedProgress =
               progress.source === 'cache'
                 ? 100
                 : progress.totalBytes && progress.totalBytes > 0
                   ? Math.min(100, (progress.loadedBytes / progress.totalBytes) * 100)
                   : 0;
-            setWorkspaceSearchIndexProgress(computedProgress);
-            setWorkspaceSearchIndexCached(progress.source === 'cache');
+            debugLog('[explorar:search-index] progress', {
+              requestId,
+              owner,
+              repo,
+              branch: selectedVersion,
+              source: progress.source,
+              loadedBytes: progress.loadedBytes,
+              totalBytes: progress.totalBytes,
+              computedProgress,
+            });
+            scheduleProgressUpdate(computedProgress);
+            workspaceSearchIndexProgressSeenRef.current = true;
+            const isCached = progress.source === 'cache';
+            if (isCached) {
+              workspaceSearchIndexCacheHitRef.current = true;
+            }
+            if (workspaceSearchIndexCachedRef.current !== isCached) {
+              workspaceSearchIndexCachedRef.current = isCached;
+              setWorkspaceSearchIndexCached(isCached);
+            }
           },
         });
-        if (cancelled) return;
+        if (cancelled || workspaceSearchIndexRequestIdRef.current !== requestId) return;
         if (!payload) {
+          debugLog('[explorar:search-index] load-empty', {
+            requestId,
+            owner,
+            repo,
+            branch: selectedVersion,
+          });
           setWorkspaceSearchIndexError('Search index is unavailable for this repository.');
           setWorkspaceSearchIndex(null);
           setWorkspaceSearchIndexProgress(0);
           setWorkspaceSearchIndexCached(false);
           return;
         }
-        setWorkspaceSearchIndexProgress(100);
+        debugLog('[explorar:search-index] load-success', {
+          requestId,
+          owner,
+          repo,
+          branch: selectedVersion,
+          fileCount: payload.fileCount,
+          buildSignature: payload.buildSignature,
+        });
+        if (!workspaceSearchIndexProgressSeenRef.current) {
+          debugLog('[explorar:search-index] synthetic-progress', {
+            requestId,
+            owner,
+            repo,
+            branch: selectedVersion,
+            progress: 100,
+          });
+          scheduleProgressUpdate(100);
+        }
         setWorkspaceSearchIndex(payload);
+        if (
+          workspaceSearchIndexCacheHitRef.current ||
+          !workspaceSearchIndexProgressSeenRef.current
+        ) {
+          debugLog('[explorar:search-index] frame-hold', {
+            requestId,
+            owner,
+            repo,
+            branch: selectedVersion,
+            cacheHit: workspaceSearchIndexCacheHitRef.current,
+            progressSeen: workspaceSearchIndexProgressSeenRef.current,
+            progress: workspaceSearchIndexProgressRef.current,
+          });
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          });
+        }
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || workspaceSearchIndexRequestIdRef.current !== requestId) return;
+        debugLog('[explorar:search-index] load-error', {
+          requestId,
+          owner,
+          repo,
+          branch: selectedVersion,
+          error: error instanceof Error ? error.message : String(error),
+        });
         setWorkspaceSearchIndexError(
           error instanceof Error ? error.message : 'Failed to load search index'
         );
@@ -385,7 +526,15 @@ export default function KernelExplorer({
         setWorkspaceSearchIndexProgress(0);
         setWorkspaceSearchIndexCached(false);
       } finally {
-        if (!cancelled) {
+        if (!cancelled && workspaceSearchIndexRequestIdRef.current === requestId) {
+          debugLog('[explorar:search-index] load-settled', {
+            requestId,
+            owner,
+            repo,
+            branch: selectedVersion,
+            loading: false,
+            cacheHit: workspaceSearchIndexCacheHitRef.current,
+          });
           setWorkspaceSearchIndexLoading(false);
         }
       }
@@ -393,6 +542,10 @@ export default function KernelExplorer({
 
     return () => {
       cancelled = true;
+      if (workspaceSearchIndexProgressFrameRef.current !== null) {
+        cancelAnimationFrame(workspaceSearchIndexProgressFrameRef.current);
+        workspaceSearchIndexProgressFrameRef.current = null;
+      }
     };
   }, [layoutMode, owner, repo, selectedVersion]);
 
@@ -405,8 +558,12 @@ export default function KernelExplorer({
 
     if (typeof window !== 'undefined') {
       // Restore panel widths (these are global, not repository-specific)
-      const savedSidebarWidth = localStorage.getItem('kernel-explorer-sidebar-width');
-      const savedRightPanelWidth = localStorage.getItem('kernel-explorer-right-panel-width');
+      const savedSidebarWidth = localStorage.getItem(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-sidebar-width`
+      );
+      const savedRightPanelWidth = localStorage.getItem(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-right-panel-width`
+      );
 
       // Use setTimeout to avoid synchronous setState in effect
       setTimeout(() => {
@@ -436,9 +593,15 @@ export default function KernelExplorer({
     }
 
     // Load tabs for this specific repository
-    const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
-    const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
-    const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+    const tabsKey = getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-tabs`, repoIdentifier);
+    const activeTabKey = getRepoScopedKey(
+      `${EXPLORER_STORAGE_KEY_PREFIX}-active-tab`,
+      repoIdentifier
+    );
+    const selectedFileKey = getRepoScopedKey(
+      `${EXPLORER_STORAGE_KEY_PREFIX}-selected-file`,
+      repoIdentifier
+    );
 
     const savedTabs = loadFromLocalStorage(tabsKey, []) as EditorTab[];
     const savedActiveTabId = loadFromLocalStorage(activeTabKey, null) as string | null;
@@ -467,33 +630,42 @@ export default function KernelExplorer({
   // Save state to localStorage (only after hydration)
   useEffect(() => {
     if (isHydrated) {
-      localStorage.setItem('kernel-explorer-sidebar-width', sidebarWidth.toString());
+      localStorage.setItem(`${EXPLORER_STORAGE_KEY_PREFIX}-sidebar-width`, sidebarWidth.toString());
     }
   }, [sidebarWidth, isHydrated]);
 
   useEffect(() => {
     if (isHydrated) {
-      localStorage.setItem('kernel-explorer-right-panel-width', rightPanelWidth.toString());
+      localStorage.setItem(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-right-panel-width`,
+        rightPanelWidth.toString()
+      );
     }
   }, [rightPanelWidth, isHydrated]);
 
   useEffect(() => {
     if (isHydrated && repoIdentifier) {
-      const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
+      const tabsKey = getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-tabs`, repoIdentifier);
       saveToLocalStorage(tabsKey, tabs);
     }
   }, [tabs, isHydrated, repoIdentifier]);
 
   useEffect(() => {
     if (isHydrated && repoIdentifier) {
-      const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
+      const activeTabKey = getRepoScopedKey(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-active-tab`,
+        repoIdentifier
+      );
       saveToLocalStorage(activeTabKey, activeTabId);
     }
   }, [activeTabId, isHydrated, repoIdentifier]);
 
   useEffect(() => {
     if (isHydrated && repoIdentifier) {
-      const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+      const selectedFileKey = getRepoScopedKey(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-selected-file`,
+        repoIdentifier
+      );
       saveToLocalStorage(selectedFileKey, selectedFile);
     }
   }, [selectedFile, isHydrated, repoIdentifier]);
@@ -501,7 +673,7 @@ export default function KernelExplorer({
   useEffect(() => {
     if (isHydrated && repoIdentifier) {
       const selectedVersionKey = getRepoScopedKey(
-        'kernel-explorer-selected-version',
+        `${EXPLORER_STORAGE_KEY_PREFIX}-selected-version`,
         repoIdentifier
       );
       saveToLocalStorage(selectedVersionKey, selectedVersion);
@@ -520,14 +692,20 @@ export default function KernelExplorer({
       return;
     }
 
-    const searchKey = getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier);
+    const searchKey = getRepoScopedKey(
+      `${EXPLORER_STORAGE_KEY_PREFIX}-workspace-search`,
+      repoIdentifier
+    );
     const savedSearchQuery = loadFromLocalStorage(searchKey, '') as string;
     setWorkspaceSearchQuery(savedSearchQuery);
   }, [isHydrated, repoIdentifier]);
 
   useEffect(() => {
     if (isHydrated && repoIdentifier) {
-      const searchKey = getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier);
+      const searchKey = getRepoScopedKey(
+        `${EXPLORER_STORAGE_KEY_PREFIX}-workspace-search`,
+        repoIdentifier
+      );
       saveToLocalStorage(searchKey, workspaceSearchQuery);
     }
   }, [isHydrated, repoIdentifier, workspaceSearchQuery]);
@@ -856,13 +1034,13 @@ export default function KernelExplorer({
   useEffect(() => {
     const searchIsActive = layoutMode === 'search';
     if (!searchIsActive) {
-      workspaceSearchRequestIdRef.current += 1;
+      workspaceSearchResultsRequestIdRef.current += 1;
       setWorkspaceSearchLoading(false);
       return;
     }
 
     const normalizedQuery = workspaceSearchQuery.trim();
-    const requestId = ++workspaceSearchRequestIdRef.current;
+    const requestId = ++workspaceSearchResultsRequestIdRef.current;
 
     if (!normalizedQuery) {
       setWorkspaceSearchResults([]);
@@ -908,7 +1086,7 @@ export default function KernelExplorer({
             CODE_INDEX_SEARCH_RESULT_LIMIT
           );
 
-          if (workspaceSearchRequestIdRef.current !== requestId) {
+          if (workspaceSearchResultsRequestIdRef.current !== requestId) {
             return;
           }
 
@@ -966,7 +1144,7 @@ export default function KernelExplorer({
             })
           );
 
-          if (workspaceSearchRequestIdRef.current !== requestId) {
+          if (workspaceSearchResultsRequestIdRef.current !== requestId) {
             return;
           }
 
@@ -981,7 +1159,7 @@ export default function KernelExplorer({
 
           setWorkspaceSearchResults(Array.from(mergedByFile.values()));
         } catch (error) {
-          if (workspaceSearchRequestIdRef.current !== requestId) {
+          if (workspaceSearchResultsRequestIdRef.current !== requestId) {
             return;
           }
           setWorkspaceSearchError(
@@ -990,7 +1168,7 @@ export default function KernelExplorer({
           setWorkspaceSearchResults([]);
           setWorkspaceSearchHasMore(false);
         } finally {
-          if (workspaceSearchRequestIdRef.current === requestId) {
+          if (workspaceSearchResultsRequestIdRef.current === requestId) {
             setWorkspaceSearchLoading(false);
           }
         }
@@ -1139,7 +1317,10 @@ export default function KernelExplorer({
 
   const buildStudySpaceConfig = useCallback((): StudySpaceConfig => {
     const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
-    const studyNotesKey = getRepoScopedKey('kernel-explorer-study-notes', repoIdentifier ?? null);
+    const studyNotesKey = getRepoScopedKey(
+      `${EXPLORER_STORAGE_KEY_PREFIX}-study-notes`,
+      repoIdentifier ?? null
+    );
     const notes =
       typeof window !== 'undefined' ? (loadFromLocalStorage(studyNotesKey, '') as string) : '';
 
@@ -1211,7 +1392,9 @@ export default function KernelExplorer({
       setTabs(nextTabs);
       setActiveTabId(nextActiveTabId);
       setSelectedFile(nextSelectedFile);
-      setSelectedVersion(nextSelectedVersion || selectedVersion);
+      if (nextSelectedVersion && nextSelectedVersion !== selectedVersion) {
+        setSelectedVersion(nextSelectedVersion);
+      }
       setWorkspaceSearchQuery(nextWorkspaceSearchQuery);
       setSidebarWidth(config.editor.sidebarWidth || sidebarWidth);
       setRightPanelWidth(config.editor.rightPanelWidth || rightPanelWidth);
@@ -1220,11 +1403,17 @@ export default function KernelExplorer({
       setIsRightPanelOpen(config.editor.isRightPanelOpen);
 
       if (typeof window !== 'undefined') {
-        const tabsKey = getRepoScopedKey('kernel-explorer-tabs', repoIdentifier);
-        const activeTabKey = getRepoScopedKey('kernel-explorer-active-tab', repoIdentifier);
-        const selectedFileKey = getRepoScopedKey('kernel-explorer-selected-file', repoIdentifier);
+        const tabsKey = getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-tabs`, repoIdentifier);
+        const activeTabKey = getRepoScopedKey(
+          `${EXPLORER_STORAGE_KEY_PREFIX}-active-tab`,
+          repoIdentifier
+        );
+        const selectedFileKey = getRepoScopedKey(
+          `${EXPLORER_STORAGE_KEY_PREFIX}-selected-file`,
+          repoIdentifier
+        );
         const selectedVersionKey = getRepoScopedKey(
-          'kernel-explorer-selected-version',
+          `${EXPLORER_STORAGE_KEY_PREFIX}-selected-version`,
           repoIdentifier
         );
 
@@ -1233,12 +1422,15 @@ export default function KernelExplorer({
         saveToLocalStorage(selectedFileKey, nextSelectedFile);
         saveToLocalStorage(selectedVersionKey, nextSelectedVersion || selectedVersion);
         saveToLocalStorage(
-          getRepoScopedKey('kernel-explorer-workspace-search', repoIdentifier),
+          getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-workspace-search`, repoIdentifier),
           nextWorkspaceSearchQuery
         );
-        localStorage.setItem('kernel-explorer-sidebar-width', String(config.editor.sidebarWidth));
         localStorage.setItem(
-          'kernel-explorer-right-panel-width',
+          `${EXPLORER_STORAGE_KEY_PREFIX}-sidebar-width`,
+          String(config.editor.sidebarWidth)
+        );
+        localStorage.setItem(
+          `${EXPLORER_STORAGE_KEY_PREFIX}-right-panel-width`,
           String(config.editor.rightPanelWidth)
         );
 

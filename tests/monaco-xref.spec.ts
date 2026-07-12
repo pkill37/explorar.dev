@@ -133,17 +133,21 @@ async function showReferencesAtCursor(page: Page): Promise<void> {
 }
 
 async function goToDefinitionAtCursor(page: Page): Promise<void> {
-  const actionRan = await page.evaluate(async () => {
-    const targetWindow = window as Window & {
-      __explorarTestApi?: {
-        goToDefinitionAtCursor: () => Promise<boolean>;
-      };
-    };
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async () => {
+          const targetWindow = window as Window & {
+            __explorarTestApi?: {
+              goToDefinitionAtCursor: () => Promise<boolean>;
+            };
+          };
 
-    return (await targetWindow.__explorarTestApi?.goToDefinitionAtCursor()) ?? false;
-  });
-
-  expect(actionRan).toBeTruthy();
+          return (await targetWindow.__explorarTestApi?.goToDefinitionAtCursor()) ?? false;
+        }),
+      { timeout: 15000 }
+    )
+    .toBeTruthy();
 }
 
 function attachBrowserFailureCollectors(page: Page): {

@@ -1,7 +1,7 @@
 // Dynamic project guide configuration system using docs/ markdown files
 import React from 'react';
 import { QuizQuestion } from '@/components/ChapterQuiz';
-import { getCuratedGuideByRepo } from './guides/docs-loader';
+import { getCuratedGuideByRepo } from '@/features/guides/docs-loader';
 
 export interface FileRecommendation {
   path: string;

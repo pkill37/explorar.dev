@@ -19,6 +19,8 @@ const STATIC_FETCH_TIMEOUT_MS = 5000;
 const SEARCH_INDEX_FETCH_TIMEOUT_MS = 15000;
 const codeIndexCache = new Map<string, Promise<LoadedCodeIndex | null>>();
 const treeStructureCache = new Map<string, Promise<FileNode[] | null>>();
+const codeIndexSizeCache = new Map<string, number>();
+const codeIndexLoadSourceCache = new Map<string, CodeIndexLoadProgress['source']>();
 const CODE_INDEX_BROWSER_CACHE_NAME = 'explorar-code-index-v1';
 
 export interface CodeIndexLoadProgress {
@@ -29,6 +31,16 @@ export interface CodeIndexLoadProgress {
 
 function getCodeIndexCacheKey(owner: string, repo: string, branch: string): string {
   return getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME);
+}
+
+function getCodeIndexLoadKey(owner: string, repo: string, branch: string): string {
+  return `${owner}/${repo}@${branch}`;
+}
+
+function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 }
 
 function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
@@ -58,9 +70,28 @@ async function readCachedCodeIndexBytes(
     const cache = await caches.open(CODE_INDEX_BROWSER_CACHE_NAME);
     const cached = await cache.match(getCodeIndexCacheKey(owner, repo, branch));
     if (!cached || !cached.ok) {
+      debugLog('[explorar:code-index-cache] miss', {
+        owner,
+        repo,
+        branch,
+        filePath: CODE_INDEX_FILE_NAME,
+        cacheKey: getCodeIndexCacheKey(owner, repo, branch),
+      });
       return null;
     }
     const bytes = await cached.arrayBuffer();
+    const fileCacheKey = getCodeIndexCacheKey(owner, repo, branch);
+    const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+    codeIndexLoadSourceCache.set(loadKey, 'cache');
+    codeIndexSizeCache.set(loadKey, bytes.byteLength);
+    debugLog('[explorar:code-index-cache] hit', {
+      owner,
+      repo,
+      branch,
+      filePath: CODE_INDEX_FILE_NAME,
+      cacheKey: fileCacheKey,
+      byteLength: bytes.byteLength,
+    });
     onProgress?.({
       loadedBytes: bytes.byteLength,
       totalBytes: bytes.byteLength,
@@ -110,13 +141,14 @@ async function writeCachedCodeIndexBytes(
 
 async function fetchWithTimeout(
   url: string,
-  timeoutMs: number = STATIC_FETCH_TIMEOUT_MS
+  timeoutMs: number = STATIC_FETCH_TIMEOUT_MS,
+  init?: RequestInit
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error(`Timed out after ${timeoutMs}ms`);
@@ -124,6 +156,28 @@ async function fetchWithTimeout(
     throw error;
   } finally {
     globalThis.clearTimeout(timeoutId);
+  }
+}
+
+async function resolveRemoteContentLength(
+  url: string,
+  timeoutMs: number = STATIC_FETCH_TIMEOUT_MS
+): Promise<number | null> {
+  try {
+    const response = await fetchWithTimeout(url, timeoutMs, { method: 'HEAD' });
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentLength = response.headers.get('content-length');
+    if (!contentLength) {
+      return null;
+    }
+
+    const parsed = Number(contentLength);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
   }
 }
 
@@ -140,6 +194,7 @@ async function readBinaryFromStatic(
   }
 
   if (filePath === CODE_INDEX_FILE_NAME) {
+    const cacheKey = getCodeIndexCacheKey(owner, repo, branch);
     const cachedBytes = await readCachedCodeIndexBytes(owner, repo, branch, onProgress);
     if (cachedBytes) {
       debugLog('[explorar:binary-fetch-static] cache-hit', {
@@ -147,8 +202,9 @@ async function readBinaryFromStatic(
         repo,
         branch,
         filePath,
-        cacheKey: getCodeIndexCacheKey(owner, repo, branch),
+        cacheKey,
       });
+      codeIndexLoadSourceCache.set(getCodeIndexLoadKey(owner, repo, branch), 'cache');
       return cachedBytes;
     }
   }
@@ -171,7 +227,15 @@ async function readBinaryFromStatic(
     }
 
     const totalBytesHeader = response.headers.get('content-length');
-    const totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
+    let totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
+    if (!Number.isFinite(totalBytes ?? NaN) || (totalBytes ?? 0) <= 0) {
+      const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+      totalBytes =
+        codeIndexSizeCache.get(loadKey) ?? (await resolveRemoteContentLength(url, timeoutMs));
+      if (Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0) {
+        codeIndexSizeCache.set(loadKey, totalBytes as number);
+      }
+    }
 
     if (response.body?.getReader) {
       const reader = response.body.getReader();
@@ -203,6 +267,11 @@ async function readBinaryFromStatic(
         byteView.byteOffset,
         byteView.byteOffset + byteView.byteLength
       ) as ArrayBuffer;
+      if (filePath === CODE_INDEX_FILE_NAME) {
+        const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+        codeIndexSizeCache.set(loadKey, bytes.byteLength);
+        codeIndexLoadSourceCache.set(loadKey, 'network');
+      }
       onProgress?.({
         loadedBytes: bytes.byteLength,
         totalBytes:
@@ -219,6 +288,11 @@ async function readBinaryFromStatic(
     }
 
     const bytes = await response.arrayBuffer();
+    if (filePath === CODE_INDEX_FILE_NAME) {
+      const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+      codeIndexSizeCache.set(loadKey, bytes.byteLength);
+      codeIndexLoadSourceCache.set(loadKey, 'network');
+    }
     onProgress?.({
       loadedBytes: bytes.byteLength,
       totalBytes:
@@ -582,6 +656,13 @@ export async function getCodeIndexFromStatic(
 
   const cacheKey = `${owner}/${repo}@${branch}`;
   if (!codeIndexCache.has(cacheKey)) {
+    debugLog('[explorar:code-index-static] load-start', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+      cacheState: 'miss',
+    });
     codeIndexCache.set(
       cacheKey,
       (async () => {
@@ -640,13 +721,69 @@ export async function getCodeIndexFromStatic(
         }
       })()
     );
+  } else {
+    debugLog('[explorar:code-index-static] load-start', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+      cacheState: 'hit',
+    });
   }
 
   const payload = await codeIndexCache.get(cacheKey)!;
 
   if (!payload) {
+    debugLog('[explorar:code-index-static] load-empty', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+    });
     return null;
   }
+
+  const loadSource = codeIndexLoadSourceCache.get(cacheKey);
+  if (loadSource) {
+    const totalBytes = codeIndexSizeCache.get(cacheKey) ?? 0;
+    debugLog('[explorar:code-index-static] load-progress-emitted', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+      source: loadSource,
+      totalBytes,
+    });
+    options?.onProgress?.({
+      loadedBytes: totalBytes,
+      totalBytes,
+      source: loadSource,
+    });
+    debugLog('[explorar:code-index-static] load-yield-before-parse', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+      source: loadSource,
+    });
+    await yieldToPaint();
+  } else {
+    debugLog('[explorar:code-index-static] load-progress-missing', {
+      owner,
+      repo,
+      branch,
+      cacheKey,
+    });
+  }
+
+  debugLog('[explorar:code-index-static] load-success', {
+    owner,
+    repo,
+    branch,
+    cacheKey,
+    fileCount: payload.fileCount,
+    buildSignature: payload.buildSignature,
+  });
 
   return payload;
 }

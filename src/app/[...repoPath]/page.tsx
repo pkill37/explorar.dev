@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
-import RepositoryExplorerClient from '../[owner]/[repo]/client';
+import RepositoryExplorerClient from '@/features/repository/RepositoryExplorerClient';
 import LoadingScreen from '@/components/LoadingScreen';
 import { getCuratedRepoRouteParams, resolveCuratedRepoRoute } from '@/lib/curated-repos';
-import { getAllCuratedGuideDocuments } from '@/lib/guides/docs-loader';
+import { getAllCuratedGuideDocuments } from '@/features/guides/docs-loader';
 
 export const dynamicParams = false;
 
