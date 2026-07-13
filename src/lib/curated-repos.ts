@@ -41,8 +41,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     gradient: 'from-orange-500/10 to-red-500/10',
     category: 'Operating Systems',
     avatarFile: 'tux.png',
-    buildAvatarUrl:
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/256px-Tux.svg.png',
+    buildAvatarUrl: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Tux.svg?width=256',
     description:
       'Linux kernel source code, with kernel architecture, system calls, device drivers, and core subsystems.',
     seoDescription:
@@ -99,8 +98,9 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     icon: '🪟',
     gradient: 'from-sky-500/10 to-blue-500/10',
     category: 'Operating Systems',
-    avatarFile: 'mrcxlinux.svg',
-    avatarVersion: '3',
+    avatarFile: 'windows-server-2003.svg',
+    buildAvatarUrl: 'local:windows-server-2003.svg',
+    avatarVersion: '1',
     description:
       'Windows Server 2003 source tree, with focus on its build layout, core subsystem families, and server-oriented components.',
     seoDescription:
@@ -243,7 +243,7 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     category: 'Operating Systems',
     avatarFile: 'gnu.png',
     buildAvatarUrl:
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Heckert_GNU_white.svg/256px-Heckert_GNU_white.svg.png',
+      'https://commons.wikimedia.org/wiki/Special:Redirect/file/Heckert_GNU_white.svg?width=256',
     description:
       'GNU C Library source code, including standard C library implementations, system calls, and POSIX compliance.',
     seoDescription:

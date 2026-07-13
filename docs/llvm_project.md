@@ -369,17 +369,6 @@ fileRecommendations:
 
 Clang is the C/C++/Objective-C compiler frontend for LLVM. It parses source code, performs semantic analysis, and generates LLVM IR. Unlike GCC, Clang was designed from the ground up to be a library—enabling tools like clang-tidy, clang-format, and clangd to reuse the same parsing infrastructure.
 
-```mermaid
-graph TD
-    SRC[Source Code\n.c / .cpp] --> LEX[Lexer\nclang/lib/Lex/]
-    LEX --> TOK[Token Stream]
-    TOK --> PARSE[Parser\nclang/lib/Parse/]
-    PARSE --> AST[Abstract Syntax Tree\nclang/include/clang/AST/]
-    AST --> SEMA[Sema\nclang/lib/Sema/]
-    SEMA --> TYPED_AST[Typed + Validated AST]
-    TYPED_AST --> CODEGEN[CodeGen\nclang/lib/CodeGen/]
-    CODEGEN --> IR[LLVM IR]
-```
 
 ```chapter-graph
 clang/lib/Lex/Lexer.cpp -> clang/lib/Parse/Parser.cpp : tokens → AST nodes
@@ -541,20 +530,6 @@ fileRecommendations:
 
 LLVM's optimizer consists of a series of passes that transform IR to improve code quality. The pass framework is one of LLVM's most powerful features—it makes optimizations composable, testable, and reusable.
 
-```mermaid
-graph TD
-    IR[Input LLVM IR] --> PM[Pass Manager]
-    PM --> ANA[Analysis Passes\nread-only, gather info]
-    PM --> TRANS[Transform Passes\nmodify IR]
-    ANA --> DOM[Dominator Tree\nDominatorTreeAnalysis]
-    ANA --> LOOP[Loop Info\nLoopAnalysis]
-    ANA --> AA[Alias Analysis\nAAManager]
-    TRANS --> DCE[Dead Code Elim\nDCEPass]
-    TRANS --> INLINE[Function Inliner\nInlinerPass]
-    TRANS --> LOOP_OPT[Loop Vectorizer\nLoopVectorizePass]
-    TRANS --> INSTCOMBINE[InstCombine\ninstcombine]
-    PM --> OPT_IR[Optimized LLVM IR]
-```
 
 ```chapter-graph
 llvm/include/llvm/IR/PassManager.h -> llvm/lib/Transforms/Scalar/DCE.cpp : pass interface → impl

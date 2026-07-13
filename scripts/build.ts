@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { inspectCorpusState } from './download-repos';
@@ -8,6 +11,16 @@ type Step = {
   name: string;
   command: string;
   args: string[];
+  env?: Record<string, string>;
+};
+
+type CodeIndexRunStats = {
+  repoCount: number;
+  totalDurationMs: number;
+  totalFileCount: number;
+  totalSymbolCount: number;
+  totalEdgeCount?: number;
+  totalTruncatedFileCount: number;
 };
 
 function fail(message: string): never {
@@ -25,6 +38,30 @@ function fmtDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+function readCodeIndexStats(statsPath: string): CodeIndexRunStats | null {
+  if (!fs.existsSync(statsPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(statsPath, 'utf-8')) as CodeIndexRunStats;
+  } catch {
+    return null;
+  }
+}
+
+function formatCodeIndexStats(stats: CodeIndexRunStats | null): string {
+  if (!stats || stats.repoCount === 0) {
+    return '0s (no repos indexed; corpus cache current)';
+  }
+
+  const truncatedNote =
+    stats.totalTruncatedFileCount > 0 ? `, ${stats.totalTruncatedFileCount} truncated` : '';
+  const edgeNote =
+    typeof stats.totalEdgeCount === 'number' ? `, ${stats.totalEdgeCount} edges` : '';
+  return `${fmtDuration(stats.totalDurationMs)} across ${stats.repoCount} repo(s), ${stats.totalFileCount} files, ${stats.totalSymbolCount} symbols${edgeNote}${truncatedNote}`;
+}
+
 function runStep(index: number, total: number, step: Step): Promise<void> {
   const startedAt = Date.now();
   console.log(`\n[${index}/${total}] ${step.name}`);
@@ -33,7 +70,10 @@ function runStep(index: number, total: number, step: Step): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(step.command, step.args, {
       stdio: 'inherit',
-      env: process.env,
+      env: {
+        ...process.env,
+        ...step.env,
+      },
     });
 
     child.on('error', (error) => {
@@ -83,6 +123,11 @@ async function runConcurrentGroup(
 
 async function main(): Promise<void> {
   const startedAt = Date.now();
+  const codeIndexStatsPath = path.join(
+    os.tmpdir(),
+    `explorar-code-index-stats-${process.pid}.json`
+  );
+  let codeIndexStats: CodeIndexRunStats | null = null;
   console.log('\n[build] starting 5 phases');
 
   const corpusState = await inspectCorpusState({
@@ -114,7 +159,11 @@ async function main(): Promise<void> {
         corpusState.staleRepos.length === 0 && corpusState.missingAvatars.length > 0
           ? ['scripts/download-repos.ts', '--avatars-only']
           : ['scripts/download-repos.ts', '--depth=1'],
+      env: {
+        CODE_INDEX_STATS_PATH: codeIndexStatsPath,
+      },
     });
+    codeIndexStats = readCodeIndexStats(codeIndexStatsPath);
   }
 
   await runConcurrentGroup(2, 5, 'Guide validation', [
@@ -148,7 +197,8 @@ async function main(): Promise<void> {
     args: ['scripts/report-build.ts'],
   });
 
-  console.log(`\n[build] complete in ${fmtDuration(Date.now() - startedAt)}`);
+  console.log(`\n[build] code indexing total: ${formatCodeIndexStats(codeIndexStats)}`);
+  console.log(`[build] complete in ${fmtDuration(Date.now() - startedAt)}`);
 }
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);

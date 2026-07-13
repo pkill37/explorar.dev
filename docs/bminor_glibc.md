@@ -215,7 +215,7 @@ fileRecommendations:
       description: Template for generated syscall wrappers
       type: source
     - path: sysdeps/unix/sysv/linux/read.c
-      description: Example: read() syscall wrapper
+      description: "Example: read() syscall wrapper"
       type: source
 ---
 
@@ -637,17 +637,6 @@ fileRecommendations:
 
 glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships multiple variants selected at runtime based on the CPU's capabilities.
 
-```mermaid
-graph TD
-    CALL[User calls strlen] --> PLT[PLT / IFUNC resolver]
-    PLT --> CHECK[Check CPU features\nAVX2? SSE4.2? SSE2?]
-    CHECK -->|AVX2| AVX2[strlen-avx2.S\n32 bytes/iteration]
-    CHECK -->|SSE4.2| SSE42[strlen-sse42.S\n16 bytes/iteration]
-    CHECK -->|baseline| GENERIC[strlen.c\nbyte-by-byte fallback]
-    AVX2 --> RESULT[return length]
-    SSE42 --> RESULT
-    GENERIC --> RESULT
-```
 
 ```chapter-graph
 sysdeps/x86_64/multiarch/ifunc-impl-list.c -> sysdeps/x86_64/multiarch/strlen-avx2.S : IFUNC selects AVX2 impl

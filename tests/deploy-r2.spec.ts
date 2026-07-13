@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { CODE_INDEX_VERSION } from '@/lib/code-index';
 import { CURATED_REPOS } from '@/lib/curated-repos';
 import { getCorpusBuildSignature } from '../scripts/corpus-build-signature';
 import {
@@ -90,7 +91,7 @@ test.describe('R2 deploy', () => {
     expect(signatureA).not.toBe(signatureB);
     expect(JSON.parse(signatureA)).toMatchObject({
       corpusBuildSignatureVersion: 1,
-      searchIndexVersion: 2,
+      searchIndexVersion: CODE_INDEX_VERSION,
       owner: 'torvalds',
       repo: 'linux',
       revision: 'v6.1',

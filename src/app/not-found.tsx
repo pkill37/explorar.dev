@@ -1,19 +1,28 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import RateLimitScreen from '@/components/RateLimitScreen';
 
 export default function NotFound() {
   const router = useRouter();
 
   return (
-    <RateLimitScreen
-      emoji="🔍"
-      title="Page Not Found"
-      message="The page you're looking for doesn't exist or has been moved."
-      buttonText="Go Home"
-      onButtonClick={() => router.push('/')}
-      showTimeMessage={false}
-    />
+    <main className="flex min-h-screen items-center justify-center bg-gray-950 px-6 text-gray-100">
+      <section className="max-w-md text-center">
+        <div className="mb-4 text-4xl" aria-hidden="true">
+          🔍
+        </div>
+        <h1 className="mb-3 text-2xl font-semibold">Page Not Found</h1>
+        <p className="mb-6 text-sm leading-6 text-gray-400">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-950 transition hover:bg-white"
+        >
+          Go Home
+        </button>
+      </section>
+    </main>
   );
 }

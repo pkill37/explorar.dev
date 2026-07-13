@@ -1,6 +1,5 @@
 // Dynamic project guide configuration system using docs/ markdown files
 import React from 'react';
-import { QuizQuestion } from '@/components/ChapterQuiz';
 import { getCuratedGuideByRepo } from '@/features/guides/docs-loader';
 
 export interface FileRecommendation {
@@ -33,7 +32,6 @@ export interface GuideSection {
     source?: FileRecommendation[];
     directories?: FileRecommendation[];
   };
-  quiz?: QuizQuestion[];
   /** Mermaid diagram describing the pedagogical graph for this chapter */
   graph?: string;
 }

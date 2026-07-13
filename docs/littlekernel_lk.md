@@ -35,7 +35,7 @@ fileRecommendations:
       description: Main entry point and staged boot sequence from architecture handoff into the kernel
       type: source
     - path: kernel/init.c
-      description: Earliest kernel bring-up: threads, timers, ports, and multiprocessor support
+      description: "Earliest kernel bring-up: threads, timers, ports, and multiprocessor support"
       type: source
     - path: kernel/thread.c
       description: Core threading subsystem that makes LK a real preemptive kernel instead of a linear boot stub

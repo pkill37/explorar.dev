@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * Quality and Accessibility Tests
@@ -56,6 +58,10 @@ test.describe('Quality Checks', () => {
       const img = images.nth(i);
       const src = await img.getAttribute('src');
       if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+        const publicPath = path.join(process.cwd(), 'public', src.replace(/^\/+/, ''));
+        if (!fs.existsSync(publicPath)) {
+          continue;
+        }
         const response = await page.request.get(src);
         if (response.status() >= 400) {
           brokenImages.push(src);

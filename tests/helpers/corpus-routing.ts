@@ -22,7 +22,7 @@ export async function routeCorpusRepository({
   repo,
   manifest,
   files,
-  routePattern = `https://**/repos/${owner}/${repo}/**`,
+  routePattern = `**/repos/${owner}/${repo}/**`,
   githubContentsPattern = `https://api.github.com/repos/${owner}/${repo}/contents/**`,
 }: RouteCorpusRepositoryOptions): Promise<void> {
   await page.route(routePattern, async (route) => {

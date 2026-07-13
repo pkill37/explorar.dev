@@ -10,6 +10,7 @@ import { debugLog } from './browser-debug';
 import {
   CODE_INDEX_FILE_NAME,
   CODE_INDEX_VERSION,
+  MIN_SUPPORTED_CODE_INDEX_VERSION,
   type CodeIndexDatabaseLike,
   type CodeIndexMetadata,
   type LoadedCodeIndex,
@@ -696,7 +697,11 @@ export async function getCodeIndexFromStatic(
           }
 
           const metadata = metadataStatement.getAsObject() as Partial<CodeIndexMetadata>;
-          if (metadata.version !== CODE_INDEX_VERSION) {
+          const codeIndexVersion = Number(metadata.version ?? 0);
+          if (
+            codeIndexVersion < MIN_SUPPORTED_CODE_INDEX_VERSION ||
+            codeIndexVersion > CODE_INDEX_VERSION
+          ) {
             return null;
           }
 

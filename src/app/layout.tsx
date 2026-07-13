@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import { GitHubRateLimitProvider } from '@/contexts/GitHubRateLimitContext';
 import { RepositoryProvider } from '@/contexts/RepositoryContext';
 import { initializeWebPlatform } from '@/shared/platform/web';
 import { config } from '@/shared/config';
@@ -220,9 +219,7 @@ export default function RootLayout({
             __html: JSON.stringify(organizationSchema),
           }}
         />
-        <GitHubRateLimitProvider>
-          <RepositoryProvider>{children}</RepositoryProvider>
-        </GitHubRateLimitProvider>
+        <RepositoryProvider>{children}</RepositoryProvider>
       </body>
     </html>
   );

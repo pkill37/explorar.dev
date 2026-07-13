@@ -3,10 +3,7 @@ import React from 'react';
 import matter from 'gray-matter';
 import { marked } from 'marked';
 import { GuideSection, FileRecommendation } from '@/lib/project-guides';
-import { QuizQuestion } from '@/components/ChapterQuiz';
-import ChapterQuiz from '@/components/ChapterQuiz';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
-import MermaidDiagram from '@/components/MermaidDiagram';
 import { debugLog } from '@/lib/browser-debug';
 import {
   escapeHtml,
@@ -33,20 +30,8 @@ function isLikelySymbolCode(code: string): boolean {
   return /^(?:[A-Za-z_]\w*|[A-Za-z_]\w*::[A-Za-z_]\w*)(?:\(\))?$/.test(trimmed);
 }
 
-// Custom renderer for marked to handle mermaid blocks
-function createMarkdownRenderer(sectionId: string, symbolScopePaths: string[]) {
+function createMarkdownRenderer(symbolScopePaths: string[]) {
   const renderer = new marked.Renderer();
-  let mermaidCounter = 0;
-
-  renderer.code = function (code, language) {
-    if (language === 'mermaid') {
-      const diagramId = `${sectionId}-mermaid-${mermaidCounter++}`;
-      // Return a placeholder that we'll replace with React component
-      return `<div class="mermaid-placeholder" data-chart="${encodeURIComponent(code)}" data-id="${diagramId}"></div>`;
-    }
-    // Default code block rendering
-    return `<pre><code class="language-${language || ''}">${code}</code></pre>`;
-  };
 
   renderer.codespan = function (code) {
     const repoTarget = parseRepoNavigationTarget(code);
@@ -67,41 +52,6 @@ function createMarkdownRenderer(sectionId: string, symbolScopePaths: string[]) {
   return renderer;
 }
 
-// Convert HTML with mermaid placeholders to React elements.
-// Uses regex string splitting (no DOM API) so output is identical on server and client.
-function htmlToReact(html: string, sectionId: string): React.ReactNode {
-  const placeholderRe =
-    /<div class="mermaid-placeholder" data-chart="([^"]*)" data-id="([^"]*)"><\/div>/g;
-
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let index = 0;
-
-  while ((match = placeholderRe.exec(html)) !== null) {
-    const before = html.slice(lastIndex, match.index);
-    if (before) {
-      parts.push(<div key={`html-${index}`} dangerouslySetInnerHTML={{ __html: before }} />);
-    }
-    const chart = decodeURIComponent(match[1]);
-    const id = match[2] || `${sectionId}-${index}`;
-    parts.push(<MermaidDiagram key={`mermaid-${index}`} chart={chart} id={id} />);
-    lastIndex = match.index + match[0].length;
-    index++;
-  }
-
-  if (parts.length === 0) {
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
-  }
-
-  const remaining = html.slice(lastIndex);
-  if (remaining) {
-    parts.push(<div key="html-final" dangerouslySetInnerHTML={{ __html: remaining }} />);
-  }
-
-  return <>{parts}</>;
-}
-
 // Parse section frontmatter
 interface SectionFrontmatter {
   id: string;
@@ -112,7 +62,6 @@ interface SectionFrontmatter {
     source?: FileRecommendation[];
     directories?: FileRecommendation[];
   };
-  quiz?: QuizQuestion[];
 }
 
 function pushUniquePath(target: string[], seen: Set<string>, path: string) {
@@ -168,10 +117,7 @@ function looksLikeSectionFrontmatter(frontmatter: string): boolean {
 
   return lines.some(
     (line) =>
-      line.startsWith('id:') ||
-      line.startsWith('title:') ||
-      line.startsWith('fileRecommendations:') ||
-      line.startsWith('quiz:')
+      line.startsWith('id:') || line.startsWith('title:') || line.startsWith('fileRecommendations:')
   );
 }
 
@@ -317,18 +263,15 @@ export function parseGuideMarkdown(
       let reactContent: React.ReactNode = null;
       if (sectionContent && sectionContent.trim().length > 0) {
         const renderer = createMarkdownRenderer(
-          sectionMeta.id || `section-${index}`,
           narrativePaths.filter((path) => !path.endsWith('/'))
         );
         marked.setOptions({ renderer });
         // marked can return string or Promise<string>, but with sync renderer it's always string
         const htmlContent = marked(sectionContent) as string;
-
-        // Convert HTML to React (handling mermaid diagrams)
-        reactContent = htmlToReact(htmlContent, sectionMeta.id || `section-${index}`);
+        reactContent = <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
       }
 
-      // Build section body with content, file recommendations, and quiz
+      // Build section body with content and file recommendations
       const body: React.ReactNode = (
         <div>
           <div
@@ -415,9 +358,6 @@ export function parseGuideMarkdown(
               sectionMeta.fileRecommendations.directories || [],
               openFileInTab
             )}
-          {sectionMeta.quiz && sectionMeta.quiz.length > 0 && (
-            <ChapterQuiz chapterId={sectionMeta.id} questions={sectionMeta.quiz} />
-          )}
         </div>
       );
 
@@ -427,7 +367,6 @@ export function parseGuideMarkdown(
         body,
         narrativePaths,
         fileRecommendations: sectionMeta.fileRecommendations,
-        quiz: sectionMeta.quiz,
         graph,
       };
 

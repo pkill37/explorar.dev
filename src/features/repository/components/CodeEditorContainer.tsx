@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MonacoCodeEditor from './MonacoCodeEditor';
 import MarkdownPreview from './MarkdownPreview';
-import { fetchFileContent as fetchFromGitHub, GitHubApiError } from '@/lib/github-api';
-import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
+import { fetchFileContent as fetchFromGitHub } from '@/lib/github-api';
 import type { FileFetchResult } from '@/lib/file-fetch-debug';
+import type { LoadedCodeIndex } from '@/lib/code-index';
 import { debugLog } from '@/lib/browser-debug';
 
 interface CodeEditorContainerProps {
@@ -25,6 +25,7 @@ interface CodeEditorContainerProps {
   onCursorChange?: (line: number, column: number) => void;
   workspaceFilePaths?: string[];
   workspaceId?: string;
+  codeIndex?: LoadedCodeIndex | null;
 }
 
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
@@ -41,6 +42,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   onCursorChange,
   workspaceFilePaths,
   workspaceId,
+  codeIndex,
 }) => {
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -52,7 +54,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   const onContentLoadRef = useRef(onContentLoad);
   const fetchFileRef = useRef(fetchFile);
   const currentFilePathRef = useRef(currentFilePath);
-  const { setRateLimit } = useGitHubRateLimit();
   const isPreviewableMarkupFileSelected = isPreviewableMarkupFile(filePath);
 
   useEffect(() => {
@@ -158,9 +159,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
           debugLog('[explorar:file-load] stale-error', { requestId, filePath });
           return;
         }
-        if (err instanceof GitHubApiError && err.status === 403) {
-          setRateLimit(err);
-        }
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         debugLog('[explorar:file-load] error', {
           requestId,
@@ -170,7 +168,6 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
         setError(errorMessage);
         setContent('');
         setCurrentFilePath('');
-        console.error('Failed to load file content:', err);
       } finally {
         if (!isStaleRequest()) {
           debugLog('[explorar:file-load] settled', {
@@ -184,7 +181,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
     };
 
     void loadFileContent();
-  }, [filePath, setRateLimit]);
+  }, [filePath]);
 
   if (error) {
     return (
@@ -222,6 +219,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       fetchFile={fetchFile}
       workspaceFilePaths={workspaceFilePaths}
       workspaceId={workspaceId}
+      codeIndex={codeIndex}
     />
   );
 };

@@ -50,15 +50,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    A[.py Source File] -->|tokenize + parse| B[AST]
-    B -->|compile| C[Bytecode .pyc]
-    C -->|execute| D[CPython VM + ceval.c]
-    D <-->|manages| E[PyObject* objects]
-    E <-->|tracked by| F[Memory Manager + ref counting + GC]
-    G[GIL] -.->|guards| D
-```
 
 ### CPython Is Not Just a Compiler. It Is an Interpreter.
 
@@ -110,20 +101,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph LR
-    ROOT[cpython/] --> PYTHON[Python/\ncore interpreter]
-    ROOT --> OBJECTS[Objects/\ntype implementations]
-    ROOT --> INCLUDE[Include/\nheaders]
-    ROOT --> PARSER[Parser/\ntokenizer + PEG]
-    ROOT --> MODULES[Modules/\nC extensions]
-    ROOT --> LIB[Lib/\nPython stdlib]
-    PYTHON --> CEVAL[ceval.c\neval loop]
-    PYTHON --> COMPILE[compile.c\nbytecode compiler]
-    OBJECTS --> TYPEOBJ[typeobject.c\ntype system]
-    OBJECTS --> LONGOBJ[longobject.c\nintegers]
-    INCLUDE --> OBJECT_H[object.h\nPyObject def]
-```
 
 ```chapter-graph
 Parser/tokenizer.c -> Parser/parser.c : tokens → AST
@@ -195,18 +172,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    OBJ[PyObject\nob_refcnt + ob_type] --> REFCNT[ob_refcnt\nreference count]
-    OBJ --> TYPE[ob_type\n→ PyTypeObject*]
-    TYPE --> SLOTS[Type Slots\ntp_new, tp_init\ntp_repr, tp_hash]
-    TYPE --> MRO[MRO\nMethod Resolution Order]
-    CONCRETE[Concrete Objects] -->|begin with| OBJ
-    CONCRETE --> INT[PyLongObject\ninteger]
-    CONCRETE --> STR[PyUnicodeObject\nstring]
-    CONCRETE --> LIST[PyListObject\nlist]
-    CONCRETE --> DICT[PyDictObject\ndict]
-```
 
 ```chapter-graph
 Include/object.h -> Objects/object.c : PyObject struct → impl
@@ -285,18 +250,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    TYPES[Built-in Types] --> INT[int\nlongobject.c\narbitrary precision]
-    TYPES --> STR[str\nunicodeobject.c\nimmutable + interned]
-    TYPES --> LIST[list\nlistobject.c\ndynamic array]
-    TYPES --> DICT[dict\ndictobject.c\nhash map]
-    TYPES --> SET[set\nsetobject.c]
-    TYPES --> BYTES[bytes\nbytesobject.c]
-    INT --> DIGITS[ob_digit[]\ndigit array]
-    DICT --> HASH[hash table\nopen addressing]
-    LIST --> ARRAY[ob_item[]\n+ ob_alloc]
-```
 
 ```chapter-graph
 Include/object.h -> Objects/longobject.c : PyObject head + digit array
@@ -368,18 +321,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    ENTRY[PyEval_EvalFrameEx\nceval.c] --> DISPATCH[opcode dispatch\ncomputed goto / switch]
-    DISPATCH --> STACK[Value Stack\npush / pop operands]
-    DISPATCH --> NAMES[Name Lookup\nLOAD_FAST / LOAD_GLOBAL]
-    DISPATCH --> CALLS[CALL instruction\n→ new frame]
-    CALLS -->|recurse| ENTRY
-    FRAME[PyFrameObject] --> CODE[f_code\nPyCodeObject]
-    FRAME --> LOCALS[f_locals\nf_globals]
-    FRAME --> BACK[f_back\ncall stack]
-    ENTRY -->|runs inside| FRAME
-```
 
 ```chapter-graph
 Include/opcode.h -> Python/ceval.c : opcode table drives the switch
@@ -442,19 +383,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    IMPORT[import statement] --> IMPORTLIB[importlib\nLib/importlib/]
-    IMPORTLIB --> FINDER[Finders\nsys.meta_path]
-    FINDER --> LOADER[Loaders]
-    LOADER --> COMPILE_PY[compile .py\n→ bytecode]
-    LOADER --> LOAD_PYC[load .pyc\ncached bytecode]
-    LOADER --> LOAD_SO[load .so/.pyd\nC extension]
-    COMPILE_PY --> MOD[module object]
-    LOAD_PYC --> MOD
-    LOAD_SO --> MOD
-    MOD --> CACHE[sys.modules\ncache]
-```
 
 ```chapter-graph
 Python/import.c -> Objects/moduleobject.c : creates module objects
@@ -502,18 +430,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    RAISE[raise exception] --> EXC_OBJ[Exception Object\nPyBaseException]
-    EXC_OBJ --> TRACEBACK[Traceback\ntb_frame chain]
-    RAISE --> PROPAGATE[propagate up frames]
-    PROPAGATE --> EXCEPT[except clause\nmatch by type]
-    EXCEPT -->|match| HANDLER[exception handler]
-    EXCEPT -->|no match| PROPAGATE
-    HANDLER --> CONTINUE[continue execution]
-    PROPAGATE -->|exhausted| TERMINATE[print traceback\n+ exit]
-    FINALLY[finally clause] -->|always runs| CLEANUP[cleanup code]
-```
 
 ```chapter-graph
 Include/pyerrors.h -> Python/errors.c : exception type declarations → impl
@@ -573,16 +489,6 @@ fileRecommendations:
       type: source
 ---
 
-```mermaid
-graph TD
-    ADVANCED[Advanced CPython] --> GEN[Generators\ngenobject.c\nyield / send]
-    ADVANCED --> ASYNC[Async / Await\ncoroutines\n+ event loop]
-    ADVANCED --> META[Metaclasses\ntype customization\n__new__ / __init__]
-    ADVANCED --> DESR[Descriptors\n__get__ / __set__\nproperties]
-    ADVANCED --> GIL_ADV[GIL Internals\ngil_drop_request\nsys.getswitchinterval]
-    GEN --> FRAME_SUSPEND[suspended frame\nf_lasti saved]
-    ASYNC --> COROUTINE[coroutine object\nawaitable protocol]
-```
 
 ```chapter-graph
 Include/cpython/genobject.h -> Objects/genobject.c : generator struct → impl

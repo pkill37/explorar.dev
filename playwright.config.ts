@@ -1,5 +1,25 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const NODE_ONLY_TEST_FILES = new Set([
+  'tests/code-index-builder.spec.ts',
+  'tests/corpus-sqlite-index.spec.ts',
+  'tests/deploy-r2.spec.ts',
+  'tests/guide-lint.spec.ts',
+]);
+
+function shouldStartWebServer(): boolean {
+  const requestedTestFiles = process.argv
+    .slice(2)
+    .filter((arg) => arg.endsWith('.spec.ts') || arg.startsWith('tests/'))
+    .map((arg) => arg.replace(/^\.\//, ''));
+
+  if (requestedTestFiles.length === 0) {
+    return true;
+  }
+
+  return !requestedTestFiles.every((file) => NODE_ONLY_TEST_FILES.has(file));
+}
+
 /**
  * Playwright configuration for testing the static web app
  */
@@ -22,10 +42,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npx serve out -p 8000',
-    url: 'http://localhost:8000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  ...(shouldStartWebServer()
+    ? {
+        webServer: {
+          command: 'NEXT_OUTPUT_EXPORT=false next dev --turbopack --port 8000',
+          url: 'http://localhost:8000',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+        },
+      }
+    : {}),
 });

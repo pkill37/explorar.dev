@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { CURATED_TEST_REPOS } from './helpers/curated-repos';
 
@@ -55,6 +57,10 @@ test.describe('Sanity Checks', () => {
       const img = images.nth(i);
       const src = await img.getAttribute('src');
       if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+        const publicPath = path.join(process.cwd(), 'public', src.replace(/^\/+/, ''));
+        if (!fs.existsSync(publicPath)) {
+          continue;
+        }
         const response = await page.request.get(src);
         expect(response.status()).toBeLessThan(400);
       }

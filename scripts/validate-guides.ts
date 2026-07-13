@@ -5,13 +5,11 @@
  * - Doc-level frontmatter has owner, repo, defaultOpenIds
  * - Every section has id and title
  * - Every id in defaultOpenIds has a matching section id
- * - Every ```mermaid block parses without syntax errors
  * - Every ```chapter-graph block has valid edge syntax and no duplicate edges
  */
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
-import mermaid from 'mermaid';
 
 const DOCS_DIR = path.join(process.cwd(), 'docs');
 // Files without a repo config (shared references, not guide files)
@@ -84,29 +82,6 @@ function extractFencedBlocks(raw: string, language: string): Array<{ code: strin
   }
 
   return blocks;
-}
-
-/**
- * Validate a mermaid diagram string.
- * Returns an error message if invalid, null if valid.
- * Uses mermaid.parse() — in Node (no DOM) valid diagrams may throw a DOM error
- * after a successful parse, so we only treat "Parse error", "Lexical error",
- * and "No diagram type detected" as real syntax failures.
- */
-async function validateMermaid(diagram: string): Promise<string | null> {
-  if (!diagram.trim()) return 'empty diagram';
-  try {
-    await mermaid.parse(diagram);
-    return null;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const isSyntaxError =
-      msg.includes('Parse error') ||
-      msg.includes('Lexical error') ||
-      msg.includes('No diagram type detected') ||
-      msg.includes('Unrecognized');
-    return isSyntaxError ? msg.split('\n')[0] : null;
-  }
 }
 
 /** Edge syntax: `source -> target : label` (label is required) */
@@ -190,16 +165,7 @@ function validateChapterGraph(graph: string, blockLine: number): string[] {
       }
     }
 
-    // 4. Mermaid diagram syntax check
-    const mermaidBlocks = extractFencedBlocks(raw, 'mermaid');
-    for (const block of mermaidBlocks) {
-      const err = await validateMermaid(block.code);
-      if (err) {
-        fileErrors.push(`mermaid block at line ${block.line}: ${err}`);
-      }
-    }
-
-    // 5. Chapter-graph edge syntax check
+    // 4. Chapter-graph edge syntax check
     const graphBlocks = extractFencedBlocks(raw, 'chapter-graph');
     for (const block of graphBlocks) {
       if (!block.code.trim()) {
@@ -218,10 +184,9 @@ function validateChapterGraph(graph: string, blockLine: number): string[] {
       errors += fileErrors.length;
     } else {
       const chapterCount = sections.filter((s) => s.id !== 'learning-path').length;
-      const diagramCount = mermaidBlocks.length;
       const graphCount = graphBlocks.length;
       console.log(
-        `✓ ${file} (${chapterCount} chapters, ${diagramCount} mermaid diagram${diagramCount !== 1 ? 's' : ''}, ${graphCount} chapter-graph${graphCount !== 1 ? 's' : ''})`
+        `✓ ${file} (${chapterCount} chapters, ${graphCount} chapter-graph${graphCount !== 1 ? 's' : ''})`
       );
     }
   }

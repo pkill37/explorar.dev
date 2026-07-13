@@ -10,6 +10,14 @@ import {
   type Location,
   type SymbolReference,
 } from '@/lib/cross-reference';
+import type { LoadedCodeIndex } from '@/lib/code-index';
+import {
+  HeuristicLanguageBackend,
+  IndexedLanguageBackend,
+  LanguageBackendRegistry,
+  type BackendDefinition,
+  type LanguageBackendContext,
+} from '@/lib/language-backends';
 import { configureMonacoEnvironment as configureMonacoWorkers } from '@/lib/monaco-config';
 import { debugLog } from '@/lib/browser-debug';
 
@@ -226,6 +234,34 @@ function findBestMatchingSymbolDefinition(
   );
 }
 
+function backendDefinitionToSymbolReference(definition: BackendDefinition): SymbolReference {
+  return {
+    name: definition.name,
+    type: definition.kind === 'type' ? 'typedef' : (definition.kind as SymbolReference['type']),
+    line: definition.line,
+    column: definition.column,
+    file: definition.file,
+    isDefinition: true,
+    isDeclaration: false,
+    signature: definition.signature,
+    documentation: definition.documentation,
+    references: [],
+    relatedSymbols: [],
+  };
+}
+
+function symbolReferenceToBackendDefinition(symbol: SymbolReference): BackendDefinition {
+  return {
+    name: symbol.name,
+    kind: symbol.type,
+    file: symbol.file,
+    line: symbol.line,
+    column: symbol.column,
+    signature: symbol.signature,
+    documentation: symbol.documentation,
+  };
+}
+
 // Dynamically import Monaco Editor to avoid SSR issues
 const Editor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -249,6 +285,7 @@ interface MonacoCodeEditorProps {
   fetchFile?: FetchFileFn;
   workspaceFilePaths?: string[];
   workspaceId?: string;
+  codeIndex?: LoadedCodeIndex | null;
 }
 
 type MonacoEditorLike = {
@@ -328,6 +365,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   fetchFile,
   workspaceFilePaths = [],
   workspaceId = 'default',
+  codeIndex = null,
 }) => {
   const editorRef = useRef<unknown>(null);
   const monacoRef = useRef<unknown>(null);
@@ -464,8 +502,10 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       case 'go':
         return 'go';
       case 'js':
+      case 'jsx':
         return 'javascript';
       case 'ts':
+      case 'tsx':
         return 'typescript';
       case 'json':
         return 'json';
@@ -574,7 +614,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     [filePath, getMonacoLanguage, getWorkspaceFileContent]
   );
 
-  const resolveDefinitionAcrossWorkspace = useCallback(
+  const resolveDefinitionHeuristically = useCallback(
     async (symbolName: string): Promise<SymbolReference | null> => {
       const normalizedSymbol = normalizeSymbolQuery(symbolName);
       const localDefinition =
@@ -641,7 +681,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     [content, fetchFile, filePath, getAnalyzedSymbolsForFile, workspaceFilePaths]
   );
 
-  const findReferencesAcrossWorkspace = useCallback(
+  const findReferencesHeuristically = useCallback(
     async (symbolName: string, includeDeclaration: boolean): Promise<Location[]> => {
       const normalizedSymbol = normalizeSymbolQuery(symbolName);
       const referenceCacheKey = `${workspaceId}:${normalizedSymbol}:${includeDeclaration ? 'with-def' : 'refs-only'}`;
@@ -656,7 +696,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       }
 
       const referencePromise = (async () => {
-        const definition = await resolveDefinitionAcrossWorkspace(normalizedSymbol);
+        const definition = await resolveDefinitionHeuristically(normalizedSymbol);
         const rankedCandidatePaths = rankReferenceCandidatePaths(
           normalizedSymbol,
           filePath,
@@ -768,9 +808,124 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       filePath,
       content,
       getWorkspaceFileContent,
-      resolveDefinitionAcrossWorkspace,
+      resolveDefinitionHeuristically,
       workspaceFilePaths,
       workspaceId,
+    ]
+  );
+
+  const getHeuristicHover = useCallback(async (symbolName: string) => {
+    const definition = findBestMatchingSymbolDefinition(symbolName, symbolsRef.current);
+    return definition
+      ? {
+          markdown: [
+            `**${symbolName}** \`${definition.type}\``,
+            ...(definition.signature ? ['```c\n' + definition.signature + '\n```'] : []),
+            ...(definition.documentation ? [`*${definition.documentation}*`] : []),
+          ],
+        }
+      : null;
+  }, []);
+
+  const getHeuristicDocumentSymbols = useCallback(async () => symbolsRef.current, []);
+
+  const backendRegistry = useMemo(() => {
+    const registry = new LanguageBackendRegistry();
+    registry.register(new IndexedLanguageBackend(codeIndex));
+    return registry;
+  }, [codeIndex]);
+
+  const createHeuristicBackend = useCallback(
+    () =>
+      new HeuristicLanguageBackend({
+        getDefinition: async (symbolName: string) => {
+          const definition = await resolveDefinitionHeuristically(symbolName);
+          return definition ? symbolReferenceToBackendDefinition(definition) : null;
+        },
+        getReferences: async (symbolName: string, context: LanguageBackendContext) =>
+          findReferencesHeuristically(symbolName, Boolean(context.includeDeclaration)),
+        getHover: getHeuristicHover,
+        getDiagnostics: async () => [],
+        getDocumentSymbols: getHeuristicDocumentSymbols,
+      }),
+    [
+      findReferencesHeuristically,
+      getHeuristicDocumentSymbols,
+      getHeuristicHover,
+      resolveDefinitionHeuristically,
+    ]
+  );
+
+  const backendContext = useMemo(
+    (): LanguageBackendContext => ({
+      filePath,
+      content,
+      workspaceFilePaths,
+    }),
+    [content, filePath, workspaceFilePaths]
+  );
+
+  const resolveDefinitionAcrossWorkspace = useCallback(
+    async (symbolName: string): Promise<SymbolReference | null> => {
+      for (const backend of [...backendRegistry.getBackends(language), createHeuristicBackend()]) {
+        const definition = await backend.getDefinition(symbolName, backendContext);
+        if (definition) {
+          return backendDefinitionToSymbolReference(definition);
+        }
+      }
+      return null;
+    },
+    [backendContext, backendRegistry, createHeuristicBackend, language]
+  );
+
+  const findReferencesAcrossWorkspace = useCallback(
+    async (symbolName: string, includeDeclaration: boolean): Promise<Location[]> => {
+      const context = { ...backendContext, includeDeclaration };
+      const allReferences: Location[] = [];
+      for (const backend of [...backendRegistry.getBackends(language), createHeuristicBackend()]) {
+        const references = await backend.getReferences(symbolName, context);
+        allReferences.push(...references);
+      }
+
+      const dedupedReferences = Array.from(
+        new Map(
+          allReferences.map((reference) => [
+            `${reference.file}:${reference.line}:${reference.column}`,
+            reference,
+          ])
+        ).values()
+      );
+
+      const uniqueReferenceFiles = Array.from(
+        new Set(
+          dedupedReferences
+            .map((location) => location.file)
+            .filter((candidatePath) => candidatePath && candidatePath !== filePath)
+        )
+      );
+      await Promise.all(
+        uniqueReferenceFiles.map(async (referenceFilePath) => {
+          try {
+            await ensureMonacoModelForFile(referenceFilePath);
+          } catch (error) {
+            console.warn('[explorar:xref] reference-model-create-failed', {
+              filePath,
+              referenceFilePath,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })
+      );
+
+      return dedupedReferences;
+    },
+    [
+      backendContext,
+      backendRegistry,
+      createHeuristicBackend,
+      ensureMonacoModelForFile,
+      filePath,
+      language,
     ]
   );
 
@@ -1647,11 +1802,26 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     const registerLSPProviders = (lang: string) => {
       providerDisposablesRef.current.push(
         monaco.languages.registerHoverProvider(lang, {
-          provideHover: (model: MonacoModelLike, position: MonacoPosition) => {
+          provideHover: async (model: MonacoModelLike, position: MonacoPosition) => {
             const word = model.getWordAtPosition(position);
             if (!word) return null;
 
             const symbolName = word.word;
+            for (const backend of backendRegistry.getBackends(language)) {
+              const hover = await backend.getHover(symbolName, backendContext);
+              if (hover) {
+                return {
+                  range: new monaco.Range(
+                    position.lineNumber,
+                    word.startColumn,
+                    position.lineNumber,
+                    word.endColumn
+                  ),
+                  contents: hover.markdown.map((value) => ({ value })),
+                };
+              }
+            }
+
             const definition = findBestMatchingSymbolDefinition(symbolName, symbolsRef.current);
             const allRefs = findAllReferences(symbolName, symbolsRef.current);
             const usageCount = allRefs.length;
@@ -1908,7 +2078,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       })
     );
 
-    if (language === 'c' || language === 'cpp') {
+    if (backendRegistry.getBackends(language).length > 0) {
       registerLSPProviders(language);
     }
 
@@ -1940,6 +2110,8 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
     return disposeRegisteredProviders;
   }, [
+    backendContext,
+    backendRegistry,
     content,
     disposeRegisteredProviders,
     filePath,

@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
-import { buildCodeIndex } from './code-index-builder';
+import { buildCodeIndex, type CodeIndexBuildStats } from './code-index-builder';
 import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
 import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
@@ -28,9 +28,32 @@ export type CorpusState = {
   totalRepos: number;
 };
 
-type AvatarManifestEntry = {
-  version?: string;
+type AvatarTarget = {
+  file: string;
   url: string;
+  version?: string;
+};
+
+type AvatarManifest = {
+  createdAt?: string;
+  buildSignature?: string;
+  avatars?: AvatarTarget[];
+};
+
+type RepoCodeIndexStats = CodeIndexBuildStats & {
+  owner: string;
+  repo: string;
+  revision: string;
+};
+
+type CodeIndexRunStats = {
+  repoCount: number;
+  totalDurationMs: number;
+  totalFileCount: number;
+  totalSymbolCount: number;
+  totalEdgeCount: number;
+  totalTruncatedFileCount: number;
+  repos: RepoCodeIndexStats[];
 };
 
 const REPOS_DIR = CORPUS_REPOS_DIR;
@@ -38,7 +61,9 @@ const REPOS_DIR = CORPUS_REPOS_DIR;
 // Max simultaneous git clones — GitHub allows a few concurrent connections.
 const DOWNLOAD_CONCURRENCY = 3;
 const AVATAR_DOWNLOAD_CONCURRENCY = 4;
+const DEFAULT_CODE_INDEX_CONCURRENCY = 1;
 const AVATAR_MANIFEST_PATH = path.join(PUBLIC_AVATARS_DIR, '.avatar-manifest.json');
+const AVATAR_BUILD_SIGNATURE_VERSION = 1;
 const DEFAULT_GIT_RETRY_ATTEMPTS = 3;
 const DEFAULT_GIT_RETRY_BASE_DELAY_MS = 2_000;
 
@@ -229,10 +254,45 @@ function getGitRetryBaseDelayMs(): number {
   return readPositiveIntEnv('GIT_DOWNLOAD_RETRY_BASE_DELAY_MS', DEFAULT_GIT_RETRY_BASE_DELAY_MS);
 }
 
+function getCodeIndexConcurrency(): number {
+  return readPositiveIntEnv('CODE_INDEX_CONCURRENCY', DEFAULT_CODE_INDEX_CONCURRENCY);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function fmtDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
+function summarizeCodeIndexStats(repos: RepoCodeIndexStats[]): CodeIndexRunStats {
+  return {
+    repoCount: repos.length,
+    totalDurationMs: repos.reduce((total, repo) => total + repo.durationMs, 0),
+    totalFileCount: repos.reduce((total, repo) => total + repo.fileCount, 0),
+    totalSymbolCount: repos.reduce((total, repo) => total + repo.symbolCount, 0),
+    totalEdgeCount: repos.reduce((total, repo) => total + repo.edgeCount, 0),
+    totalTruncatedFileCount: repos.reduce((total, repo) => total + repo.truncatedFileCount, 0),
+    repos,
+  };
+}
+
+function writeCodeIndexStats(stats: CodeIndexRunStats): void {
+  const outputPath = process.env.CODE_INDEX_STATS_PATH?.trim();
+  if (!outputPath) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${JSON.stringify(stats, null, 2)}\n`);
 }
 
 async function runWithRetries<T>(
@@ -280,6 +340,37 @@ async function runWithConcurrency(tasks: (() => Promise<void>)[], limit: number)
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
+let activeCodeIndexBuilds = 0;
+const pendingCodeIndexBuilds: Array<() => void> = [];
+
+async function acquireCodeIndexSlot(): Promise<() => void> {
+  const limit = getCodeIndexConcurrency();
+  if (activeCodeIndexBuilds >= limit) {
+    await new Promise<void>((resolve) => {
+      pendingCodeIndexBuilds.push(resolve);
+    });
+  }
+
+  activeCodeIndexBuilds++;
+  return () => {
+    activeCodeIndexBuilds--;
+    pendingCodeIndexBuilds.shift()?.();
+  };
+}
+
+async function buildCodeIndexWithLimit(
+  repoDir: string,
+  tree: FileNode[],
+  buildSignature: string
+): Promise<CodeIndexBuildStats> {
+  const release = await acquireCodeIndexSlot();
+  try {
+    return buildCodeIndex(repoDir, tree, buildSignature);
+  } finally {
+    release();
+  }
+}
+
 /** Read HEAD commit SHA from an already-cloned (still has .git) directory. */
 async function getLocalSHA(repoDir: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -293,27 +384,56 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
   });
 }
 
-function getAvatarManifestKey(file: string): string {
-  return file;
+function getAvatarTargets(repos: CuratedRepoConfig[] = CURATED_REPOS): AvatarTarget[] {
+  const avatarTargets = new Map<string, AvatarTarget>();
+  for (const repo of repos) {
+    const file = repo.avatarFile ?? `${repo.owner}.png`;
+    if (!avatarTargets.has(file)) {
+      avatarTargets.set(file, {
+        file,
+        url: repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`,
+        version: repo.avatarVersion,
+      });
+    }
+  }
+
+  return [...avatarTargets.values()].sort((a, b) => a.file.localeCompare(b.file));
 }
 
-function readAvatarManifest(): Record<string, AvatarManifestEntry> {
+function getAvatarBuildSignature(targets: AvatarTarget[]): string {
+  return JSON.stringify({
+    avatarBuildSignatureVersion: AVATAR_BUILD_SIGNATURE_VERSION,
+    targets: targets.map((target) => ({
+      file: target.file,
+      url: target.url,
+      version: target.version,
+    })),
+  });
+}
+
+function isLocalAvatarTarget(target: AvatarTarget): boolean {
+  return target.url.startsWith('local:');
+}
+
+function readAvatarManifest(): AvatarManifest | null {
   if (!fs.existsSync(AVATAR_MANIFEST_PATH)) {
-    return {};
+    return null;
   }
 
   try {
-    return JSON.parse(fs.readFileSync(AVATAR_MANIFEST_PATH, 'utf-8')) as Record<
-      string,
-      AvatarManifestEntry
-    >;
+    return JSON.parse(fs.readFileSync(AVATAR_MANIFEST_PATH, 'utf-8')) as AvatarManifest;
   } catch {
-    return {};
+    return null;
   }
 }
 
-function writeAvatarManifest(manifest: Record<string, AvatarManifestEntry>): void {
+function writeAvatarManifest(targets: AvatarTarget[], buildSignature: string): void {
   fs.mkdirSync(AVATARS_DIR, { recursive: true });
+  const manifest: AvatarManifest = {
+    createdAt: new Date().toISOString(),
+    buildSignature,
+    avatars: targets,
+  };
   fs.writeFileSync(AVATAR_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
@@ -353,21 +473,21 @@ async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): P
 
 export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
   const repos = selectRepos(opts);
+  const avatarTargets = getAvatarTargets(repos);
   const avatarManifest = readAvatarManifest();
+  const avatarBuildSignature = getAvatarBuildSignature(avatarTargets);
+  const avatarsAreCurrent = avatarManifest?.buildSignature === avatarBuildSignature;
   const missingAvatars = new Set<string>();
 
-  for (const repo of repos) {
-    const file = repo.avatarFile ?? `${repo.owner}.png`;
-    const destPath = path.join(AVATARS_DIR, file);
-    const manifestEntry = avatarManifest[getAvatarManifestKey(file)];
-
+  for (const target of avatarTargets) {
+    const destPath = path.join(AVATARS_DIR, target.file);
     if (!fs.existsSync(destPath)) {
-      missingAvatars.add(file);
+      missingAvatars.add(target.file);
       continue;
     }
 
-    if (repo.avatarVersion && manifestEntry?.version !== repo.avatarVersion) {
-      missingAvatars.add(file);
+    if (!avatarsAreCurrent) {
+      missingAvatars.add(target.file);
     }
   }
 
@@ -383,7 +503,7 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
   return {
     missingAvatars: [...missingAvatars],
     staleRepos,
-    totalAvatars: new Set(repos.map((repo) => repo.avatarFile ?? `${repo.owner}.png`)).size,
+    totalAvatars: avatarTargets.length,
     totalRepos: repos.length,
   };
 }
@@ -623,7 +743,10 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
 /**
  * Download and extract a repository
  */
-async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promise<void> {
+async function downloadRepo(
+  config: CuratedRepoConfig,
+  depth: number = 1
+): Promise<RepoCodeIndexStats | null> {
   const { owner, repo, revision } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, revision);
   console.log(`\nRepo ${owner}/${repo}@${revision}`);
@@ -634,7 +757,7 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
 
   if (await shouldSkipDownload(repoDir, config)) {
     console.log(`skip: ${owner}/${repo}@${revision} pinned build matches`);
-    return;
+    return null;
   }
 
   try {
@@ -651,10 +774,16 @@ async function downloadRepo(config: CuratedRepoConfig, depth: number = 1): Promi
     const tree = buildFileTree(repoDir);
     const buildSignature = getCorpusBuildSignature(config, tree);
     createManifest(repoDir, tree, buildSignature);
-    buildCodeIndex(repoDir, tree, buildSignature);
+    const codeIndexStats = await buildCodeIndexWithLimit(repoDir, tree, buildSignature);
     console.log(`   Tree: ${tree.length} root entries`);
 
     console.log(`ready: ${owner}/${repo}@${revision}`);
+    return {
+      ...codeIndexStats,
+      owner,
+      repo,
+      revision,
+    };
   } catch (error) {
     if (fs.existsSync(repoDir)) {
       fs.rmSync(repoDir, { recursive: true, force: true });
@@ -678,32 +807,17 @@ async function downloadAvatar(url: string, destPath: string): Promise<void> {
 async function downloadAllAvatars(): Promise<void> {
   fs.mkdirSync(AVATARS_DIR, { recursive: true });
   const avatarManifest = readAvatarManifest();
-
-  const avatarTargets = new Map<string, { file: string; url: string }>();
-  for (const repo of CURATED_REPOS) {
-    const file = repo.avatarFile ?? `${repo.owner}.png`;
-    if (!avatarTargets.has(file)) {
-      avatarTargets.set(file, {
-        file,
-        url: repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`,
-      });
-    }
-  }
-
-  const uniqueTargets = [...avatarTargets.values()];
+  const uniqueTargets = getAvatarTargets();
+  const avatarBuildSignature = getAvatarBuildSignature(uniqueTargets);
+  const avatarsAreCurrent = avatarManifest?.buildSignature === avatarBuildSignature;
   const uniqueAvatarCount = uniqueTargets.length;
   let processed = 0;
   console.log(`   Preparing ${uniqueAvatarCount} unique avatar targets`);
 
   const tasks = uniqueTargets.map(({ file, url }) => async () => {
     const destPath = path.join(AVATARS_DIR, file);
-    const repo = CURATED_REPOS.find(
-      (candidate) => (candidate.avatarFile ?? `${candidate.owner}.png`) === file
-    );
-    const manifestEntry = avatarManifest[getAvatarManifestKey(file)];
-    const hasVersion = Boolean(repo?.avatarVersion);
-    const isFresh =
-      fs.existsSync(destPath) && (!hasVersion || manifestEntry?.version === repo?.avatarVersion);
+    const target = { file, url };
+    const isFresh = fs.existsSync(destPath) && avatarsAreCurrent;
 
     if (isFresh) {
       processed++;
@@ -711,13 +825,18 @@ async function downloadAllAvatars(): Promise<void> {
       return;
     }
 
+    if (isLocalAvatarTarget(target)) {
+      processed++;
+      if (fs.existsSync(destPath)) {
+        console.log(`   [${processed}/${uniqueAvatarCount}] Avatar local: ${file}`);
+      } else {
+        console.warn(`   [${processed}/${uniqueAvatarCount}] Avatar local missing: ${file}`);
+      }
+      return;
+    }
+
     try {
       await downloadAvatar(url, destPath);
-      avatarManifest[getAvatarManifestKey(file)] = {
-        version: repo?.avatarVersion,
-        url,
-      };
-      writeAvatarManifest(avatarManifest);
       processed++;
       console.log(`   [${processed}/${uniqueAvatarCount}] Avatar refreshed: ${file}`);
     } catch (err) {
@@ -727,6 +846,7 @@ async function downloadAllAvatars(): Promise<void> {
   });
 
   await runWithConcurrency(tasks, AVATAR_DOWNLOAD_CONCURRENCY);
+  writeAvatarManifest(uniqueTargets, avatarBuildSignature);
   console.log(`   Avatar pass complete: ${processed}/${uniqueAvatarCount}`);
 }
 
@@ -739,7 +859,8 @@ async function main() {
   console.log('Repository download process starting...');
   console.log(`Target directory: ${REPOS_DIR}`);
   console.log(`Clone mode: --filter=blob:none --single-branch --depth ${opts.depth}`);
-  console.log(`Concurrency: ${DOWNLOAD_CONCURRENCY}`);
+  console.log(`Clone concurrency: ${DOWNLOAD_CONCURRENCY}`);
+  console.log(`Code index concurrency: ${getCodeIndexConcurrency()}`);
   console.log(
     `Retry policy: ${getGitRetryAttempts()} attempt(s) with exponential backoff from ${getGitRetryBaseDelayMs()}ms`
   );
@@ -770,6 +891,7 @@ async function main() {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
   const finalRepos = selectRepos(opts);
+  const codeIndexStats: RepoCodeIndexStats[] = [];
 
   await runPhase(
     '🧹 Prune stale branches',
@@ -788,7 +910,10 @@ async function main() {
   const tasks = finalRepos.map((repo) => async () => {
     try {
       console.log(`\n   Starting ${repo.owner}/${repo.repo}@${repo.revision}`);
-      await downloadRepo(repo, opts.depth);
+      const stats = await downloadRepo(repo, opts.depth);
+      if (stats) {
+        codeIndexStats.push(stats);
+      }
     } catch {
       // Error already logged inside downloadRepo; continue with remaining repos.
     } finally {
@@ -804,6 +929,16 @@ async function main() {
     },
     `${finalRepos.length} repos @ concurrency ${DOWNLOAD_CONCURRENCY}`
   );
+
+  const summary = summarizeCodeIndexStats(codeIndexStats);
+  writeCodeIndexStats(summary);
+  if (summary.repoCount > 0) {
+    console.log(
+      `\nCode indexing total: ${fmtDuration(summary.totalDurationMs)} across ${summary.repoCount} repo(s), ${summary.totalFileCount} files, ${summary.totalSymbolCount} symbols, ${summary.totalEdgeCount} edges`
+    );
+  } else {
+    console.log('\nCode indexing total: 0s (no repos indexed; corpus cache current)');
+  }
 
   console.log('\nRepository download process complete.');
 }

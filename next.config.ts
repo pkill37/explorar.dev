@@ -2,8 +2,8 @@ import type { NextConfig } from 'next';
 import { withMonacoEditor } from './scripts/monaco-plugin';
 
 const nextConfig: NextConfig = {
-  // Enable static site generation with export
-  output: 'export',
+  // Enable static site generation with export unless a dev-only test server opts out.
+  output: process.env.NEXT_OUTPUT_EXPORT === 'false' ? undefined : 'export',
 
   // Trailing slash ensures python http.server serves index.html from directories
   trailingSlash: true,

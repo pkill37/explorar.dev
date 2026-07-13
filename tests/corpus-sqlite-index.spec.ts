@@ -3,6 +3,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { expect, test } from '@playwright/test';
 
+import { CODE_INDEX_VERSION, MIN_SUPPORTED_CODE_INDEX_VERSION } from '@/lib/code-index';
 import { CURATED_REPOS } from '@/lib/curated-repos';
 import { CORPUS_REPOS_DIR } from '../scripts/static-asset-paths';
 
@@ -40,6 +41,19 @@ function readCodeIndexMetadata(indexPath: string): CodeIndexMetadataRow {
   }
 }
 
+function readSqliteObjects(indexPath: string): Set<string> {
+  const db = new Database(indexPath, { readonly: true, fileMustExist: true });
+
+  try {
+    const rows = db
+      .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+      .all() as Array<{ name: string }>;
+    return new Set(rows.map((row) => row.name));
+  } finally {
+    db.close();
+  }
+}
+
 test.describe('Corpus SQLite index', () => {
   test('exists for every curated repository', () => {
     for (const repo of CURATED_REPOS) {
@@ -67,13 +81,39 @@ test.describe('Corpus SQLite index', () => {
       const codeIndexPath = path.join(getRepoDir(repo), 'code-index.sqlite');
       const metadata = readCodeIndexMetadata(codeIndexPath);
 
-      expect(metadata.version, `${repo.owner}/${repo.repo}`).toBe(2);
+      expect(metadata.version, `${repo.owner}/${repo.repo}`).toBeGreaterThanOrEqual(
+        MIN_SUPPORTED_CODE_INDEX_VERSION
+      );
+      expect(metadata.version, `${repo.owner}/${repo.repo}`).toBeLessThanOrEqual(
+        CODE_INDEX_VERSION
+      );
       expect(metadata.owner, `${repo.owner}/${repo.repo}`).toBe(repo.owner);
       expect(metadata.repo, `${repo.owner}/${repo.repo}`).toBe(repo.repo);
       expect(metadata.branch, `${repo.owner}/${repo.repo}`).toBe(repo.revision);
       expect(metadata.fileCount, `${repo.owner}/${repo.repo}`).toBeGreaterThan(0);
       expect(metadata.buildSignature, `${repo.owner}/${repo.repo}`).toContain(repo.revision);
       expect(metadata.createdAt, `${repo.owner}/${repo.repo}`).toContain('T');
+    }
+  });
+
+  test('schema includes milestone zero knowledge-base tables', () => {
+    for (const repo of CURATED_REPOS) {
+      const codeIndexPath = path.join(getRepoDir(repo), 'code-index.sqlite');
+      const metadata = readCodeIndexMetadata(codeIndexPath);
+      const sqliteObjects = readSqliteObjects(codeIndexPath);
+
+      const requiredTableNames = ['Files', 'Symbols', 'References', 'FileSearch', 'SymbolSearch'];
+      const v3TableNames = ['Edges', 'GuideLinks', 'Concepts', 'ConceptLinks'];
+
+      for (const tableName of [
+        ...requiredTableNames,
+        ...(metadata.version >= 3 ? v3TableNames : []),
+      ]) {
+        expect(
+          sqliteObjects.has(tableName),
+          `${repo.owner}/${repo.repo} missing ${tableName}`
+        ).toBe(true);
+      }
     }
   });
 });

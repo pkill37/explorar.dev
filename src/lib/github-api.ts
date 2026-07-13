@@ -125,7 +125,6 @@ async function tryFetchFileFromStorage(
       if (error instanceof Error && error.message.startsWith('File not found:')) {
         const resolvedPath = await resolveCorpusPathFromTree(owner, repo, branch, path);
         if (!resolvedPath || resolvedPath === path) {
-          console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
           return null;
         }
 
@@ -136,26 +135,17 @@ async function tryFetchFileFromStorage(
             resolvedError instanceof Error &&
             resolvedError.message.startsWith('File not found:')
           ) {
-            console.warn(
-              `File not found in r2-bucket: ${owner}/${repo}/${branch}/${resolvedPath}`,
-              resolvedError
-            );
             return null;
           }
           if (resolvedError instanceof Error) {
             throw resolvedError;
           }
-          console.warn(
-            `File not found in r2-bucket: ${owner}/${repo}/${branch}/${resolvedPath}`,
-            resolvedError
-          );
           return null;
         }
       }
       if (error instanceof Error) {
         throw error;
       }
-      console.warn(`File not found in r2-bucket: ${owner}/${repo}/${branch}/${path}`, error);
       return null;
     }
   } catch (error) {

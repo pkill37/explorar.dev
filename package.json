@@ -45,12 +45,15 @@
     "better-sqlite3": "^11.10.0",
     "gray-matter": "^4.0.3",
     "marked": "^12.0.0",
-    "mermaid": "^10.9.0",
     "monaco-editor": "^0.55.1",
     "next": "^16.2.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "sql.js": "^1.14.1"
+  },
+  "overrides": {
+    "dompurify": "3.4.12",
+    "postcss": "8.5.19"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",

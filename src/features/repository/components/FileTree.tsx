@@ -5,12 +5,10 @@ import { FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
   getFileIcon,
-  GitHubApiError,
   sortFileNodes,
   getCurrentRepoLabel,
   getCurrentBranch,
 } from '@/lib/github-api';
-import { useGitHubRateLimit } from '@/contexts/GitHubRateLimitContext';
 import { getTreeStructure, getGitHubRepoIdentifier } from '@/lib/repo-storage';
 
 interface FileTreeProps {
@@ -211,7 +209,6 @@ const FileTree: React.FC<FileTreeProps> = ({
   const searchIndexCollapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchIndexHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const searchIndexAnimationFrameRef = useRef<number | null>(null);
-  const { setRateLimit } = useGitHubRateLimit();
   const normalizedSearchQuery = searchQuery.trim();
 
   const clampedSearchIndexProgress = Math.max(0, Math.min(100, searchIndexProgress));
@@ -456,10 +453,6 @@ const FileTree: React.FC<FileTreeProps> = ({
           setCompleteTree(nodes);
         }
       } catch (err) {
-        // Check if it's a rate limit error
-        if (err instanceof GitHubApiError && err.status === 403) {
-          setRateLimit(err);
-        }
         setError(err instanceof Error ? err.message : 'Failed to load file tree');
         console.error('Failed to load tree structure:', err);
       } finally {
@@ -468,7 +461,7 @@ const FileTree: React.FC<FileTreeProps> = ({
     };
 
     loadTreeStructure();
-  }, [listDirectory, setRateLimit, markDirectoriesAsLoaded]);
+  }, [listDirectory, markDirectoriesAsLoaded]);
 
   useEffect(() => {
     const expandPath = async (path: string) => {

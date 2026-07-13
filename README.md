@@ -4,13 +4,18 @@
 
 [![Featured on Hacker News](https://hackerbadge.now.sh/api?id=46066280)](https://news.ycombinator.com/item?id=46066280)
 
-Explorar is a Next.js web application with a VS Code-like interface that takes in source code files and offers guided exploration, notes, quizzes, exercises, etc.
+Explorar is a Next.js web application with a VS Code-like interface for browsing large source
+repositories through curated guides, indexed search, cross-references, diagrams, and knowledge
+checks.
 
 Build your own local copy of the Explorar application, which will download all the git tags to your filesystem (get a coffee, this may take some time), and subsequently build the "shell" web application that works entirely offline and instantly.
 
 ```bash
 npm install
-npm run dev      # starts at localhost:3000, downloads CPython automatically
+npm run dev      # starts at localhost:3000
+```
+
+```
 npm run lint     # tsc + eslint + prettier + depcheck
 npm run build    # static export to out/ for a static host
 npm run deploy   # production deploy: R2 sync of repo corpus
@@ -21,49 +26,101 @@ Online you can visit **[https://explorar.dev](https://explorar.dev)** for free. 
 
 ## Roadmap
 
-### Quick Wins
+Explorar should stay a guide-first source browser. The goal is to improve guides, search, graph
+views, and editor navigation with structured indexing and language-aware retrieval, not to turn the
+product into a chat-first tool.
 
-- [ ] Deep-linkable file/line/symbol URLs. High value, low risk, immediately shareable.
-- [ ] File outline panel. Fast improvement to navigation with existing parsing work.
-- [ ] Better search UX. Path/content/symbol tabs, scoped search by folder or guide chapter.
-- [ ] Per-file metadata strip. Last modified source, language, size, related guide sections.
-- [ ] Saved tabs/workspace state. Restore open files, scroll, active guide chapter.
-- [ ] Side-by-side file compare for two refs or branches. Useful even before full semantic intelligence.
-- [ ] Guide-aware navigation polish. “Open all files in this chapter”, “next recommended file”, “related
-      docs”.
+The long-term architecture is:
 
-### Core Differentiators
+```text
+Repository
+  ↓
+Config + Ignore Rules
+  ↓
+Language Detection
+  ↓
+Per-Language Indexers
+  ↓
+Unified Knowledge Base
+  ↓
+Retrieval Layer
+  ↓
+Monaco + Guides + Graph UI
+```
 
-- [ ] Symbol cross-references. Definition, references, callers, callees, include chain. This is the
-      biggest step toward an AOSP-class browser.
-- [ ] Indexed global search over curated repos. Real symbol/path/text indexing rather than ad hoc fetch/
-      search.
-- [ ] Subsystem map / architecture view. An opinionated entry point into giant codebases instead of raw
-      trees only.
-- [ ] Blame/history overlays. Make the browser useful for understanding change, not just reading
-      snapshots.
-- [ ] Dependency graph explorer. Include/import relationships and reverse dependencies, especially
-      strong for kernels, libc, LLVM.
-- [ ] API surface explorer. Separate externally interesting interfaces from internal implementation
-      noise.
-- [ ] Version-aware guides. Pin guides to repo refs and show drift when the user switches versions.
+For public web deployment, expensive analysis should happen in offline index builders. The browser
+client and read-only query APIs should consume prebuilt source snapshots and semantic artifacts
+rather than spawning per-user language-server sessions.
 
-### Hard But Worth It
+### Milestone 0: Index Foundation
 
-- [ ] Semantic navigation for C/C++. Real parser-backed “go to definition”, “find implementations”, type/member xrefs.
-- [ ] Ownership/maintainer overlays. CODEOWNERS-style routing, likely experts, review boundaries.
-- [ ] Build-target awareness. “Which module/library/target pulls this file in?”
-- [ ] Release-to-release path history. What changed in this subsystem between tags.
-- [ ] Review/study annotations. Shared annotated links, notes on lines, saved reading trails.
-- [ ] Automatic “interesting files” ranking. For enormous repos, compute the best entry points by subsystem or concept.
+- [x] Generate a SQLite code index for curated repository snapshots.
+- [x] Store files, symbols, references, file edges, guide links, concept links, and search tables in
+      the index schema.
+- [x] Load and cache `code-index.sqlite` in the browser for static deployments.
+- [x] Keep heuristic navigation available as a fallback when an index is missing or incomplete.
+- [ ] Add `explorar.toml` for repo-specific indexing config.
+- [ ] Add `.explorarignore` for excluded paths.
+- [ ] Add a local `.explorar/` cache layout for generated index artifacts.
 
-### Suggested Order
+### Milestone 1: Editor Backend Abstraction
 
-1. Deep links, outline, scoped search, workspace restore.
-2. Indexed search and guide-aware navigation polish.
-3. Symbol xrefs for curated repos.
-4. Graph/dependency and subsystem views.
-5. Blame/history and version-aware guides.
-6. Parser-backed semantic nav and build-awareness.
+- [x] Add a live editor language backend interface keyed by `languageId`.
+- [x] Wire Monaco definition, reference, and hover flows through the indexed backend before falling
+      back to heuristics.
+- [x] Provide indexed symbol, file, reference, graph-neighbor, guide-link, and concept query helpers.
+- [ ] Share one backend contract between offline indexing and live editor queries.
+- [ ] Implement backend-provided diagnostics and document symbols.
 
-The first layer improves usability immediately without major infrastructure. The second layer builds the retrieval/indexing foundation. The third and fourth layers are what make it feel like a real source browser rather than a static viewer. The last layer is expensive and only worth doing once the navigation/search model is already solid.
+### Milestone 2: C / C++ Semantic Navigation
+
+- [ ] Integrate `clangd` for C/C++ indexing and editor queries.
+- [ ] Replace heuristic-only C/C++ navigation where `clangd` data is available.
+- [ ] Support parser-backed hover, definitions, references, diagnostics, type/member traversal, and
+      include chains.
+- [ ] Validate on Linux, XNU, seL4, and CPython native runtime code.
+
+### Milestone 3: Python Semantic Navigation
+
+- [ ] Integrate `pyright` or `basedpyright` for Python indexing and editor queries.
+- [ ] Resolve Python symbols across stdlib, tests, tools, and scripts.
+- [ ] Support Python hover, definitions, references, and diagnostics through the backend path.
+
+### Milestone 4: Graph Retrieval And Concepts
+
+- [x] Persist basic file edges, guide links, and concept links in the index.
+- [ ] Add callers/callees, include/import expansion, and related-files panels.
+- [ ] Resolve guide mentions to multiple symbol candidates instead of only file paths.
+- [ ] Add concept views that group docs, tests, headers, and implementations.
+- [ ] Add scoped search tabs for files, symbols, and references.
+
+### Milestone 5: CPython Mixed Traversal
+
+- [ ] Connect `Include/*.h`, `Objects/*.c`, `Python/*.c`, `Lib/*.py`, `Lib/test/*.py`, `Tools/*.py`,
+      and `docs/python_cpython.md` in one retrieval model.
+- [ ] Make `PyObject`, `PyTypeObject`, and `PyDictObject` resolve correctly.
+- [ ] Make a concept like `dict` jump across docs, tests, headers, implementations, constructors,
+      and guide chapters.
+- [ ] Prove the same retrieval model on Linux and XNU kernel code.
+
+### Milestone 6: Optional Semantic Retrieval
+
+- [ ] Add embeddings only after exact symbol and graph retrieval are strong.
+- [ ] Keep semantic search additive; exact structural lookup remains the primary retrieval path.
+
+### UX Backlog
+
+- [ ] Deep-linkable file, line, and symbol URLs.
+- [ ] File outline panel.
+- [ ] Per-file metadata strip with language, size, source, and related guide sections.
+- [x] Persist open tabs and workspace state locally.
+- [ ] Side-by-side file compare for two refs or branches.
+- [ ] Guide-aware navigation polish such as opening all files in a chapter.
+- [ ] Subsystem map / architecture view.
+- [ ] Blame and history overlays.
+- [ ] Dependency graph explorer.
+- [ ] API surface explorer.
+- [ ] Version-aware guides.
+- [ ] Ownership or maintainer overlays.
+- [ ] Build-target awareness.
+- [ ] Automatic interesting-files ranking.

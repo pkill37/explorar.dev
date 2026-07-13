@@ -119,37 +119,6 @@ interface RepositoryWorkspaceExplorerProps {
   ) => void;
 }
 
-type StudySpaceGuideState = {
-  activeChapterId: string | null;
-  scrollPosition: number | null;
-};
-
-type StudySpaceConfig = {
-  version: 1;
-  exportedAt: string;
-  repo: {
-    owner: string;
-    repo: string;
-    branch: string;
-    identifier: string | null;
-    label: string;
-  };
-  editor: {
-    tabs: EditorTab[];
-    activeTabId: string | null;
-    selectedFile: string;
-    selectedVersion: string;
-    workspaceSearchQuery: string;
-    sidebarWidth: number;
-    rightPanelWidth: number;
-    mobileView: 'explorer' | 'editor' | 'guide';
-    isSidebarOpen: boolean;
-    isRightPanelOpen: boolean;
-  };
-  guide: StudySpaceGuideState;
-  notes: string;
-};
-
 export default function RepositoryWorkspaceExplorer({
   owner,
   repo,
@@ -236,7 +205,6 @@ export default function RepositoryWorkspaceExplorer({
   const [workspaceSearchIndexError, setWorkspaceSearchIndexError] = useState<string | null>(null);
   const [workspaceSearchIndexProgress, setWorkspaceSearchIndexProgress] = useState<number>(0);
   const [workspaceSearchIndexCached, setWorkspaceSearchIndexCached] = useState(false);
-  const [studyConfigNonce, setStudyConfigNonce] = useState<number>(0);
   // Refs for cleanup
   const workspaceSearchIndexRequestIdRef = useRef(0);
   const workspaceSearchResultsRequestIdRef = useRef(0);
@@ -248,7 +216,6 @@ export default function RepositoryWorkspaceExplorer({
   const workspaceSearchIndexCacheHitRef = useRef<boolean>(false);
   const workspaceSearchIndexProgressSeenRef = useRef<boolean>(false);
   const workspaceSearchPreviewCacheRef = useRef<Map<string, string>>(new Map());
-  const studyConfigInputRef = useRef<HTMLInputElement>(null);
   // Track which initialFile has already been opened so we don't re-open on re-renders
   const lastOpenedInitialFileRef = useRef<string | null>(null);
 
@@ -1245,10 +1212,6 @@ export default function RepositoryWorkspaceExplorer({
     () => `guide-panel-active-chapter:${guideStorageScope}`,
     [guideStorageScope]
   );
-  const guideScrollPositionStorageKey = useMemo(
-    () => `guide-panel-scroll-position:${guideStorageScope}`,
-    [guideStorageScope]
-  );
   const guideDefaultChapterId = useMemo(() => {
     const sectionIds = new Set(guideSections.map((section) => section.id));
     const configuredDefault = projectConfig?.guides?.[0]?.defaultOpenIds?.find((id) =>
@@ -1292,218 +1255,6 @@ export default function RepositoryWorkspaceExplorer({
       // ignore
     }
   }, [activeChapterId, guideActiveChapterStorageKey]);
-
-  const readStudySpaceGuideState = useCallback((): StudySpaceGuideState => {
-    if (typeof window === 'undefined') {
-      return { activeChapterId: null, scrollPosition: null };
-    }
-
-    try {
-      const scrollPositionValue = localStorage.getItem(guideScrollPositionStorageKey);
-      const scrollPosition =
-        scrollPositionValue !== null && scrollPositionValue !== ''
-          ? Number.parseInt(scrollPositionValue, 10)
-          : null;
-
-      return {
-        activeChapterId,
-        scrollPosition: Number.isFinite(scrollPosition) ? scrollPosition : null,
-      };
-    } catch (error) {
-      console.warn('Failed to read guide state for export:', error);
-      return { activeChapterId, scrollPosition: null };
-    }
-  }, [activeChapterId, guideScrollPositionStorageKey]);
-
-  const buildStudySpaceConfig = useCallback((): StudySpaceConfig => {
-    const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
-    const studyNotesKey = getRepoScopedKey(
-      `${EXPLORER_STORAGE_KEY_PREFIX}-study-notes`,
-      repoIdentifier ?? null
-    );
-    const notes =
-      typeof window !== 'undefined' ? (loadFromLocalStorage(studyNotesKey, '') as string) : '';
-
-    return {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      repo: {
-        owner: owner || '',
-        repo: repo || '',
-        branch: currentBranch || selectedVersion || branch || '',
-        identifier: repoIdentifier,
-        label: repoLabel,
-      },
-      editor: {
-        tabs,
-        activeTabId: activeTab?.id ?? activeTabId,
-        selectedFile,
-        selectedVersion,
-        workspaceSearchQuery,
-        sidebarWidth,
-        rightPanelWidth,
-        mobileView,
-        isSidebarOpen,
-        isRightPanelOpen,
-      },
-      guide: readStudySpaceGuideState(),
-      notes,
-    };
-  }, [
-    activeTabId,
-    branch,
-    currentBranch,
-    isRightPanelOpen,
-    isSidebarOpen,
-    mobileView,
-    owner,
-    readStudySpaceGuideState,
-    repo,
-    repoIdentifier,
-    repoLabel,
-    rightPanelWidth,
-    selectedFile,
-    selectedVersion,
-    sidebarWidth,
-    tabs,
-    workspaceSearchQuery,
-  ]);
-
-  const applyStudySpaceConfig = useCallback(
-    (config: StudySpaceConfig): boolean => {
-      if (!config || config.version !== 1) {
-        throw new Error('Unsupported study config format');
-      }
-
-      if (repoIdentifier && config.repo.identifier && config.repo.identifier !== repoIdentifier) {
-        throw new Error('This study config belongs to a different repository');
-      }
-
-      const nextTabs = Array.isArray(config.editor.tabs) ? config.editor.tabs : [];
-      const nextActiveTabId =
-        nextTabs.find((tab) => tab.id === config.editor.activeTabId)?.id ?? nextTabs[0]?.id ?? null;
-      const nextSelectedFile =
-        config.editor.selectedFile ||
-        nextTabs.find((tab) => tab.id === nextActiveTabId)?.path ||
-        '';
-      const nextSelectedVersion = config.editor.selectedVersion || config.repo.branch || '';
-      const nextWorkspaceSearchQuery = config.editor.workspaceSearchQuery || '';
-
-      setTabs(nextTabs);
-      setActiveTabId(nextActiveTabId);
-      setSelectedFile(nextSelectedFile);
-      if (nextSelectedVersion && nextSelectedVersion !== selectedVersion) {
-        setSelectedVersion(nextSelectedVersion);
-      }
-      setWorkspaceSearchQuery(nextWorkspaceSearchQuery);
-      setSidebarWidth(config.editor.sidebarWidth || sidebarWidth);
-      setRightPanelWidth(config.editor.rightPanelWidth || rightPanelWidth);
-      setMobileView(config.editor.mobileView || 'editor');
-      setIsSidebarOpen(config.editor.isSidebarOpen);
-      setIsRightPanelOpen(config.editor.isRightPanelOpen);
-
-      if (typeof window !== 'undefined') {
-        const tabsKey = getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-tabs`, repoIdentifier);
-        const activeTabKey = getRepoScopedKey(
-          `${EXPLORER_STORAGE_KEY_PREFIX}-active-tab`,
-          repoIdentifier
-        );
-        const selectedFileKey = getRepoScopedKey(
-          `${EXPLORER_STORAGE_KEY_PREFIX}-selected-file`,
-          repoIdentifier
-        );
-        const selectedVersionKey = getRepoScopedKey(
-          `${EXPLORER_STORAGE_KEY_PREFIX}-selected-version`,
-          repoIdentifier
-        );
-
-        saveToLocalStorage(tabsKey, nextTabs);
-        saveToLocalStorage(activeTabKey, nextActiveTabId);
-        saveToLocalStorage(selectedFileKey, nextSelectedFile);
-        saveToLocalStorage(selectedVersionKey, nextSelectedVersion || selectedVersion);
-        saveToLocalStorage(
-          getRepoScopedKey(`${EXPLORER_STORAGE_KEY_PREFIX}-workspace-search`, repoIdentifier),
-          nextWorkspaceSearchQuery
-        );
-        localStorage.setItem(
-          `${EXPLORER_STORAGE_KEY_PREFIX}-sidebar-width`,
-          String(config.editor.sidebarWidth)
-        );
-        localStorage.setItem(
-          `${EXPLORER_STORAGE_KEY_PREFIX}-right-panel-width`,
-          String(config.editor.rightPanelWidth)
-        );
-
-        if (config.guide.activeChapterId) {
-          localStorage.setItem(guideActiveChapterStorageKey, config.guide.activeChapterId);
-          setActiveChapterId(config.guide.activeChapterId);
-        } else {
-          localStorage.removeItem(guideActiveChapterStorageKey);
-          setActiveChapterId(null);
-        }
-
-        if (config.guide.scrollPosition !== null && Number.isFinite(config.guide.scrollPosition)) {
-          localStorage.setItem(guideScrollPositionStorageKey, String(config.guide.scrollPosition));
-        } else {
-          localStorage.removeItem(guideScrollPositionStorageKey);
-        }
-      }
-
-      setStudyConfigNonce((current) => current + 1);
-      return true;
-    },
-    [
-      guideActiveChapterStorageKey,
-      guideScrollPositionStorageKey,
-      repoIdentifier,
-      rightPanelWidth,
-      selectedVersion,
-      sidebarWidth,
-    ]
-  );
-
-  const handleDownloadStudyConfig = useCallback(() => {
-    const config = buildStudySpaceConfig();
-    const blob = new Blob([`${JSON.stringify(config, null, 2)}\n`], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    const safeLabel = (repoLabel || 'study-space').replace(/[^a-zA-Z0-9._-]+/g, '-');
-    anchor.href = url;
-    anchor.download = `${safeLabel}-${selectedVersion || 'session'}.study-space.json`;
-    anchor.rel = 'noopener noreferrer';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  }, [buildStudySpaceConfig, repoLabel, selectedVersion]);
-
-  const handleImportStudyConfigClick = useCallback(() => {
-    studyConfigInputRef.current?.click();
-  }, []);
-
-  const handleStudyConfigFileChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = '';
-      if (!file) {
-        return;
-      }
-
-      try {
-        const text = await file.text();
-        const parsed = JSON.parse(text) as StudySpaceConfig;
-        applyStudySpaceConfig(parsed);
-      } catch (error) {
-        console.error('Failed to import study config:', error);
-        window.alert(
-          error instanceof Error ? error.message : 'Failed to import the selected study config'
-        );
-      }
-    },
-    [applyStudySpaceConfig]
-  );
 
   // Open explicit file targets as soon as they are requested.
   // Tree readiness is useful for directory expansion/highlighting, but should
@@ -1658,17 +1409,8 @@ export default function RepositoryWorkspaceExplorer({
                 activeTabId={activeTabId}
                 onTabSelect={onTabSelect}
                 onTabClose={onTabClose}
-                onDownloadStudyConfig={handleDownloadStudyConfig}
-                onImportStudyConfig={handleImportStudyConfigClick}
                 onCloseAllTabs={onCloseAllTabs}
                 onMarkdownPreviewToggle={toggleMarkdownPreview}
-              />
-              <input
-                ref={studyConfigInputRef}
-                type="file"
-                accept=".json,application/json"
-                style={{ display: 'none' }}
-                onChange={handleStudyConfigFileChange}
               />
               {activeTab ? (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1679,6 +1421,7 @@ export default function RepositoryWorkspaceExplorer({
                     fetchFile={fetchFileContent}
                     workspaceFilePaths={workspaceFilePaths}
                     workspaceId={`${repoLabel}@${selectedVersion}`}
+                    codeIndex={workspaceSearchIndex}
                     markdownViewMode={activeTab.viewMode}
                     onToggleMarkdownPreview={toggleMarkdownPreview}
                     scrollToLine={activeTab.scrollToLine}
@@ -1768,7 +1511,7 @@ export default function RepositoryWorkspaceExplorer({
             >
               {(!isMobile || mobileView === 'guide') && (
                 <GuidePanel
-                  key={`guide-${studyConfigNonce}-${guideStorageScope}`}
+                  key={`guide-${guideStorageScope}`}
                   sections={guideSections}
                   activeChapterId={activeChapterId}
                   onActiveChapterChange={setActiveChapterId}
