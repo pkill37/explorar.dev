@@ -100,8 +100,29 @@ function readPreviousSnapshot(): StageSnapshot | null {
   }
 }
 
-function hasTargetAssets(): boolean {
-  return fs.existsSync(PUBLIC_REPOS_DIR);
+type RepoTargetState =
+  | 'missing'
+  | 'expected-dev-symlink'
+  | 'unexpected-symlink'
+  | 'expected-mirror'
+  | 'unexpected-directory';
+
+function getRepoTargetState(mode: StageMode): RepoTargetState {
+  if (!fs.existsSync(PUBLIC_REPOS_DIR)) {
+    return 'missing';
+  }
+
+  const isExpectedSymlink = pathExistsAsSymlinkTo(PUBLIC_REPOS_DIR, CORPUS_REPOS_DIR);
+  const isAnySymlink = pathExistsAsSymlink(PUBLIC_REPOS_DIR);
+  if (mode === 'dev-symlink') {
+    return isExpectedSymlink ? 'expected-dev-symlink' : 'unexpected-directory';
+  }
+
+  if (isAnySymlink) {
+    return 'unexpected-symlink';
+  }
+
+  return 'expected-mirror';
 }
 
 function pathExistsAsSymlinkTo(targetPath: string, expectedSourcePath: string): boolean {
@@ -119,8 +140,16 @@ function pathExistsAsSymlinkTo(targetPath: string, expectedSourcePath: string): 
   }
 }
 
+function pathExistsAsSymlink(targetPath: string): boolean {
+  try {
+    return fs.lstatSync(targetPath).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 function persistSnapshot(snapshot: StageSnapshot): void {
-  fs.writeFileSync(PUBLIC_STAGE_MANIFEST_PATH, JSON.stringify(snapshot, null, 2));
+  fs.writeFileSync(PUBLIC_STAGE_MANIFEST_PATH, `${JSON.stringify(snapshot, null, 2)}\n`);
 }
 
 function mirrorDirectory(sourceDir: string, targetDir: string): void {
@@ -168,17 +197,16 @@ function main(): void {
   const snapshot = buildSnapshot(mode);
   const previousSnapshot = readPreviousSnapshot();
   const snapshotChanged = JSON.stringify(snapshot) !== JSON.stringify(previousSnapshot);
-  const targetsPresent = hasTargetAssets();
+  const repoTargetState = getRepoTargetState(mode);
   const repoTargetMatchesMode =
-    mode === 'dev-symlink'
-      ? pathExistsAsSymlinkTo(PUBLIC_REPOS_DIR, CORPUS_REPOS_DIR)
-      : fs.existsSync(PUBLIC_REPOS_DIR) &&
-        !pathExistsAsSymlinkTo(PUBLIC_REPOS_DIR, CORPUS_REPOS_DIR);
+    repoTargetState === 'expected-dev-symlink' || repoTargetState === 'expected-mirror';
 
   console.log(`   Snapshot: ${snapshot.repoManifests.length} repo manifests`);
 
-  if (!targetsPresent || !repoTargetMatchesMode) {
-    console.log('   Reason: public staged assets are missing');
+  if (repoTargetState === 'missing') {
+    console.log('   Reason: public staged repo assets are missing');
+  } else if (!repoTargetMatchesMode) {
+    console.log(`   Reason: public staged repo assets do not match ${mode} mode`);
   } else if (!previousSnapshot) {
     console.log('   Reason: no previous staging manifest found');
   } else if (snapshotChanged) {

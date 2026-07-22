@@ -1,15 +1,28 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
 type CorpusFileMap = Record<string, string>;
+
+type CorpusSource = 'local' | 'r2';
 
 interface RouteCorpusRepositoryOptions {
   page: Page;
   owner: string;
   repo: string;
-  manifest: unknown;
-  files: CorpusFileMap;
+  manifest?: unknown;
+  files?: CorpusFileMap;
+  localManifest?: unknown;
+  localFiles?: CorpusFileMap;
+  r2Manifest?: unknown;
+  r2Files?: CorpusFileMap;
   routePattern?: string;
+  r2RoutePattern?: string;
   githubContentsPattern?: string;
+}
+
+export interface RoutedCorpusRequests {
+  local: string[];
+  r2: string[];
+  all: string[];
 }
 
 function normalizePath(pathname: string): string {
@@ -22,25 +35,51 @@ export async function routeCorpusRepository({
   repo,
   manifest,
   files,
+  localManifest,
+  localFiles,
+  r2Manifest,
+  r2Files,
   routePattern = `**/repos/${owner}/${repo}/**`,
+  r2RoutePattern = `https://pub-fed8a8778c5340c9a70aec8e22b8296d.r2.dev/repos/${owner}/${repo}/**`,
   githubContentsPattern = `https://api.github.com/repos/${owner}/${repo}/contents/**`,
-}: RouteCorpusRepositoryOptions): Promise<void> {
-  await page.route(routePattern, async (route) => {
+}: RouteCorpusRepositoryOptions): Promise<RoutedCorpusRequests> {
+  const requests: RoutedCorpusRequests = {
+    local: [],
+    r2: [],
+    all: [],
+  };
+
+  const fulfillCorpusRoute = async (route: Route, source: CorpusSource) => {
     const url = route.request().url();
+    requests[source].push(url);
+    requests.all.push(url);
+    const activeManifest = source === 'r2' ? (r2Manifest ?? manifest) : (localManifest ?? manifest);
+    const activeFiles = source === 'r2' ? (r2Files ?? files ?? {}) : (localFiles ?? files ?? {});
 
     if (url.endsWith('/repo-manifest.json') || url.endsWith('/.repo-manifest.json')) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json; charset=utf-8',
-        headers: {
-          'access-control-allow-origin': '*',
-        },
-        body: JSON.stringify(manifest),
-      });
+      if (activeManifest !== undefined) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          headers: {
+            'access-control-allow-origin': '*',
+          },
+          body: JSON.stringify(activeManifest),
+        });
+      } else {
+        await route.fulfill({
+          status: 404,
+          contentType: 'text/plain; charset=utf-8',
+          headers: {
+            'access-control-allow-origin': '*',
+          },
+          body: 'manifest not found',
+        });
+      }
       return;
     }
 
-    const matchedFilePath = Object.keys(files).find((filePath) =>
+    const matchedFilePath = Object.keys(activeFiles).find((filePath) =>
       url.endsWith(`/${normalizePath(filePath)}`)
     );
 
@@ -51,7 +90,7 @@ export async function routeCorpusRepository({
         headers: {
           'access-control-allow-origin': '*',
         },
-        body: files[matchedFilePath],
+        body: activeFiles[matchedFilePath],
       });
       return;
     }
@@ -64,7 +103,10 @@ export async function routeCorpusRepository({
       },
       body: 'not found',
     });
-  });
+  };
+
+  await page.route(routePattern, async (route) => fulfillCorpusRoute(route, 'local'));
+  await page.route(r2RoutePattern, async (route) => fulfillCorpusRoute(route, 'r2'));
 
   await page.route(githubContentsPattern, async (route) => {
     await route.fulfill({
@@ -73,4 +115,32 @@ export async function routeCorpusRepository({
       body: JSON.stringify({ message: 'Not Found' }),
     });
   });
+
+  return requests;
+}
+
+export function expectOnlyLocalCorpusWasHit(requests: RoutedCorpusRequests): void {
+  if (requests.local.length === 0) {
+    throw new Error('Expected local staged corpus to be requested');
+  }
+  if (requests.r2.length > 0) {
+    throw new Error(`Expected no R2 corpus requests, got ${requests.r2.join(', ')}`);
+  }
+}
+
+export function expectOnlyR2CorpusWasHit(requests: RoutedCorpusRequests): void {
+  if (requests.r2.length === 0) {
+    throw new Error('Expected R2 corpus to be requested');
+  }
+  if (requests.local.length > 0) {
+    throw new Error(`Expected no local staged corpus requests, got ${requests.local.join(', ')}`);
+  }
+}
+
+export function expectBothCorpusSourcesWereHit(requests: RoutedCorpusRequests): void {
+  if (requests.local.length === 0 || requests.r2.length === 0) {
+    throw new Error(
+      `Expected both local and R2 corpus requests, got local=${requests.local.length}, r2=${requests.r2.length}`
+    );
+  }
 }

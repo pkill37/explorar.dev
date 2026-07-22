@@ -97,10 +97,51 @@ test.describe('Editor Loading', () => {
         entry.payload?.filePath === TEST_FILE_PATH,
       `Expected successful file load for ${TEST_FILE_PATH}`
     );
+    await expectDebugLog(
+      page,
+      (entry) =>
+        entry.label === '[explorar:file-fetch]' &&
+        entry.payload?.source === 'local-filesystem' &&
+        typeof entry.payload?.requestUrl === 'string' &&
+        entry.payload.requestUrl.includes('/repos/littlekernel/lk/') &&
+        entry.payload.requestUrl.endsWith(`/${TEST_FILE_PATH}`),
+      `Expected local staged corpus fetch for ${TEST_FILE_PATH}`
+    );
 
     await expect(page.getByRole('code').getByText('#include <lk/main.h>')).toBeVisible({
       timeout: 30000,
     });
+  });
+
+  test('can switch dev corpus fetches to the configured R2 bucket source', async ({ page }) => {
+    await routeCorpusRepository({
+      page,
+      owner: 'littlekernel',
+      repo: 'lk',
+      manifest: TEST_MANIFEST,
+      files: {
+        [TEST_FILE_PATH]: TEST_FILE_CONTENT,
+      },
+    });
+
+    const response = await page.goto('/littlekernel/lk', { waitUntil: 'domcontentloaded' });
+    expect(response?.status()).toBe(200);
+
+    await page.getByLabel('Storage source').selectOption('r2-bucket');
+    await resetDebugLogs(page);
+    await openGuideFile(page, TEST_FILE_PATH);
+
+    await expectDebugLog(
+      page,
+      (entry) =>
+        entry.label === '[explorar:file-fetch]' &&
+        entry.payload?.source === 'r2-bucket' &&
+        typeof entry.payload?.requestUrl === 'string' &&
+        entry.payload.requestUrl.includes(
+          'pub-fed8a8778c5340c9a70aec8e22b8296d.r2.dev/repos/littlekernel/lk/'
+        ),
+      `Expected R2 bucket fetch for ${TEST_FILE_PATH}`
+    );
   });
 
   test('failed loads surface an error instead of leaving the editor stuck on loading', async ({

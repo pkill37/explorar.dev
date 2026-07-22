@@ -6,6 +6,8 @@ function normalizeBaseUrl(baseUrl: string): string {
   return normalized.replace(/\/+$/, '');
 }
 
+export type CuratedRepoSourceMode = 'local-filesystem' | 'r2-bucket';
+
 function buildRepoPath(owner: string, repo: string, branch: string, filePath: string): string {
   const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
   return `/repos/${owner}/${repo}/${branch}/${cleanPath}`;
@@ -39,6 +41,32 @@ export function getCuratedContentBaseUrl(): string {
   return getR2BucketBaseUrl();
 }
 
+export function hasConfiguredR2BucketBaseUrl(): boolean {
+  return getR2BucketBaseUrl().length > 0;
+}
+
+export function isLocalFilesystemCorpusAvailable(): boolean {
+  return process.env.NODE_ENV === 'development';
+}
+
+export function getDefaultCuratedRepoSourceMode(): CuratedRepoSourceMode {
+  return isLocalFilesystemCorpusAvailable() ? 'local-filesystem' : 'r2-bucket';
+}
+
+export function normalizeCuratedRepoSourceMode(
+  sourceMode: CuratedRepoSourceMode
+): CuratedRepoSourceMode {
+  if (sourceMode === 'local-filesystem' && !isLocalFilesystemCorpusAvailable()) {
+    return 'r2-bucket';
+  }
+
+  if (sourceMode === 'r2-bucket' && !hasConfiguredR2BucketBaseUrl()) {
+    return isLocalFilesystemCorpusAvailable() ? 'local-filesystem' : 'r2-bucket';
+  }
+
+  return sourceMode;
+}
+
 export function buildCuratedRepoUrl(
   owner: string,
   repo: string,
@@ -60,4 +88,18 @@ export function buildCuratedRepoStaticPath(
   filePath: string
 ): string {
   return buildRepoPath(owner, repo, branch, filePath);
+}
+
+export function buildCuratedRepoUrlForSource(
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string,
+  sourceMode: CuratedRepoSourceMode
+): string {
+  if (sourceMode === 'local-filesystem') {
+    return buildCuratedRepoStaticPath(owner, repo, branch, filePath);
+  }
+
+  return buildCuratedRepoUrl(owner, repo, branch, filePath);
 }

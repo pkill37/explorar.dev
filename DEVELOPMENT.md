@@ -48,9 +48,11 @@ Opens at http://localhost:3000. The `predev` script automatically downloads the 
 
 All variables are `NEXT_PUBLIC_` — there is no backend or server-side configuration.
 
-Set `NEXT_PUBLIC_CURATED_CONTENT_BASE_URL=https://explorar.dev` in `.env.local` when you want local development to read curated source files from the remote deployment origin instead of the local corpus mirror.
+Local development defaults to the staged local corpus at `/repos/*` for source files, manifests, and `code-index.sqlite`. The canonical corpus is stored in the workspace `repos/` directory; `public/repos` is generated as a symlink in dev mode or a mirror when static staging is requested.
 
-Set `NEXT_PUBLIC_R2_PUBLIC_BASE_URL=https://r2.example.com` in `.env.local` when you want the `R2 bucket` source option in the UI to hit a direct public R2/custom-domain origin.
+Use the repository sidebar's **Storage source** selector to switch a dev session between `Local staged corpus` and `R2 bucket`. Set `NEXT_PUBLIC_R2_PUBLIC_BASE_URL=https://r2.example.com` in `.env.local` when you want the `R2 bucket` option to hit a different public R2/custom-domain origin.
+
+Set `NEXT_PUBLIC_CURATED_CONTENT_BASE_URL=https://explorar.dev` only as a legacy fallback for bucket-backed curated corpus fetches when `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is not set.
 
 ---
 
@@ -94,14 +96,14 @@ Browser
 │   └── IndexedDB Storage (repos, file cache)
 │
 ├── Curated Repo Corpus → /repos/ (downloaded before build)
-│   └── mirrored into /public/repos/ for local dev only
+│   └── staged at /public/repos/ only when the browser must serve local corpus files
 │
 └── Arbitrary Repos → GitHub API (unauthenticated, 60 req/hr)
 ```
 
 ### Repository Modes
 
-**Curated (Static):** Downloaded into the local corpus via `scripts/download-repos.ts`. In local dev the corpus is mirrored into `/public/repos/[owner]/[repo]/[branch]/`; in production curated files are fetched from a direct public bucket/custom-domain origin. No GitHub API calls are needed for curated repos.
+**Curated (Static):** Downloaded into the canonical local corpus via `scripts/download-repos.ts` under `repos/[owner]/[repo]/[branch]/`. In local dev, `public/repos` is generated as a symlink to that corpus so the browser can fetch `/repos/[owner]/[repo]/[branch]/...`; in production curated files are fetched from a direct public bucket/custom-domain origin. No GitHub API calls are needed for curated repos.
 
 **Arbitrary (Dynamic):** User-entered repos downloaded on-demand to IndexedDB via `github-archive.ts`. Files lazy-loaded when opened.
 

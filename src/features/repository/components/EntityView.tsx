@@ -10,6 +10,7 @@ import {
   getRepositoryMode,
   getTreeStructureFromStatic,
   resolveCorpusPathFromKnownFiles,
+  type CuratedRepoSourceMode,
 } from '@/lib/repo-static';
 import type { FileNode } from '@/types';
 
@@ -392,6 +393,7 @@ interface EntityViewProps {
   chapterMapEntries?: ChapterEntry[];
   guideSections?: GuideSection[];
   isActive?: boolean;
+  sourceMode?: CuratedRepoSourceMode;
 }
 
 const FETCH_CAP = 40;
@@ -817,10 +819,10 @@ export function EntityView({
   chapterMapEntries,
   guideSections,
   isActive = true,
+  sourceMode = 'r2-bucket',
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultRevision ?? 'main';
-  const fileSourceMode = 'r2-bucket' as const;
 
   // Per-key entity cache — key is chapterId or '__all__'
   const cacheRef = useRef<Map<string, ScoredEntity[]>>(new Map());
@@ -836,7 +838,7 @@ export function EntityView({
   const folderGroups = useMemo(() => buildFolderGroups(filteredScored), [filteredScored]);
 
   // Stable key for the current view
-  const currentKey = activeChapterId ?? '__all__';
+  const currentKey = `${sourceMode}:${activeChapterId ?? '__all__'}`;
 
   // Guide-selected paths for the current key. These may be files or directories.
   const selectedPaths = useMemo(() => {
@@ -896,7 +898,7 @@ export function EntityView({
         if (repoMode !== 'curated') {
           throw new Error(`Repository ${owner}/${repo} is not curated`);
         }
-        const tree = await getTreeStructureFromStatic(owner, repo, branch);
+        const tree = await getTreeStructureFromStatic(owner, repo, branch, { sourceMode });
 
         if (cancelled) return;
 
@@ -918,7 +920,7 @@ export function EntityView({
     return () => {
       cancelled = true;
     };
-  }, [owner, repo, branch, selectedPaths, fileSourceMode, isActive]);
+  }, [owner, repo, branch, selectedPaths, sourceMode, isActive]);
 
   useEffect(() => {
     console.log('[EntityView] files selected for scan', {
@@ -966,7 +968,8 @@ export function EntityView({
         await Promise.all(
           batch.slice(i, i + BATCH_SIZE).map(async (fp: string) => {
             try {
-              const fullText = (await fetchRepositoryFile(owner, repo, branch, fp)).content;
+              const fullText = (await fetchRepositoryFile(owner, repo, branch, fp, { sourceMode }))
+                .content;
               const text = fullText.length > BYTES_CAP ? fullText.slice(0, BYTES_CAP) : fullText;
               const entities = extractEntities(fp, text);
 
@@ -1000,7 +1003,7 @@ export function EntityView({
     return () => {
       cancelled = true;
     };
-  }, [currentKey, branch, owner, repo, activeChapterId, filesToFetch, isActive]);
+  }, [currentKey, branch, owner, repo, activeChapterId, filesToFetch, isActive, sourceMode]);
 
   useEffect(() => {
     console.log('[EntityView] render state', {

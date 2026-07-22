@@ -11,7 +11,7 @@ Explorar.dev is a Next.js 16 application for exploring and learning from arbitra
 - **Frontend**: Static Next.js export with no server-side rendering
 - **No Backend**: Pure frontend application, no authentication or user data collection
 - **Repository Modes**:
-  - **Curated Mode**: Static repositories downloaded at build time, served from `/public/repos/` locally and from a public bucket-backed origin in production
+  - **Curated Mode**: Static repositories downloaded into `repos/`, served through generated `public/repos` staging locally and from a public bucket-backed origin in production
   - **Arbitrary Mode**: User-selected GitHub repositories downloaded on-demand to IndexedDB
 
 Curated repositories are pinned to fixed refs. Do not add logic that refreshes them from remote `main`/`master` or otherwise chases the latest upstream commit.
@@ -128,7 +128,7 @@ Local public mirror or public bucket   IndexedDB (repo-storage.ts)
 **Curated (Static)**:
 
 - Repositories pre-downloaded at build time via `scripts/download-repos.ts`
-- Files live in `/public/repos/[owner]/[repo]/[branch]/` for local development
+- Files live in `repos/[owner]/[repo]/[branch]/`; local development stages `public/repos` as a generated symlink/mirror so browsers can fetch `/repos/...`
 - Production fetches point at a direct public curated-content origin (R2 by default)
 - Configuration in `src/lib/project-guides.tsx`
 - No API calls needed after build
@@ -194,7 +194,7 @@ Markdown guides for curated repos are loaded via `guide-loader.tsx` which parses
 ### Adding a Curated Repository
 
 1. Update `src/lib/project-guides.tsx` with repo config
-2. Add download script or manually place files in `public/repos/[owner]/[repo]/[branch]/`
+2. Add download script or manually place files in `repos/[owner]/[repo]/[branch]/`, then stage `public/repos` when local browser access is needed
 3. Add markdown guides in `src/lib/guides/[repo-name].md`
 4. Build: `npm run build`
 

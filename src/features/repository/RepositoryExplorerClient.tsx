@@ -9,11 +9,17 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/features/guides/guide-loader';
 import { debugLog } from '@/lib/browser-debug';
+import {
+  getDefaultCuratedRepoSourceMode,
+  normalizeCuratedRepoSourceMode,
+} from '@/lib/curated-content-url';
+import type { CuratedRepoSourceMode } from '@/lib/repo-static';
 import '@/app/vscode.css';
 
 const GUIDE_DEFAULT_WIDTH = 300;
 const GUIDE_MIN_WIDTH = 200;
 const GUIDE_MAX_WIDTH = 520;
+const CORPUS_SOURCE_MODE_STORAGE_KEY = 'repository-workspace-explorer-corpus-source-mode';
 
 interface RepositoryExplorerClientProps {
   owner: string;
@@ -36,6 +42,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
 
   const [isMounted, setIsMounted] = useState(false);
   const [mode, setMode] = useState<'editor' | 'search' | 'entities'>('editor');
+  const [fileSourceMode, setFileSourceMode] = useState<CuratedRepoSourceMode>(() =>
+    getDefaultCuratedRepoSourceMode()
+  );
   const [initialFile, setInitialFile] = useState<InitialFileTarget | null>(null);
   // Keep EntityView mounted once first activated to preserve per-chapter cache
   const [entitiesMounted, setEntitiesMounted] = useState(false);
@@ -97,6 +106,27 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       })),
     [guideSections]
   );
+  useEffect(() => {
+    let nextSourceMode = getDefaultCuratedRepoSourceMode();
+    try {
+      const savedSourceMode = localStorage.getItem(CORPUS_SOURCE_MODE_STORAGE_KEY);
+      if (savedSourceMode === 'local-filesystem' || savedSourceMode === 'r2-bucket') {
+        nextSourceMode = savedSourceMode;
+      }
+    } catch {
+      // Keep the environment default.
+    }
+    nextSourceMode = normalizeCuratedRepoSourceMode(nextSourceMode);
+    const timeoutId = window.setTimeout(() => {
+      setFileSourceMode(nextSourceMode);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  const handleSourceModeChange = useCallback((sourceMode: CuratedRepoSourceMode) => {
+    setFileSourceMode(normalizeCuratedRepoSourceMode(sourceMode));
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setIsMounted(true);
@@ -274,6 +304,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             initialFile={initialFile}
             hideGuidePanel
             layoutMode={mode === 'search' ? 'search' : 'editor'}
+            sourceMode={fileSourceMode}
+            onSourceModeChange={handleSourceModeChange}
             onOpenFileRequest={handleEnterFile}
           />
         </div>
@@ -298,6 +330,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               chapterMapEntries={chapterMapEntries}
               guideSections={guideSections}
               isActive={mode === 'entities'}
+              sourceMode={fileSourceMode}
             />
           )}
         </div>

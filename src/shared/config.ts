@@ -24,28 +24,12 @@ class Config {
     return undefined;
   }
 
-  getSiteUrl(): string {
-    return this.getConfig('NEXT_PUBLIC_SITE_URL') || 'https://explorar.dev';
-  }
-
   getGuidesApiUrl(): string {
     return this.getConfig('NEXT_PUBLIC_GUIDES_API_URL') || '';
   }
 
   getGuidesApiKey(): string {
     return this.getConfig('NEXT_PUBLIC_GUIDES_API_KEY') || '';
-  }
-
-  getCuratedContentBaseUrl(): string {
-    return this.getConfig('NEXT_PUBLIC_CURATED_CONTENT_BASE_URL') || '';
-  }
-
-  isProduction(): boolean {
-    return this.getConfig('NODE_ENV') === 'production';
-  }
-
-  isDevelopment(): boolean {
-    return this.getConfig('NODE_ENV') === 'development';
   }
 }
 

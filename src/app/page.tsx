@@ -1,10 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTrustedVersion } from '@/lib/github-api';
-import { getStorageUsage, RepositoryMetadata } from '@/lib/repo-storage';
-import { useRepository } from '@/contexts/RepositoryContext';
 import { CURATED_REPOS, getCuratedRepoPath, type CuratedRepoConfig } from '@/lib/curated-repos';
 
 const HERO_SLOGANS = [
@@ -70,60 +67,14 @@ function CommunityPanel() {
 
 export default function Home() {
   const router = useRouter();
-  const { setRepository } = useRepository();
-  const [repositories, setRepositories] = useState<RepositoryMetadata[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  // Load existing repositories
-  const loadData = async () => {
-    try {
-      const usage = await getStorageUsage();
-      // Only show GitHub repositories (filter out uploaded ones)
-      setRepositories(usage.repositories.filter((r) => r.source === 'github'));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   // Get selected branch for a repo (defaults to first trusted branch)
   const getSelectedBranch = (repo: CuratedRepoConfig): string => {
     return getTrustedVersion(repo.owner, repo.repo);
   };
 
-  // Handle repository download or open
-  const handleRepositoryAction = async (githubRepo: CuratedRepoConfig) => {
-    const identifier = `${githubRepo.owner}~${githubRepo.repo}`;
-    const existingRepo = repositories.find(
-      (r) => r.source === 'github' && r.identifier === identifier
-    );
-
-    // If already downloaded, just open it
-    if (existingRepo) {
-      try {
-        await setRepository('github', identifier, githubRepo.displayName);
-        router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to open repository');
-      }
-      return;
-    }
-
-    setError(null);
-    try {
-      const selectedBranch = getSelectedBranch(githubRepo);
-      if (!selectedBranch) {
-        throw new Error('No branch selected');
-      }
-
-      await setRepository('github', identifier, githubRepo.displayName);
-      router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to open repository');
-    }
+  const handleRepositoryAction = (githubRepo: CuratedRepoConfig) => {
+    router.push(getCuratedRepoPath(githubRepo.owner, githubRepo.repo));
   };
 
   return (
@@ -162,28 +113,6 @@ export default function Home() {
               </div>
             </div>
           </header>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mb-8 p-4 bg-red-900/20 border-l-4 border-red-400 rounded-lg shadow-sm animate-in slide-in-from-top-2">
-              <div className="flex items-center gap-2">
-                <svg
-                  className="w-5 h-5 text-red-400 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <div className="text-sm text-red-200">{error}</div>
-              </div>
-            </div>
-          )}
 
           {/* Repo grid */}
           <div className="mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -235,9 +164,7 @@ export default function Home() {
                         {repo.owner}/{repo.repo}
                       </p>
                       {repo.description && (
-                        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
-                          {repo.description}
-                        </p>
+                        <p className="text-xs text-gray-500 leading-relaxed">{repo.description}</p>
                       )}
                     </div>
                   </div>

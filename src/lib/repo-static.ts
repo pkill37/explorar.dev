@@ -1,11 +1,22 @@
 // Static file reader for curated repositories.
-// In local dev this resolves to /public/repos/; in production curated files
-// are typically fetched from a direct public bucket/custom-domain origin.
+// In local dev this resolves to the staged /repos/ public path, which is
+// backed by a generated public/repos symlink or mirror. In production curated
+// files are typically fetched from a direct public bucket/custom-domain origin.
 
 import type { FileNode } from '@/types';
-import { buildCuratedRepoStaticPath, buildCuratedRepoUrl } from './curated-content-url';
+import {
+  buildCuratedRepoStaticPath,
+  buildCuratedRepoUrl,
+  buildCuratedRepoUrlForSource,
+  getDefaultCuratedRepoSourceMode,
+  type CuratedRepoSourceMode,
+} from './curated-content-url';
 import { isCuratedRepo as isConfiguredCuratedRepo } from './curated-repos';
-import { logFileFetchDebugInfo, type FileFetchResult } from './file-fetch-debug';
+import {
+  logFileFetchDebugInfo,
+  type FileFetchResult,
+  type FileFetchSource,
+} from './file-fetch-debug';
 import { debugLog } from './browser-debug';
 import {
   CODE_INDEX_FILE_NAME,
@@ -24,18 +35,48 @@ const codeIndexSizeCache = new Map<string, number>();
 const codeIndexLoadSourceCache = new Map<string, CodeIndexLoadProgress['source']>();
 const CODE_INDEX_BROWSER_CACHE_NAME = 'explorar-code-index-v1';
 
+export type { CuratedRepoSourceMode };
+
+export interface StaticStorageOptions {
+  sourceMode?: CuratedRepoSourceMode;
+}
+
 export interface CodeIndexLoadProgress {
   loadedBytes: number;
   totalBytes: number | null;
   source: 'cache' | 'network';
 }
 
-function getCodeIndexCacheKey(owner: string, repo: string, branch: string): string {
-  return getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME);
+function resolveSourceMode(sourceMode?: CuratedRepoSourceMode): CuratedRepoSourceMode {
+  return sourceMode ?? getDefaultCuratedRepoSourceMode();
 }
 
-function getCodeIndexLoadKey(owner: string, repo: string, branch: string): string {
-  return `${owner}/${repo}@${branch}`;
+function getDebugSource(sourceMode: CuratedRepoSourceMode): FileFetchSource {
+  return sourceMode === 'local-filesystem' ? 'local-filesystem' : 'r2-bucket';
+}
+
+export function buildCodeIndexBrowserCacheKey(
+  owner: string,
+  repo: string,
+  branch: string,
+  sourceMode: CuratedRepoSourceMode,
+  baseOrigin: string = globalThis.location?.origin ?? 'http://localhost'
+): string {
+  const url = new URL(
+    getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME, sourceMode),
+    baseOrigin
+  );
+  url.searchParams.set('__explorar_source', sourceMode);
+  return url.href;
+}
+
+function getCodeIndexLoadKey(
+  owner: string,
+  repo: string,
+  branch: string,
+  sourceMode: CuratedRepoSourceMode
+): string {
+  return `${sourceMode}:${owner}/${repo}@${branch}`;
 }
 
 function yieldToPaint(): Promise<void> {
@@ -61,6 +102,7 @@ async function readCachedCodeIndexBytes(
   owner: string,
   repo: string,
   branch: string,
+  sourceMode: CuratedRepoSourceMode,
   onProgress?: (progress: CodeIndexLoadProgress) => void
 ): Promise<ArrayBuffer | null> {
   if (typeof caches === 'undefined') {
@@ -69,28 +111,30 @@ async function readCachedCodeIndexBytes(
 
   try {
     const cache = await caches.open(CODE_INDEX_BROWSER_CACHE_NAME);
-    const cached = await cache.match(getCodeIndexCacheKey(owner, repo, branch));
+    const cacheKey = buildCodeIndexBrowserCacheKey(owner, repo, branch, sourceMode);
+    const cached = await cache.match(cacheKey);
     if (!cached || !cached.ok) {
       debugLog('[explorar:code-index-cache] miss', {
         owner,
         repo,
         branch,
+        sourceMode,
         filePath: CODE_INDEX_FILE_NAME,
-        cacheKey: getCodeIndexCacheKey(owner, repo, branch),
+        cacheKey,
       });
       return null;
     }
     const bytes = await cached.arrayBuffer();
-    const fileCacheKey = getCodeIndexCacheKey(owner, repo, branch);
-    const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+    const loadKey = getCodeIndexLoadKey(owner, repo, branch, sourceMode);
     codeIndexLoadSourceCache.set(loadKey, 'cache');
     codeIndexSizeCache.set(loadKey, bytes.byteLength);
     debugLog('[explorar:code-index-cache] hit', {
       owner,
       repo,
       branch,
+      sourceMode,
       filePath: CODE_INDEX_FILE_NAME,
-      cacheKey: fileCacheKey,
+      cacheKey,
       byteLength: bytes.byteLength,
     });
     onProgress?.({
@@ -104,6 +148,7 @@ async function readCachedCodeIndexBytes(
       owner,
       repo,
       branch,
+      sourceMode,
       filePath: CODE_INDEX_FILE_NAME,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -115,6 +160,7 @@ async function writeCachedCodeIndexBytes(
   owner: string,
   repo: string,
   branch: string,
+  sourceMode: CuratedRepoSourceMode,
   bytes: ArrayBuffer
 ): Promise<void> {
   if (typeof caches === 'undefined') {
@@ -128,12 +174,13 @@ async function writeCachedCodeIndexBytes(
         'content-type': 'application/octet-stream',
       },
     });
-    await cache.put(getCodeIndexCacheKey(owner, repo, branch), response);
+    await cache.put(buildCodeIndexBrowserCacheKey(owner, repo, branch, sourceMode), response);
   } catch (error) {
     debugLog('[explorar:code-index-cache] write-error', {
       owner,
       repo,
       branch,
+      sourceMode,
       filePath: CODE_INDEX_FILE_NAME,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -187,6 +234,7 @@ async function readBinaryFromStatic(
   repo: string,
   branch: string,
   filePath: string,
+  sourceMode: CuratedRepoSourceMode,
   timeoutMs: number = STATIC_FETCH_TIMEOUT_MS,
   onProgress?: (progress: CodeIndexLoadProgress) => void
 ): Promise<ArrayBuffer | null> {
@@ -195,22 +243,23 @@ async function readBinaryFromStatic(
   }
 
   if (filePath === CODE_INDEX_FILE_NAME) {
-    const cacheKey = getCodeIndexCacheKey(owner, repo, branch);
-    const cachedBytes = await readCachedCodeIndexBytes(owner, repo, branch, onProgress);
+    const cacheKey = buildCodeIndexBrowserCacheKey(owner, repo, branch, sourceMode);
+    const cachedBytes = await readCachedCodeIndexBytes(owner, repo, branch, sourceMode, onProgress);
     if (cachedBytes) {
       debugLog('[explorar:binary-fetch-static] cache-hit', {
         owner,
         repo,
         branch,
+        sourceMode,
         filePath,
         cacheKey,
       });
-      codeIndexLoadSourceCache.set(getCodeIndexLoadKey(owner, repo, branch), 'cache');
+      codeIndexLoadSourceCache.set(getCodeIndexLoadKey(owner, repo, branch, sourceMode), 'cache');
       return cachedBytes;
     }
   }
 
-  const url = getStaticFilePath(owner, repo, branch, filePath);
+  const url = getStaticFilePath(owner, repo, branch, filePath, sourceMode);
 
   try {
     const response = await fetchWithTimeout(url, timeoutMs);
@@ -219,6 +268,7 @@ async function readBinaryFromStatic(
         owner,
         repo,
         branch,
+        sourceMode,
         filePath,
         url,
         status: response.status,
@@ -230,7 +280,7 @@ async function readBinaryFromStatic(
     const totalBytesHeader = response.headers.get('content-length');
     let totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
     if (!Number.isFinite(totalBytes ?? NaN) || (totalBytes ?? 0) <= 0) {
-      const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+      const loadKey = getCodeIndexLoadKey(owner, repo, branch, sourceMode);
       totalBytes =
         codeIndexSizeCache.get(loadKey) ?? (await resolveRemoteContentLength(url, timeoutMs));
       if (Number.isFinite(totalBytes ?? NaN) && (totalBytes ?? 0) > 0) {
@@ -269,7 +319,7 @@ async function readBinaryFromStatic(
         byteView.byteOffset + byteView.byteLength
       ) as ArrayBuffer;
       if (filePath === CODE_INDEX_FILE_NAME) {
-        const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+        const loadKey = getCodeIndexLoadKey(owner, repo, branch, sourceMode);
         codeIndexSizeCache.set(loadKey, bytes.byteLength);
         codeIndexLoadSourceCache.set(loadKey, 'network');
       }
@@ -283,14 +333,14 @@ async function readBinaryFromStatic(
       });
 
       if (filePath === CODE_INDEX_FILE_NAME) {
-        void writeCachedCodeIndexBytes(owner, repo, branch, bytes);
+        void writeCachedCodeIndexBytes(owner, repo, branch, sourceMode, bytes);
       }
       return bytes;
     }
 
     const bytes = await response.arrayBuffer();
     if (filePath === CODE_INDEX_FILE_NAME) {
-      const loadKey = getCodeIndexLoadKey(owner, repo, branch);
+      const loadKey = getCodeIndexLoadKey(owner, repo, branch, sourceMode);
       codeIndexSizeCache.set(loadKey, bytes.byteLength);
       codeIndexLoadSourceCache.set(loadKey, 'network');
     }
@@ -301,7 +351,7 @@ async function readBinaryFromStatic(
       source: 'network',
     });
     if (filePath === CODE_INDEX_FILE_NAME) {
-      void writeCachedCodeIndexBytes(owner, repo, branch, bytes);
+      void writeCachedCodeIndexBytes(owner, repo, branch, sourceMode, bytes);
     }
     return bytes;
   } catch (error) {
@@ -309,6 +359,7 @@ async function readBinaryFromStatic(
       owner,
       repo,
       branch,
+      sourceMode,
       filePath,
       url,
       error: error instanceof Error ? error.message : String(error),
@@ -384,14 +435,15 @@ export async function resolveCorpusPathFromTree(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string
+  filePath: string,
+  options?: StaticStorageOptions
 ): Promise<string | null> {
   const normalizedPath = filePath.replace(/\/+$/, '');
   if (!normalizedPath) {
     return null;
   }
 
-  const tree = await getTreeStructureFromStatic(owner, repo, branch);
+  const tree = await getTreeStructureFromStatic(owner, repo, branch, options);
   const knownPaths = collectFilePaths(tree);
   return resolveCorpusPathFromKnownFiles(normalizedPath, knownPaths);
 }
@@ -407,27 +459,36 @@ export function getRepositoryMode(owner: string, repo: string): 'curated' {
   return 'curated';
 }
 
-const getStaticFilePath = (owner: string, repo: string, branch: string, filePath: string) =>
-  buildCuratedRepoUrl(owner, repo, branch, filePath);
+const getStaticFilePath = (
+  owner: string,
+  repo: string,
+  branch: string,
+  filePath: string,
+  sourceMode: CuratedRepoSourceMode = resolveSourceMode()
+) => buildCuratedRepoUrlForSource(owner, repo, branch, filePath, sourceMode);
 
 function getStaticFileCandidates(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string
-): Array<{ url: string; resolvedSource: 'r2-bucket' | 'static-path' }> {
-  const candidates: Array<{ url: string; resolvedSource: 'r2-bucket' | 'static-path' }> = [
+  filePath: string,
+  sourceMode: CuratedRepoSourceMode
+): Array<{ url: string; resolvedSource: FileFetchSource }> {
+  if (sourceMode === 'local-filesystem') {
+    return [
+      {
+        url: buildCuratedRepoStaticPath(owner, repo, branch, filePath),
+        resolvedSource: 'local-filesystem',
+      },
+    ];
+  }
+
+  return [
     {
-      url: getStaticFilePath(owner, repo, branch, filePath),
+      url: buildCuratedRepoUrl(owner, repo, branch, filePath),
       resolvedSource: 'r2-bucket',
     },
-    {
-      url: buildCuratedRepoStaticPath(owner, repo, branch, filePath),
-      resolvedSource: 'static-path',
-    },
   ];
-
-  return candidates;
 }
 
 /**
@@ -437,13 +498,15 @@ export async function readFileFromStatic(
   owner: string,
   repo: string,
   branch: string,
-  filePath: string
+  filePath: string,
+  options?: StaticStorageOptions
 ): Promise<FileFetchResult> {
   if (filePath.endsWith('/')) {
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const candidates = getStaticFileCandidates(owner, repo, branch, filePath);
+  const sourceMode = resolveSourceMode(options?.sourceMode);
+  const candidates = getStaticFileCandidates(owner, repo, branch, filePath, sourceMode);
 
   let lastError: Error | null = null;
 
@@ -453,6 +516,7 @@ export async function readFileFromStatic(
         owner,
         repo,
         branch,
+        sourceMode,
         filePath,
         source: candidate.resolvedSource,
         resolvedSource: candidate.resolvedSource,
@@ -465,6 +529,7 @@ export async function readFileFromStatic(
           owner,
           repo,
           branch,
+          sourceMode,
           filePath,
           source: candidate.resolvedSource,
           resolvedSource: candidate.resolvedSource,
@@ -484,7 +549,7 @@ export async function readFileFromStatic(
         repo,
         branch,
         filePath,
-        source: 'r2-bucket',
+        source: getDebugSource(sourceMode),
         resolvedSource: candidate.resolvedSource,
         url: candidate.url,
         contentLength: content.length,
@@ -494,7 +559,7 @@ export async function readFileFromStatic(
         content,
         debugInfo: {
           enabled: true,
-          source: 'r2-bucket',
+          source: getDebugSource(sourceMode),
           requestUrl: candidate.url,
           responseUrl: response.url || undefined,
           responseStatus: response.status,
@@ -516,6 +581,7 @@ export async function readFileFromStatic(
         owner,
         repo,
         branch,
+        sourceMode,
         filePath,
         source: candidate.resolvedSource,
         resolvedSource: candidate.resolvedSource,
@@ -557,14 +623,16 @@ function expandManifestNodes(nodes: ManifestNode[], parentPath: string = ''): Fi
 export async function getTreeStructureFromStatic(
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
+  options?: StaticStorageOptions
 ): Promise<FileNode[] | null> {
   // Only try to fetch manifest for curated repos
   if (!isCuratedRepo(owner, repo)) {
     return null;
   }
 
-  const cacheKey = `${owner}/${repo}@${branch}`;
+  const sourceMode = resolveSourceMode(options?.sourceMode);
+  const cacheKey = `${sourceMode}:${owner}/${repo}@${branch}`;
   const cached = treeStructureCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -575,7 +643,7 @@ export async function getTreeStructureFromStatic(
     const manifestFileNames = ['repo-manifest.json', '.repo-manifest.json'];
 
     for (const manifestFileName of manifestFileNames) {
-      const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName);
+      const candidates = getStaticFileCandidates(owner, repo, branch, manifestFileName, sourceMode);
 
       for (const candidate of candidates) {
         try {
@@ -590,6 +658,7 @@ export async function getTreeStructureFromStatic(
               owner,
               repo,
               branch,
+              sourceMode,
               source: candidate.resolvedSource,
               resolvedSource: candidate.resolvedSource,
               url: candidate.url,
@@ -605,6 +674,7 @@ export async function getTreeStructureFromStatic(
             owner,
             repo,
             branch,
+            sourceMode,
             source: candidate.resolvedSource,
             resolvedSource: candidate.resolvedSource,
             url: candidate.url,
@@ -616,6 +686,7 @@ export async function getTreeStructureFromStatic(
             owner,
             repo,
             branch,
+            sourceMode,
             source: candidate.resolvedSource,
             resolvedSource: candidate.resolvedSource,
             url: candidate.url,
@@ -648,6 +719,7 @@ export async function getCodeIndexFromStatic(
   repo: string,
   branch: string,
   options?: {
+    sourceMode?: CuratedRepoSourceMode;
     onProgress?: (progress: CodeIndexLoadProgress) => void;
   }
 ): Promise<LoadedCodeIndex | null> {
@@ -655,12 +727,14 @@ export async function getCodeIndexFromStatic(
     return null;
   }
 
-  const cacheKey = `${owner}/${repo}@${branch}`;
+  const sourceMode = resolveSourceMode(options?.sourceMode);
+  const cacheKey = getCodeIndexLoadKey(owner, repo, branch, sourceMode);
   if (!codeIndexCache.has(cacheKey)) {
     debugLog('[explorar:code-index-static] load-start', {
       owner,
       repo,
       branch,
+      sourceMode,
       cacheKey,
       cacheState: 'miss',
     });
@@ -672,6 +746,7 @@ export async function getCodeIndexFromStatic(
           repo,
           branch,
           CODE_INDEX_FILE_NAME,
+          sourceMode,
           SEARCH_INDEX_FETCH_TIMEOUT_MS,
           options?.onProgress
         );
@@ -715,8 +790,9 @@ export async function getCodeIndexFromStatic(
             owner,
             repo,
             branch,
+            sourceMode,
             filePath: CODE_INDEX_FILE_NAME,
-            url: getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME),
+            url: getStaticFilePath(owner, repo, branch, CODE_INDEX_FILE_NAME, sourceMode),
             fileCount: handle.fileCount,
           });
 
@@ -731,6 +807,7 @@ export async function getCodeIndexFromStatic(
       owner,
       repo,
       branch,
+      sourceMode,
       cacheKey,
       cacheState: 'hit',
     });
@@ -743,6 +820,7 @@ export async function getCodeIndexFromStatic(
       owner,
       repo,
       branch,
+      sourceMode,
       cacheKey,
     });
     return null;
@@ -755,6 +833,7 @@ export async function getCodeIndexFromStatic(
       owner,
       repo,
       branch,
+      sourceMode,
       cacheKey,
       source: loadSource,
       totalBytes,
@@ -768,6 +847,7 @@ export async function getCodeIndexFromStatic(
       owner,
       repo,
       branch,
+      sourceMode,
       cacheKey,
       source: loadSource,
     });
@@ -785,6 +865,7 @@ export async function getCodeIndexFromStatic(
     owner,
     repo,
     branch,
+    sourceMode,
     cacheKey,
     fileCount: payload.fileCount,
     buildSignature: payload.buildSignature,

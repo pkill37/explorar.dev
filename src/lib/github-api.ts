@@ -7,7 +7,9 @@ import {
   getTreeStructureFromStatic,
   getRepositoryMode,
   resolveCorpusPathFromTree,
+  type CuratedRepoSourceMode,
 } from './repo-static';
+import { getDefaultCuratedRepoSourceMode } from './curated-content-url';
 import { getCuratedRepoRevision } from './curated-repos';
 import type { FileFetchResult } from './file-fetch-debug';
 
@@ -17,9 +19,13 @@ type GitHubConfig = {
   branch: string;
   apiBase: string;
   rawBase: string;
+  corpusSourceMode: CuratedRepoSourceMode;
 };
 
-let currentConfig: GitHubConfig = { ...GITHUB_CONFIG };
+let currentConfig: GitHubConfig = {
+  ...GITHUB_CONFIG,
+  corpusSourceMode: getDefaultCuratedRepoSourceMode(),
+};
 
 /**
  * Check if a branch/version is unstable (main or master)
@@ -86,6 +92,10 @@ export function getCurrentBranch(): string {
   return currentConfig.branch;
 }
 
+export function setCurrentCorpusSourceMode(sourceMode: CuratedRepoSourceMode): void {
+  currentConfig = { ...currentConfig, corpusSourceMode: sourceMode };
+}
+
 /**
  * Get repository identifier for current config
  */
@@ -112,7 +122,8 @@ async function tryFetchFileFromStorage(
   owner: string,
   repo: string,
   branch: string,
-  path: string
+  path: string,
+  sourceMode: CuratedRepoSourceMode
 ): Promise<FileFetchResult | null> {
   if (path.endsWith('/')) {
     return null;
@@ -120,16 +131,18 @@ async function tryFetchFileFromStorage(
 
   try {
     try {
-      return await readFileFromStatic(owner, repo, branch, path);
+      return await readFileFromStatic(owner, repo, branch, path, { sourceMode });
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('File not found:')) {
-        const resolvedPath = await resolveCorpusPathFromTree(owner, repo, branch, path);
+        const resolvedPath = await resolveCorpusPathFromTree(owner, repo, branch, path, {
+          sourceMode,
+        });
         if (!resolvedPath || resolvedPath === path) {
           return null;
         }
 
         try {
-          return await readFileFromStatic(owner, repo, branch, resolvedPath);
+          return await readFileFromStatic(owner, repo, branch, resolvedPath, { sourceMode });
         } catch (resolvedError) {
           if (
             resolvedError instanceof Error &&
@@ -149,7 +162,7 @@ async function tryFetchFileFromStorage(
       return null;
     }
   } catch (error) {
-    console.error('Error fetching file from r2-bucket:', error);
+    console.error(`Error fetching file from ${sourceMode}:`, error);
     return null;
   }
 }
@@ -158,10 +171,14 @@ export async function fetchRepositoryFile(
   owner: string,
   repo: string,
   branch: string,
-  path: string
+  path: string,
+  options?: {
+    sourceMode?: CuratedRepoSourceMode;
+  }
 ): Promise<FileFetchResult> {
+  const sourceMode = options?.sourceMode ?? currentConfig.corpusSourceMode;
   try {
-    const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path);
+    const staticResult = await tryFetchFileFromStorage(owner, repo, branch, path, sourceMode);
     if (staticResult) {
       return staticResult;
     }
@@ -170,7 +187,7 @@ export async function fetchRepositoryFile(
   }
 
   throw new GitHubApiError(
-    `Failed to load "${path}" from r2-bucket for ${owner}/${repo}@${branch}.`,
+    `Failed to load "${path}" from ${sourceMode} for ${owner}/${repo}@${branch}.`,
     404
   );
 }
@@ -201,7 +218,9 @@ export async function fetchFileContent(path: string): Promise<FileFetchResult> {
     }
   }
 
-  return fetchRepositoryFile(currentConfig.owner, currentConfig.repo, currentConfig.branch, path);
+  return fetchRepositoryFile(currentConfig.owner, currentConfig.repo, currentConfig.branch, path, {
+    sourceMode: currentConfig.corpusSourceMode,
+  });
 }
 
 export function sortFileNodes(nodes: FileNode[]): FileNode[] {
@@ -241,13 +260,19 @@ function extractSubtree(tree: FileNode[], path: string): FileNode[] {
   return currentNodes;
 }
 
-export async function buildFileTree(path: string = ''): Promise<FileNode[]> {
+export async function buildFileTree(
+  path: string = '',
+  options?: {
+    sourceMode?: CuratedRepoSourceMode;
+  }
+): Promise<FileNode[]> {
   try {
     const { owner, repo, branch } = currentConfig;
+    const sourceMode = options?.sourceMode ?? currentConfig.corpusSourceMode;
     const mode = getRepositoryMode(owner, repo);
 
     if (mode === 'curated') {
-      const staticTree = await getTreeStructureFromStatic(owner, repo, branch);
+      const staticTree = await getTreeStructureFromStatic(owner, repo, branch, { sourceMode });
       if (staticTree && staticTree.length > 0) {
         // Extract subtree for requested path
         const subtree = extractSubtree(staticTree, path);

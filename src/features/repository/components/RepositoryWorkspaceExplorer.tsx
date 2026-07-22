@@ -10,6 +10,7 @@ import { EditorTab, FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
   fetchFileContent,
+  setCurrentCorpusSourceMode,
   getCurrentRepoLabel,
   setGitHubRepoWithDefaultBranch,
   getTrustedVersion,
@@ -24,7 +25,14 @@ import {
   getCodeIndexFromStatic,
   getTreeStructureFromStatic,
   resolveCorpusPathFromKnownFiles,
+  type CuratedRepoSourceMode,
 } from '@/lib/repo-static';
+import {
+  getDefaultCuratedRepoSourceMode,
+  hasConfiguredR2BucketBaseUrl,
+  isLocalFilesystemCorpusAvailable,
+  normalizeCuratedRepoSourceMode,
+} from '@/lib/curated-content-url';
 import {
   buildSearchPreview,
   CODE_INDEX_PREVIEW_ENRICH_LIMIT,
@@ -69,6 +77,7 @@ const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): strin
 };
 
 const EXPLORER_STORAGE_KEY_PREFIX = 'repository-workspace-explorer';
+const CORPUS_SOURCE_MODE_STORAGE_KEY = `${EXPLORER_STORAGE_KEY_PREFIX}-corpus-source-mode`;
 
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
 
@@ -111,6 +120,8 @@ interface RepositoryWorkspaceExplorerProps {
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
   layoutMode?: 'editor' | 'search';
+  sourceMode?: CuratedRepoSourceMode;
+  onSourceModeChange?: (sourceMode: CuratedRepoSourceMode) => void;
   onOpenFileRequest?: (
     filePath: string,
     searchPattern?: string,
@@ -126,6 +137,8 @@ export default function RepositoryWorkspaceExplorer({
   initialFile,
   hideGuidePanel = false,
   layoutMode = 'editor',
+  sourceMode,
+  onSourceModeChange,
   onOpenFileRequest,
 }: RepositoryWorkspaceExplorerProps) {
   const router = useRouter();
@@ -183,7 +196,12 @@ export default function RepositoryWorkspaceExplorer({
   const [editorLanguage, setEditorLanguage] = useState<string>('');
   const [editorLineCount, setEditorLineCount] = useState<number>(0);
   const [editorFileSize, setEditorFileSize] = useState<string>('');
-  const fileSourceMode = 'r2-bucket' as const;
+  const [localFileSourceMode, setLocalFileSourceMode] = useState<CuratedRepoSourceMode>(() =>
+    getDefaultCuratedRepoSourceMode()
+  );
+  const fileSourceMode = normalizeCuratedRepoSourceMode(sourceMode ?? localFileSourceMode);
+  const isLocalSourceAvailable = isLocalFilesystemCorpusAvailable();
+  const isR2SourceConfigured = hasConfiguredR2BucketBaseUrl();
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -219,6 +237,32 @@ export default function RepositoryWorkspaceExplorer({
   // Track which initialFile has already been opened so we don't re-open on re-renders
   const lastOpenedInitialFileRef = useRef<string | null>(null);
 
+  const setActiveFileSourceMode = useCallback(
+    (nextSourceMode: CuratedRepoSourceMode) => {
+      const normalizedSourceMode = normalizeCuratedRepoSourceMode(nextSourceMode);
+      setLocalFileSourceMode(normalizedSourceMode);
+      onSourceModeChange?.(normalizedSourceMode);
+    },
+    [onSourceModeChange]
+  );
+
+  useEffect(() => {
+    let nextSourceMode = getDefaultCuratedRepoSourceMode();
+    try {
+      const savedSourceMode = localStorage.getItem(CORPUS_SOURCE_MODE_STORAGE_KEY);
+      if (savedSourceMode === 'local-filesystem' || savedSourceMode === 'r2-bucket') {
+        nextSourceMode = savedSourceMode;
+      }
+    } catch {
+      // Keep the environment default.
+    }
+
+    nextSourceMode = normalizeCuratedRepoSourceMode(nextSourceMode);
+
+    setActiveFileSourceMode(nextSourceMode);
+    setCurrentCorpusSourceMode(nextSourceMode);
+  }, [setActiveFileSourceMode]);
+
   // Check if mobile on mount and resize
   // Using 1024px as breakpoint for "small laptop" - below this is mobile/tablet
   useEffect(() => {
@@ -252,6 +296,15 @@ export default function RepositoryWorkspaceExplorer({
     }
     return;
   }, [mobileView]);
+
+  useEffect(() => {
+    setCurrentCorpusSourceMode(fileSourceMode);
+    try {
+      localStorage.setItem(CORPUS_SOURCE_MODE_STORAGE_KEY, fileSourceMode);
+    } catch {
+      // ignore
+    }
+  }, [fileSourceMode]);
 
   // Check repository setup and tree structure readiness
   useEffect(() => {
@@ -305,7 +358,9 @@ export default function RepositoryWorkspaceExplorer({
           }
         }
 
-        const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse);
+        const staticTree = await getTreeStructureFromStatic(owner, repo, branchToUse, {
+          sourceMode: fileSourceMode,
+        });
         const treeExists = staticTree !== null && staticTree.length > 0;
         setIsTreeStructureReady(treeExists);
         setWorkspaceFilePaths(staticTree ? flattenFilePaths(staticTree) : []);
@@ -338,7 +393,7 @@ export default function RepositoryWorkspaceExplorer({
     }
 
     let cancelled = false;
-    const loadKey = `${owner || ''}/${repo || ''}@${selectedVersion}`;
+    const loadKey = `${fileSourceMode}:${owner || ''}/${repo || ''}@${selectedVersion}`;
     if (workspaceSearchLoadKeyRef.current === loadKey) {
       return () => {
         cancelled = true;
@@ -397,6 +452,7 @@ export default function RepositoryWorkspaceExplorer({
 
       try {
         const payload = await getCodeIndexFromStatic(owner || '', repo || '', selectedVersion, {
+          sourceMode: fileSourceMode,
           onProgress: (progress) => {
             if (cancelled || workspaceSearchIndexRequestIdRef.current !== requestId) return;
             const computedProgress =
@@ -514,7 +570,7 @@ export default function RepositoryWorkspaceExplorer({
         workspaceSearchIndexProgressFrameRef.current = null;
       }
     };
-  }, [layoutMode, owner, repo, selectedVersion]);
+  }, [layoutMode, owner, repo, selectedVersion, fileSourceMode]);
 
   useEffect(() => {
     // Use setTimeout to avoid synchronous setState in effect
@@ -683,7 +739,13 @@ export default function RepositoryWorkspaceExplorer({
     }
 
     void setGitHubRepoWithDefaultBranch(owner, repo, selectedVersion);
-  }, [owner, repo, selectedVersion]);
+    setCurrentCorpusSourceMode(fileSourceMode);
+  }, [owner, repo, selectedVersion, fileSourceMode]);
+
+  const listDirectoryFromSelectedSource = useCallback(
+    (path: string) => buildFileTree(path, { sourceMode: fileSourceMode }),
+    [fileSourceMode]
+  );
 
   // Resize handlers
   const handleMouseDown = useCallback((panel: 'sidebar' | 'rightPanel') => {
@@ -1344,6 +1406,51 @@ export default function RepositoryWorkspaceExplorer({
             className="vscode-sidebar-content"
             style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
           >
+            <div
+              style={{
+                flex: '0 0 auto',
+                padding: '10px 12px',
+                borderBottom: '1px solid var(--vscode-border)',
+                background: 'var(--vscode-bg-secondary)',
+              }}
+            >
+              <label
+                htmlFor="corpus-source-mode"
+                style={{
+                  display: 'block',
+                  marginBottom: 6,
+                  color: 'var(--vscode-text-secondary)',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                Storage source
+              </label>
+              <select
+                id="corpus-source-mode"
+                value={fileSourceMode}
+                onChange={(event) =>
+                  setActiveFileSourceMode(event.target.value as CuratedRepoSourceMode)
+                }
+                style={{
+                  width: '100%',
+                  height: 28,
+                  border: '1px solid var(--vscode-border)',
+                  borderRadius: 4,
+                  background: 'var(--vscode-bg-primary)',
+                  color: 'var(--vscode-text-primary)',
+                  fontSize: 12,
+                  padding: '0 8px',
+                }}
+              >
+                <option value="local-filesystem" disabled={!isLocalSourceAvailable}>
+                  Local staged corpus{isLocalSourceAvailable ? '' : ' unavailable'}
+                </option>
+                <option value="r2-bucket" disabled={!isR2SourceConfigured}>
+                  R2 bucket{isR2SourceConfigured ? '' : ' unavailable'}
+                </option>
+              </select>
+            </div>
             <FileTree
               key={`tree-${repoLabel}-${selectedVersion}-${fileSourceMode}`}
               onFileSelect={(filePath: string) => {
@@ -1354,7 +1461,7 @@ export default function RepositoryWorkspaceExplorer({
                 }
               }}
               selectedFile={selectedFile}
-              listDirectory={buildFileTree}
+              listDirectory={listDirectoryFromSelectedSource}
               titleLabel={repoLabel}
               expandDirectoryRequest={directoryExpandRequest}
               searchQuery={workspaceSearchQuery}
@@ -1415,12 +1522,13 @@ export default function RepositoryWorkspaceExplorer({
               {activeTab ? (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   <CodeEditorContainer
+                    key={fileSourceMode}
                     filePath={activeTab.path}
                     onContentLoad={onEditorContentLoad}
                     onOpenFile={openFileInTab}
                     fetchFile={fetchFileContent}
                     workspaceFilePaths={workspaceFilePaths}
-                    workspaceId={`${repoLabel}@${selectedVersion}`}
+                    workspaceId={`${fileSourceMode}:${repoLabel}@${selectedVersion}`}
                     codeIndex={workspaceSearchIndex}
                     markdownViewMode={activeTab.viewMode}
                     onToggleMarkdownPreview={toggleMarkdownPreview}
@@ -1628,6 +1736,7 @@ export default function RepositoryWorkspaceExplorer({
         fileSize={editorFileSize}
         repoLabel={repoLabel}
         branch={currentBranch || selectedVersion}
+        sourceMode={fileSourceMode}
       />
     </div>
   );

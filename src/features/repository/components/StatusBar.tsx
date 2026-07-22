@@ -11,6 +11,7 @@ interface StatusBarProps {
   fileSize?: string;
   repoLabel?: string;
   branch?: string;
+  sourceMode?: 'local-filesystem' | 'r2-bucket';
 }
 
 function formatDisplayBranch(branch: string): string {
@@ -30,8 +31,15 @@ const StatusBar: React.FC<StatusBarProps> = ({
   fileSize,
   repoLabel,
   branch,
+  sourceMode,
 }) => {
   const branchLabel = branch ? formatDisplayBranch(branch) : null;
+  const sourceLabel =
+    sourceMode === 'local-filesystem'
+      ? 'Local staged corpus'
+      : sourceMode === 'r2-bucket'
+        ? 'R2'
+        : null;
 
   return (
     <div className="cursor-statusbar">
@@ -85,6 +93,14 @@ const StatusBar: React.FC<StatusBarProps> = ({
         )}
       </div>
       <div className="cursor-statusbar-right">
+        {sourceLabel && (
+          <>
+            <div className="cursor-statusbar-item" title={`Storage source: ${sourceLabel}`}>
+              <span className="cursor-statusbar-text">{sourceLabel}</span>
+            </div>
+            <div className="cursor-statusbar-divider" />
+          </>
+        )}
         {repoLabel && (
           <>
             <div className="cursor-statusbar-item" title={repoLabel}>

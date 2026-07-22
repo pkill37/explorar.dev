@@ -746,6 +746,8 @@ const FileTree: React.FC<FileTreeProps> = ({
       <div
         ref={treeContainerRef}
         className={isLoading || error ? undefined : 'vscode-file-tree'}
+        tabIndex={isLoading || error ? undefined : 0}
+        aria-label="Repository file tree"
         style={{ flex: 1, minHeight: 0 }}
       >
         {isLoading ? (

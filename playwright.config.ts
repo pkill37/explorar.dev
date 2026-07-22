@@ -5,6 +5,7 @@ const NODE_ONLY_TEST_FILES = new Set([
   'tests/corpus-sqlite-index.spec.ts',
   'tests/deploy-r2.spec.ts',
   'tests/guide-lint.spec.ts',
+  'tests/repo-source-routing.spec.ts',
 ]);
 
 function shouldStartWebServer(): boolean {

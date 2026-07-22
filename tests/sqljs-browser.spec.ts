@@ -104,6 +104,27 @@ async function waitForDebugLog(page: Page, label: string, timeout = 30000): Prom
     .toBeTruthy();
 }
 
+async function waitForDebugEntry(
+  page: Page,
+  predicate: (entry: { label: string; payload?: unknown }) => boolean,
+  message: string,
+  timeout = 30000
+): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((predicateSource) => {
+          const fn = new Function('entry', `return (${predicateSource})(entry);`) as (entry: {
+            label: string;
+            payload?: unknown;
+          }) => boolean;
+          return (window.__explorarDebugLogs ?? []).some((entry) => fn(entry));
+        }, predicate.toString()),
+      { timeout, message }
+    )
+    .toBeTruthy();
+}
+
 test.describe('SQL.js browser runtime', () => {
   test('loads the Little Kernel search index with the published wasm asset', async ({ page }) => {
     const pageErrors: string[] = [];
@@ -125,23 +146,40 @@ test.describe('SQL.js browser runtime', () => {
       await page.addInitScript(
         ({ baseUrl }) => {
           const originalFetch = window.fetch.bind(window);
+          const corpusPathPrefix = '/repos/littlekernel/lk/';
+
+          function rewriteCorpusUrl(requestUrl: string): string | null {
+            if (requestUrl.startsWith(corpusPathPrefix)) {
+              return `${baseUrl}${requestUrl}`;
+            }
+
+            try {
+              const parsedUrl = new URL(requestUrl);
+              if (parsedUrl.pathname.startsWith(corpusPathPrefix)) {
+                return `${baseUrl}${parsedUrl.pathname}${parsedUrl.search}`;
+              }
+            } catch {
+              return null;
+            }
+
+            return null;
+          }
 
           window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
             const requestUrl =
               typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-            if (
-              requestUrl.includes(
-                'pub-fed8a8778c5340c9a70aec8e22b8296d.r2.dev/repos/littlekernel/lk/'
-              )
-            ) {
-              const localUrl = requestUrl.replace(
-                /^https?:\/\/pub-fed8a8778c5340c9a70aec8e22b8296d\.r2\.dev/,
-                baseUrl
-              );
+            const localUrl = rewriteCorpusUrl(requestUrl);
+            if (localUrl) {
               if (typeof input === 'string' || input instanceof URL) {
                 return originalFetch(localUrl, init);
               }
-              return originalFetch(new Request(localUrl, input), init);
+              return originalFetch(
+                localUrl,
+                init ?? {
+                  method: input.method,
+                  headers: input.headers,
+                }
+              );
             }
 
             return originalFetch(input, init);
@@ -157,6 +195,20 @@ test.describe('SQL.js browser runtime', () => {
       await page.locator('.vscode-tree-search-input').fill('main');
 
       await waitForDebugLog(page, '[explorar:code-index-static] success');
+      await waitForDebugEntry(
+        page,
+        (entry) => {
+          const payload = entry.payload as Record<string, unknown> | undefined;
+          return (
+            entry.label === '[explorar:code-index-static] success' &&
+            payload?.sourceMode === 'local-filesystem' &&
+            typeof payload?.url === 'string' &&
+            payload.url.startsWith('/repos/littlekernel/lk/') &&
+            payload.url.endsWith('/code-index.sqlite')
+          );
+        },
+        'Expected search index to load from the local staged corpus by default'
+      );
 
       await expect
         .poll(
@@ -170,6 +222,67 @@ test.describe('SQL.js browser runtime', () => {
 
       expect(sqlJsResponses.filter((entry) => entry.status >= 400)).toEqual([]);
       expect(pageErrors).toEqual([]);
+
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(async () => {
+              const cache = await caches.open('explorar-code-index-v1');
+              const keys = await cache.keys();
+              return keys.map((request) => request.url);
+            }),
+          {
+            timeout: 30000,
+            message: 'Expected code-index.sqlite to be stored in browser cache',
+          }
+        )
+        .toContainEqual(
+          expect.stringMatching(
+            /^http:\/\/localhost:8000\/repos\/littlekernel\/lk\/.+\/code-index\.sqlite\?__explorar_source=local-filesystem$/
+          )
+        );
+
+      await page.getByLabel('Storage source').selectOption('r2-bucket');
+      await waitForDebugEntry(
+        page,
+        (entry) => {
+          const payload = entry.payload as Record<string, unknown> | undefined;
+          return (
+            entry.label === '[explorar:code-index-static] success' &&
+            payload?.sourceMode === 'r2-bucket' &&
+            typeof payload?.url === 'string' &&
+            payload.url.includes(
+              'pub-fed8a8778c5340c9a70aec8e22b8296d.r2.dev/repos/littlekernel/lk/'
+            ) &&
+            payload.url.endsWith('/code-index.sqlite')
+          );
+        },
+        'Expected search index to load from the R2 bucket after switching source'
+      );
+
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(async () => {
+              const cache = await caches.open('explorar-code-index-v1');
+              const keys = await cache.keys();
+              return keys.map((request) => request.url);
+            }),
+          {
+            timeout: 30000,
+            message: 'Expected local and R2 code indexes to use separate browser cache keys',
+          }
+        )
+        .toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(
+              /^http:\/\/localhost:8000\/repos\/littlekernel\/lk\/.+\/code-index\.sqlite\?__explorar_source=local-filesystem$/
+            ),
+            expect.stringMatching(
+              /^https:\/\/pub-fed8a8778c5340c9a70aec8e22b8296d\.r2\.dev\/repos\/littlekernel\/lk\/.+\/code-index\.sqlite\?__explorar_source=r2-bucket$/
+            ),
+          ])
+        );
 
       const wasmResponse = await page.request.get('/sqljs/sql-wasm-browser.wasm');
       expect(wasmResponse.status()).toBe(200);
