@@ -74,23 +74,23 @@ export function createFileRecommendationsComponent(
           type: (file.type ?? 'source') as RecommendationType,
         }))
       : [
-          ...docs.map((file) => ({ ...file, type: 'docs' as const })),
           ...source.map((file) => ({ ...file, type: 'source' as const })),
+          ...docs.map((file) => ({ ...file, type: 'docs' as const })),
           ...directories.map((file) => ({ ...file, type: 'directory' as const })),
         ];
 
   const groups = [
     {
-      type: 'docs',
-      title: 'Docs',
-      items: orderedItems.filter((file) => file.type === 'docs'),
-      accent: '#8b5cf6',
-    },
-    {
       type: 'source',
       title: 'Files',
       items: orderedItems.filter((file) => file.type === 'source'),
       accent: '#0ea5e9',
+    },
+    {
+      type: 'docs',
+      title: 'Docs',
+      items: orderedItems.filter((file) => file.type === 'docs'),
+      accent: '#8b5cf6',
     },
     {
       type: 'directory',
@@ -114,27 +114,16 @@ export function createFileRecommendationsComponent(
     }
   };
 
-  const getItemContext = (file: FileRecommendation) => {
-    switch (file.type) {
-      case 'docs':
-        return 'Use this reading for conceptual framing, terminology, and the documented contract before diving into implementation details.';
-      case 'directory':
-        return 'Use this reading to scan the subsystem boundary first, then drill into the most relevant files inside it.';
-      default:
-        return 'Use this reading as the implementation anchor where the model, control flow, or core mechanism becomes concrete in code.';
-    }
-  };
-
   return (
-    <div style={{ marginTop: '16px', marginBottom: '16px' }}>
+    <div style={{ marginTop: '12px', marginBottom: '12px' }}>
       {groups.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {groups.map((group) => (
             <section
               key={group.type}
               style={{
                 border: `1px solid ${group.accent}33`,
-                borderRadius: '8px',
+                borderRadius: '6px',
                 overflow: 'hidden',
                 background: 'var(--vscode-editor-background, #1e1e1e)',
               }}
@@ -144,8 +133,8 @@ export function createFileRecommendationsComponent(
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '10px',
-                  padding: '8px 10px',
+                  gap: '8px',
+                  padding: '5px 8px',
                   background: `${group.accent}14`,
                   borderBottom: `1px solid ${group.accent}26`,
                 }}
@@ -178,38 +167,31 @@ export function createFileRecommendationsComponent(
                     onClick={() => onFileClick(getItemPath(file))}
                     style={{
                       textAlign: 'left',
-                      padding: '6px 10px',
+                      padding: '4px 8px',
                       fontSize: '12px',
-                      background:
-                        group.type === 'docs'
-                          ? 'rgba(139, 92, 246, 0.08)'
-                          : 'var(--vscode-editor-background, #1e1e1e)',
-                      border: '1px solid var(--vscode-panel-border, #3e3e3e)',
-                      borderRadius: '4px',
+                      background: 'transparent',
+                      border: 0,
+                      borderRadius: 0,
                       color: 'var(--vscode-foreground, #d4d4d4)',
                       cursor: 'pointer',
-                      transition: 'all 0.2s',
+                      transition: 'background 0.15s ease',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background =
                         'var(--vscode-list-hoverBackground, #2a2d2e)';
-                      e.currentTarget.style.borderColor = 'var(--vscode-focusBorder, #007acc)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background =
-                        group.type === 'docs'
-                          ? 'rgba(139, 92, 246, 0.08)'
-                          : 'var(--vscode-editor-background, #1e1e1e)';
-                      e.currentTarget.style.borderColor = 'var(--vscode-panel-border, #3e3e3e)';
+                      e.currentTarget.style.background = 'transparent';
                     }}
                   >
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
                       <span
                         style={{
-                          minWidth: '20px',
+                          minWidth: '17px',
                           color: 'var(--vscode-descriptionForeground, #999)',
                           fontFamily: 'monospace',
-                          marginTop: '1px',
+                          fontSize: '11px',
+                          lineHeight: '17px',
                         }}
                       >
                         {index + 1}.
@@ -219,7 +201,7 @@ export function createFileRecommendationsComponent(
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
+                            gap: '6px',
                             flexWrap: 'wrap',
                           }}
                         >
@@ -227,7 +209,7 @@ export function createFileRecommendationsComponent(
                             style={{
                               fontSize: '12px',
                               fontWeight: 600,
-                              lineHeight: 1.45,
+                              lineHeight: 1.3,
                               color: 'var(--vscode-foreground, #d4d4d4)',
                             }}
                           >
@@ -239,9 +221,10 @@ export function createFileRecommendationsComponent(
                               color: 'var(--vscode-descriptionForeground, #999)',
                               border: '1px solid var(--vscode-panel-border, #3e3e3e)',
                               borderRadius: '999px',
-                              padding: '1px 6px',
+                              padding: '0 5px',
                               textTransform: 'uppercase',
                               letterSpacing: '0.04em',
+                              lineHeight: '15px',
                             }}
                           >
                             {getItemBadge(file)}
@@ -249,21 +232,12 @@ export function createFileRecommendationsComponent(
                         </div>
                         <div
                           style={{
-                            fontSize: '11px',
-                            color: 'var(--vscode-descriptionForeground, #999)',
-                            marginTop: '4px',
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          {getItemContext(file)}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '11px',
+                            fontSize: '10.5px',
                             color: 'var(--vscode-textPreformat-foreground, #d4d4d4)',
-                            marginTop: '6px',
+                            marginTop: '2px',
                             fontFamily: 'monospace',
                             wordBreak: 'break-word',
+                            lineHeight: 1.25,
                           }}
                         >
                           {getItemPath(file)}

@@ -8,6 +8,7 @@ import {
   checkGuide,
   parseSections,
   resolveRepoPath,
+  stripNavigationSuffix,
   stripFencedBlocks,
 } from '../scripts/check-guide-refs';
 import { CORPUS_REPOS_DIR } from '../scripts/static-asset-paths';
@@ -47,7 +48,7 @@ function extractInlineRefs(prose: string): string[] {
 }
 
 function normalizeInlineRef(ref: string): string {
-  return ref.replace(/[:#].*$/, '');
+  return stripNavigationSuffix(ref);
 }
 
 test.describe('guide reference linting', () => {
@@ -252,6 +253,21 @@ The markdown link [missing_entry.S](./missing_entry.S) should also be checked.
       expect(
         result.errors.some((error) => error.includes('arch/arm64/kernel/entry.S'))
       ).toBeFalsy();
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves guide navigation suffixes against the underlying repo path', () => {
+    const repoRoot = makeTempDir('explorar-guide-lint-');
+    try {
+      const filePath = path.join(repoRoot, 'fs/readdir.c');
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, 'SYSCALL_DEFINE3(getdents, unsigned int, fd,\n');
+
+      expect(resolveRepoPath(repoRoot, 'fs/readdir.c:getdents')).toBe('fs/readdir.c');
+      expect(resolveRepoPath(repoRoot, 'fs/readdir.c:271')).toBe('fs/readdir.c');
+      expect(stripNavigationSuffix('fs/readdir.c:getdents')).toBe('fs/readdir.c');
     } finally {
       fs.rmSync(repoRoot, { recursive: true, force: true });
     }

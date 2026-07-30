@@ -19,6 +19,7 @@ import {
   type CodeIndexStatementLike,
   type LoadedCodeIndex,
 } from '@/lib/code-index';
+import { findSymbolsInFile } from '@/lib/cross-reference';
 
 type BetterSqliteStatementWithParams = {
   all: (...params: unknown[]) => Array<Record<string, unknown>>;
@@ -98,6 +99,18 @@ function createSyntheticRepo(): { tempDir: string; repoDir: string } {
 }
 
 test.describe('code index builder', () => {
+  test('indexes Linux SYSCALL_DEFINE wrappers as jumpable function definitions', () => {
+    const sourcePath = path.join(process.cwd(), 'repos/torvalds/linux/v6.1/fs/readdir.c');
+    test.skip(!fs.existsSync(sourcePath), 'Linux v6.1 corpus is not available locally');
+
+    const symbols = findSymbolsInFile(fs.readFileSync(sourcePath, 'utf8'), 'fs/readdir.c');
+    expect(
+      symbols.find(
+        (symbol) => symbol.name === 'getdents' && symbol.type === 'function' && symbol.isDefinition
+      )
+    ).toEqual(expect.objectContaining({ line: 271 }));
+  });
+
   test('builds SQLite metadata, search rows, symbols, references, and graph edges', () => {
     const { tempDir, repoDir } = createSyntheticRepo();
 

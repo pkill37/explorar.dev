@@ -719,8 +719,7 @@ vmovntdq    %ymm1, 32(%rdi)
 ```
 
 Key files:
-- [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — AVX unaligned memcpy/memmove (glibc-2.14+ unified impl)
-- [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — memmove with overlap handling
+- [sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S](sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S) — AVX unaligned memcpy/memmove implementation with overlap handling
 
 ### ERMS: Enhanced REP MOVSB/STOSB
 

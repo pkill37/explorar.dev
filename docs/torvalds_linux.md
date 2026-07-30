@@ -46,17 +46,23 @@ fileRecommendations:
     - path: include/linux/sched.h
       description: task_struct — every process/thread as the kernel sees it (~850 fields)
       type: source
+    - path: arch/arm64/include/asm/current.h
+      description: current macro — how arm64 finds the running task_struct
+      type: source
     - path: kernel/fork.c
       description: kernel_clone() — how fork() and clone() create tasks
       type: source
     - path: kernel/kthread.c
       description: Kernel threads — how they differ from user processes
       type: source
+    - path: fs/readdir.c
+      description: getdents() syscall path — userspace directory reads through the VFS
+      type: source
 ---
 
 The kernel is not a process — it has no PID, no user-space memory, no scheduler slot. It is the framework that gives those things to others.
 
-When a process calls `getdents`, the CPU switches from ring 3 to ring 0. The same CPU core now executes kernel code *in the context of your process*, reads `task_struct` via the `current` pointer, and returns. The kernel never "runs alongside" your program; it runs *as* it, briefly, on request. Kernel threads exist for background work (memory reclamation, IRQ processing) but they're the exception, not the rule.
+When a process calls `getdents`, it enters the syscall path implemented in `fs/readdir.c:getdents`; the CPU switches from ring 3 to ring 0. The same CPU core now executes kernel code *in the context of your process*, reads `task_struct` via the `arch/arm64/include/asm/current.h:current` pointer, and returns. The kernel never "runs alongside" your program; it runs *as* it, briefly, on request. Kernel threads exist for background work (memory reclamation, IRQ processing) but they're the exception, not the rule.
 
 Every process's virtual address space includes a kernel mapping at high addresses. Those pages carry supervisor-only PTEs, so they're inaccessible from ring 3. The mapping exists so syscall entry doesn't require a full address-space switch — just a privilege-level change.
 
@@ -99,21 +105,22 @@ fileRecommendations:
       type: source
 ---
 
-Six directories account for nearly all kernel behavior.
+Six directories account for nearly all kernel behavior:
 
-**`kernel/`** holds the scheduler (under `kernel/sched/`), process creation (`kernel/fork.c`), signal delivery (`kernel/signal.c`), and timers. The CFS scheduler alone spans `kernel/sched/fair.c` (~12k lines), `kernel/sched/core.c` (~11k lines), and `kernel/sched/rt.c` for real-time policies.
+- **`kernel/`** — scheduling, process creation, signal delivery, and timers. The scheduler lives under `kernel/sched/`; `kernel/fork.c` creates tasks; `kernel/signal.c` delivers signals. CFS alone spans `kernel/sched/fair.c` (~12k lines), `kernel/sched/core.c` (~11k lines), and `kernel/sched/rt.c` for real-time policies.
+- **`mm/`** — physical and virtual memory. `mm/page_alloc.c` is the buddy allocator for page-granularity requests; `mm/slub.c` is the slab allocator for small kernel objects; `mm/mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
+- **`fs/`** — the Virtual Filesystem Switch, a uniform interface over all filesystems. `fs/namei.c` resolves paths to dentries; `fs/open.c` and `fs/read_write.c` implement file syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
+- **`net/`** — the TCP/IP stack. Socket buffers (`sk_buff`) flow through `net/core/dev.c` for device handling, `net/ipv4/tcp.c` for protocol behavior, and `net/netfilter/` for packet filtering.
+- **Drivers** — hardware abstraction through a bus-device-driver model registered with `kobject`/sysfs. This is the largest surface area in the tree, but most drivers follow the same registration and callback pattern.
+- **`arch/arm64/`** — code that cannot be written portably: syscall entry (`arch/arm64/kernel/entry.S`), page-fault handling (`arch/arm64/mm/fault.c`), SMP bring-up, and KVM virtualization.
 
-**`mm/`** owns physical and virtual memory. `mm/page_alloc.c` is the buddy allocator for page-granularity requests; `mm/slub.c` is the slab allocator for small kernel objects; `mm/mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
+Subsystems interact through narrow handoff points:
 
-**`fs/`** provides the Virtual Filesystem Switch — a uniform interface over all filesystems. `fs/namei.c` resolves paths to dentries; `fs/open.c` and `fs/read_write.c` implement the syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
-
-**`net/`** implements the full TCP/IP stack. Socket buffers (`sk_buff`) flow through `net/core/dev.c` (device layer), `net/ipv4/tcp.c` (protocol), and `net/netfilter/` (packet filtering).
-
-**The driver subsystem** (~20M lines) abstracts every hardware category through a bus-device-driver model registered with `kobject`/sysfs.
-
-**`arch/arm64/`** contains everything that can't be written portably: syscall entry (`arch/arm64/kernel/entry.S`), page-fault handling (`arch/arm64/mm/fault.c`), SMP bring-up, and KVM virtualization.
-
-Subsystems interact through well-defined interfaces. A `read(2)` syscall enters via `arch/arm64/kernel/entry.S`, dispatches through `fs/read_write.c` via `vfs_read()`, lands in the filesystem's `->read_iter()` hook, hits the page cache in `mm/filemap.c`, and issues block I/O through `block/bio.c` to a driver.
+- A `read(2)` syscall enters through `arch/arm64/kernel/entry.S`.
+- It dispatches into `fs/read_write.c` via `vfs_read()`.
+- The VFS calls the filesystem's `->read_iter()` hook.
+- The request hits the page cache in `mm/filemap.c`.
+- On a cache miss, block I/O flows through `block/bio.c` to a driver.
 
 ---
 id: ch3

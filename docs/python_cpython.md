@@ -8,6 +8,13 @@ name: CPython In The Mind
 description: Understanding CPython Before Code
 defaultOpenIds:
   - ch1
+  - ch2
+  - ch3
+  - ch4
+  - ch5
+  - ch6
+  - ch7
+  - ch8
 ---
 
 # CPython In The Mind
@@ -398,7 +405,6 @@ Python's import system is responsible for finding, loading, and initializing mod
 Key files:
 - [Python/import.c](Python/import.c) — Import system implementation
 - [Lib/importlib/](Lib/importlib/) — Import library (Python implementation)
-- [Lib/importlib/](Lib/importlib/) — Import library (Python side)
 
 ### Module Objects: Namespaces as Objects
 
@@ -455,7 +461,6 @@ When an exception is raised, Python builds a traceback object that records the c
 
 Key files:
 - [Python/traceback.c](Python/traceback.c) — Traceback implementation
-- [Python/traceback.c](Python/traceback.c) — Traceback object
 - [Include/traceback.h](Include/traceback.h) — Traceback definitions
 
 ---
@@ -531,8 +536,6 @@ See [Doc/extending/](Doc/extending/) for the complete guide to extending Python 
 ## References
 
 - [Python Developer's Guide](https://devguide.python.org/) — Official Python development guide
-- [CPython Internals: Your Guide to the Python 3 Interpreter](https://realpython.com/cpython-source-code-guide/) — Comprehensive guide to CPython internals
 - [Exploring CPython's Internals](https://devguide.python.org/internals/exploring/) — Official guide to exploring CPython
 - [Python Documentation](https://docs.python.org/) — Official Python documentation
 ---
-

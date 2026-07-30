@@ -37,6 +37,7 @@ const CLASS_DEF_PATTERN = /^class\s+(\w+)\s*[:\{]/;
 const CLASS_DECL_PATTERN = /^class\s+(\w+)\s*[;]/;
 const TYPEDEF_PATTERN = /^typedef\s+.*\s+(\w+)\s*;/;
 const MACRO_PATTERN = /^#define\s+(\w+)/;
+const LINUX_SYSCALL_DEFINE_PATTERN = /^(?:COMPAT_)?SYSCALL_DEFINE\d+\s*\(\s*([A-Za-z_]\w*)\s*,?/;
 const STRUCT_MEMBER_PATTERN = /^\s*(\w+(?:\s*\*+)?)\s+(\w+)\s*[;,\[]/;
 const CONTROL_FLOW_KEYWORDS = new Set([
   'if',
@@ -268,6 +269,27 @@ export function findSymbolsInFile(content: string, filePath: string): SymbolRefe
     // Skip comments and preprocessor directives (except #define)
     if (trimmed.startsWith('//') || (trimmed.startsWith('/*') && !trimmed.includes('*/'))) {
       continue;
+    }
+
+    // Linux syscall implementations are declared through SYSCALL_DEFINE*
+    // macros, for example: SYSCALL_DEFINE3(getdents, ...).
+    const syscallDefMatch = trimmed.match(LINUX_SYSCALL_DEFINE_PATTERN);
+    if (syscallDefMatch) {
+      const syscallName = syscallDefMatch[1];
+      const documentation = extractDocumentation(lines, lineNum);
+      symbols.push({
+        name: syscallName,
+        type: 'function',
+        line: lineNum,
+        column: line.indexOf(syscallName) + 1,
+        file: filePath,
+        isDefinition: true,
+        isDeclaration: false,
+        signature: trimmed,
+        documentation,
+        references: [],
+        relatedSymbols: [],
+      });
     }
 
     // Function definitions

@@ -22,6 +22,7 @@ interface CodeEditorContainerProps {
   onToggleMarkdownPreview?: () => void;
   scrollToLine?: number;
   searchPattern?: string;
+  navigationNonce?: number;
   onCursorChange?: (line: number, column: number) => void;
   workspaceFilePaths?: string[];
   workspaceId?: string;
@@ -39,6 +40,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   onToggleMarkdownPreview,
   scrollToLine,
   searchPattern,
+  navigationNonce,
   onCursorChange,
   workspaceFilePaths,
   workspaceId,
@@ -214,6 +216,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       isLoading={isLoading}
       scrollToLine={scrollToLine}
       searchPattern={searchPattern}
+      navigationNonce={navigationNonce}
       onCursorChange={onCursorChange}
       onOpenFile={onOpenFile}
       fetchFile={fetchFile}

@@ -18,6 +18,9 @@ interface GuidePanelProps {
   guides?: Guide[];
   activeChapterId?: string | null;
   onActiveChapterChange?: (id: string | null) => void;
+  onSidebarToggle?: () => void;
+  sidebarToggleLabel?: string;
+  sidebarToggleIcon?: React.ReactNode;
 }
 
 // Extract a display number from chapter id: "ch1" → 1, "chapter-3-foo" → 3, else null
@@ -31,6 +34,9 @@ export default function GuidePanel({
   guides,
   activeChapterId,
   onActiveChapterChange,
+  onSidebarToggle,
+  sidebarToggleLabel = 'Toggle guide sidebar',
+  sidebarToggleIcon = '›',
 }: GuidePanelProps) {
   const guideList: Guide[] =
     guides || (sections ? [{ id: 'default', name: 'Guide', sections }] : []);
@@ -203,6 +209,40 @@ export default function GuidePanel({
 
         {/* Share button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {onSidebarToggle && (
+            <button
+              onClick={onSidebarToggle}
+              title={sidebarToggleLabel}
+              aria-label={sidebarToggleLabel}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 3,
+                border: '1px solid var(--vscode-border)',
+                background: 'transparent',
+                color: 'var(--vscode-text-secondary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 16,
+                lineHeight: 1,
+                padding: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--vscode-bg-hover)';
+                e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
+                e.currentTarget.style.color = 'var(--vscode-text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'var(--vscode-border)';
+                e.currentTarget.style.color = 'var(--vscode-text-secondary)';
+              }}
+            >
+              {sidebarToggleIcon}
+            </button>
+          )}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <button
               onClick={() => setShowShareMenu(!showShareMenu)}
@@ -295,7 +335,7 @@ export default function GuidePanel({
           flex: '1 1 0%',
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '6px 6px',
+          padding: '4px',
           minHeight: 0,
         }}
       >
@@ -311,7 +351,7 @@ export default function GuidePanel({
                 sectionRefs.current[s.id] = el;
               }}
               style={{
-                marginBottom: 4,
+                marginBottom: 3,
                 borderRadius: 5,
                 overflow: 'hidden',
                 border: isActive ? `1px solid ${ACCENT}44` : '1px solid transparent',
@@ -407,7 +447,7 @@ export default function GuidePanel({
                   style={{
                     background: 'var(--vscode-bg-secondary)',
                     borderTop: `1px solid ${ACCENT}22`,
-                    padding: '12px 12px 14px',
+                    padding: '6px 8px 8px',
                     color: 'var(--vscode-text-secondary)',
                     fontSize: 12,
                     lineHeight: 1.55,

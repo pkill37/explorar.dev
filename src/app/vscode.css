@@ -139,8 +139,50 @@
   gap: 6px;
 }
 
+.vscode-tree-search-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.vscode-tree-search-input-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.vscode-tree-search-input-icon::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--vscode-text-secondary);
+  border-radius: 50%;
+}
+
+.vscode-tree-search-input-icon::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 5px;
+  height: 1.5px;
+  background: var(--vscode-text-secondary);
+  border-radius: 1px;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
 .vscode-tree-search-input {
   flex: 1;
+  width: 100%;
   min-width: 0;
   border: 1px solid var(--vscode-border);
   border-radius: 4px;
@@ -149,6 +191,10 @@
   color: var(--vscode-text-primary);
   font-size: 12px;
   outline: none;
+}
+
+.vscode-tree-search-input-with-icon {
+  padding-left: 28px;
 }
 
 .vscode-tree-search-input:focus {
@@ -683,13 +729,32 @@
   margin: 0 0 8px 0;
 }
 
+.vscode-guide-content ul,
+.vscode-guide-content ol {
+  margin: 10px 0 12px;
+  padding-left: 22px;
+  list-style-position: outside;
+  list-style-image: none;
+}
+
 .vscode-guide-content ul {
-  margin: 8px 0;
-  padding-left: 16px;
+  list-style-type: disc;
+}
+
+.vscode-guide-content ol {
+  list-style-type: decimal;
 }
 
 .vscode-guide-content li {
-  margin: 4px 0;
+  display: list-item;
+  margin: 7px 0;
+  padding-left: 3px;
+}
+
+.vscode-guide-content li::marker {
+  color: var(--vscode-text-accent);
+  font-size: 1.25em;
+  font-weight: 700;
 }
 
 .vscode-guide-content strong {
@@ -1144,6 +1209,34 @@
 
 .cursor-statusbar-item:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.cursor-statusbar-source {
+  cursor: default;
+  gap: 5px;
+}
+
+.cursor-statusbar-source select {
+  height: 18px;
+  width: 52px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  padding: 0 14px 0 0;
+  outline: none;
+  opacity: 0.92;
+}
+
+.cursor-statusbar-source select:hover,
+.cursor-statusbar-source select:focus {
+  opacity: 1;
+}
+
+.cursor-statusbar-source option {
+  color: var(--vscode-text-primary);
+  background: var(--vscode-bg-primary);
 }
 
 .cursor-statusbar-button {

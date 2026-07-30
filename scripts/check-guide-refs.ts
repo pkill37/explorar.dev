@@ -133,7 +133,7 @@ export function buildPathIndex(repoRoot: string): Map<string, string[]> {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function resolveRepoPath(repoRoot: string, refPath: string): string | null {
-  const normalized = refPath.replace(/^\/+/, '').replace(/\/+$/, '');
+  const normalized = stripNavigationSuffix(refPath).replace(/^\/+/, '').replace(/\/+$/, '');
   if (!normalized) return null;
 
   const exactPath = path.join(repoRoot, normalized);
@@ -158,6 +158,22 @@ export function resolveRepoPath(repoRoot: string, refPath: string): string | nul
 
 export function refExists(repoRoot: string, refPath: string): boolean {
   return resolveRepoPath(repoRoot, refPath) !== null;
+}
+
+export function stripNavigationSuffix(refPath: string): string {
+  const withoutHash = refPath.split('#')[0] || refPath;
+  const lastColon = withoutHash.lastIndexOf(':');
+  const lastSlash = withoutHash.lastIndexOf('/');
+  if (lastColon <= lastSlash) {
+    return withoutHash;
+  }
+
+  const suffix = withoutHash.slice(lastColon + 1);
+  if (/^L?\d+$/i.test(suffix) || /^[A-Za-z_][A-Za-z0-9_:.<>\-~]*$/.test(suffix)) {
+    return withoutHash.slice(0, lastColon);
+  }
+
+  return withoutHash;
 }
 
 /** Count newlines (matches `wc -l` semantics). */

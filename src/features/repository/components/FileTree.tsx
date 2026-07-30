@@ -215,8 +215,19 @@ const FileTree: React.FC<FileTreeProps> = ({
   const [displayedSearchIndexProgress, setDisplayedSearchIndexProgress] = useState(0);
   const [isSearchIndexIndicatorVisible, setIsSearchIndexIndicatorVisible] = useState(false);
   const [isSearchIndexIndicatorCollapsing, setIsSearchIndexIndicatorCollapsing] = useState(false);
+  const setSearchIndexIndicatorVisible = useCallback((nextVisible: boolean) => {
+    setIsSearchIndexIndicatorVisible((current) =>
+      current === nextVisible ? current : nextVisible
+    );
+  }, []);
+  const setSearchIndexIndicatorCollapsing = useCallback((nextCollapsing: boolean) => {
+    setIsSearchIndexIndicatorCollapsing((current) =>
+      current === nextCollapsing ? current : nextCollapsing
+    );
+  }, []);
   const shouldShowSearchIndexIndicator =
     showSearch && (isSearchIndexLoading || isSearchIndexReady || !!searchError);
+  const rootNodeVersion = rootNodes.length;
   const searchIndexStatusLabel = isSearchIndexReady
     ? searchIndexCached
       ? 'Cached index ready'
@@ -246,19 +257,19 @@ const FileTree: React.FC<FileTreeProps> = ({
     }
 
     if (!shouldShowSearchIndexIndicator) {
-      setIsSearchIndexIndicatorCollapsing((current) => (current ? false : current));
-      setIsSearchIndexIndicatorVisible((current) => (current ? false : current));
+      setSearchIndexIndicatorCollapsing(false);
+      setSearchIndexIndicatorVisible(false);
       return;
     }
 
-    setIsSearchIndexIndicatorVisible((current) => (current ? current : true));
-    setIsSearchIndexIndicatorCollapsing((current) => (current ? false : current));
+    setSearchIndexIndicatorVisible(true);
+    setSearchIndexIndicatorCollapsing(false);
 
     if (!isSearchIndexLoading && (isSearchIndexReady || searchError)) {
       searchIndexCollapseTimeoutRef.current = setTimeout(() => {
-        setIsSearchIndexIndicatorCollapsing((current) => (current ? current : true));
+        setSearchIndexIndicatorCollapsing(true);
         searchIndexHideTimeoutRef.current = setTimeout(() => {
-          setIsSearchIndexIndicatorVisible((current) => (current ? false : current));
+          setSearchIndexIndicatorVisible(false);
         }, 280);
       }, 2600);
     }
@@ -273,7 +284,14 @@ const FileTree: React.FC<FileTreeProps> = ({
         searchIndexHideTimeoutRef.current = null;
       }
     };
-  }, [isSearchIndexLoading, isSearchIndexReady, searchError, shouldShowSearchIndexIndicator]);
+  }, [
+    isSearchIndexLoading,
+    isSearchIndexReady,
+    searchError,
+    setSearchIndexIndicatorCollapsing,
+    setSearchIndexIndicatorVisible,
+    shouldShowSearchIndexIndicator,
+  ]);
 
   useEffect(() => {
     if (searchIndexAnimationFrameRef.current !== null) {
@@ -282,7 +300,9 @@ const FileTree: React.FC<FileTreeProps> = ({
     }
 
     if (!shouldShowSearchIndexIndicator) {
-      setDisplayedSearchIndexProgress((current) => (current === 0 ? current : 0));
+      if (displayedSearchIndexProgress !== 0) {
+        setDisplayedSearchIndexProgress(0);
+      }
       return;
     }
 
@@ -291,11 +311,11 @@ const FileTree: React.FC<FileTreeProps> = ({
       : isSearchIndexReady
         ? 100
         : clampedSearchIndexProgress;
-    searchIndexAnimationFrameRef.current = requestAnimationFrame(() => {
-      setDisplayedSearchIndexProgress((current) =>
-        current === targetProgress ? current : targetProgress
-      );
-    });
+    if (displayedSearchIndexProgress !== targetProgress) {
+      searchIndexAnimationFrameRef.current = requestAnimationFrame(() => {
+        setDisplayedSearchIndexProgress(targetProgress);
+      });
+    }
 
     return () => {
       if (searchIndexAnimationFrameRef.current !== null) {
@@ -303,7 +323,13 @@ const FileTree: React.FC<FileTreeProps> = ({
         searchIndexAnimationFrameRef.current = null;
       }
     };
-  }, [clampedSearchIndexProgress, isSearchIndexReady, searchError, shouldShowSearchIndexIndicator]);
+  }, [
+    clampedSearchIndexProgress,
+    displayedSearchIndexProgress,
+    isSearchIndexReady,
+    searchError,
+    shouldShowSearchIndexIndicator,
+  ]);
 
   const groupedSearchResults = useMemo(() => {
     const groups = new Map<
@@ -559,6 +585,7 @@ const FileTree: React.FC<FileTreeProps> = ({
 
   // Smooth scroll to selected file/folder when it changes
   useEffect(() => {
+    if (showSearch) return;
     if (!selectedFile || !treeContainerRef.current) return;
 
     // Clear any pending scroll timeout
@@ -628,7 +655,7 @@ const FileTree: React.FC<FileTreeProps> = ({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [selectedFile, rootNodes]);
+  }, [selectedFile, rootNodeVersion, showSearch]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
@@ -662,15 +689,18 @@ const FileTree: React.FC<FileTreeProps> = ({
           </div>
           {showSearch && onSearchQueryChange && (
             <div className="vscode-tree-search">
-              <input
-                className="vscode-tree-search-input"
-                type="search"
-                value={searchQuery}
-                onChange={(event) => onSearchQueryChange(event.target.value)}
-                placeholder="Search all files"
-                aria-label="Search all files"
-                spellCheck={false}
-              />
+              <div className="vscode-tree-search-input-wrap">
+                <span className="vscode-tree-search-input-icon" aria-hidden="true" />
+                <input
+                  className="vscode-tree-search-input vscode-tree-search-input-with-icon"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => onSearchQueryChange(event.target.value)}
+                  placeholder="Search all files"
+                  aria-label="Search all files"
+                  spellCheck={false}
+                />
+              </div>
               {onSearchIsRegexChange && (
                 <button
                   type="button"

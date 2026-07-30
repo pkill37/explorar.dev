@@ -184,6 +184,7 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
 
   return (
     <div
+      className="explorar-entity-card"
       onClick={() => onOpenFile(entity.filePath, entity.name, entity.line)}
       style={{
         fontFamily: 'monospace',

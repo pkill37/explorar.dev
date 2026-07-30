@@ -280,6 +280,7 @@ interface MonacoCodeEditorProps {
   isLoading: boolean;
   scrollToLine?: number;
   searchPattern?: string;
+  navigationNonce?: number;
   onCursorChange?: (line: number, column: number) => void;
   onOpenFile?: OpenFileFn;
   fetchFile?: FetchFileFn;
@@ -360,6 +361,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   isLoading,
   scrollToLine,
   searchPattern,
+  navigationNonce,
   onCursorChange,
   onOpenFile,
   fetchFile,
@@ -373,6 +375,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   const decorationsRef = useRef<string[]>([]);
   const symbolsRef = useRef<SymbolReference[]>([]);
   const providerDisposablesRef = useRef<Array<{ dispose: () => void }>>([]);
+  const monacoModelCreationPromisesRef = useRef<Map<string, Promise<unknown | null>>>(new Map());
   const [hasMountedEditor, setHasMountedEditor] = useState(false);
   const [xrefPanelState, setXrefPanelState] = useState<XrefPanelState | null>(null);
 
@@ -448,6 +451,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       new RegExp(`^\\s*(?:async\\s+)?def\\s+${escapedSimpleName}\\s*\\(`),
       new RegExp(`^\\s*fn\\s+${escapedSimpleName}\\s*\\(`),
       new RegExp(`^\\s*func\\s+${escapedSimpleName}\\s*\\(`),
+      new RegExp(`^\\s*(?:COMPAT_)?SYSCALL_DEFINE\\d+\\s*\\(\\s*${escapedSimpleName}\\s*,?`),
       new RegExp(
         `^\\s*(?:[\\w~:*<>\\[\\],&]+\\s+)+${escapedSimpleName}\\s*\\([^;{}]*\\)\\s*(?:\\{|$)`
       ),
@@ -581,35 +585,57 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   );
 
   const ensureMonacoModelForFile = useCallback(
-    async (targetFilePath: string): Promise<void> => {
+    async (targetFilePath: string): Promise<unknown | null> => {
+      const pendingModelCreation = monacoModelCreationPromisesRef.current.get(targetFilePath);
+      if (pendingModelCreation) {
+        return pendingModelCreation;
+      }
+
       const monaco = monacoRef.current as {
         Uri: { parse: (value: string) => unknown };
         editor: {
-          getModel: (uri: unknown) => unknown;
+          getModel: (uri: unknown) => { uri?: unknown } | null;
           createModel: (value: string, language?: string, uri?: unknown) => unknown;
         };
       } | null;
 
       if (!monaco || targetFilePath === filePath) {
-        return;
+        return null;
       }
 
       const uri = monaco.Uri.parse(`file:///${targetFilePath}`);
       const existingModel = monaco.editor.getModel(uri);
       if (existingModel) {
-        return;
+        return existingModel.uri ?? uri;
       }
 
-      const targetContent = await getWorkspaceFileContent(targetFilePath);
-      if (!targetContent) {
-        return;
-      }
+      const creationPromise = (async () => {
+        const targetContent = await getWorkspaceFileContent(targetFilePath);
+        if (!targetContent) {
+          return null;
+        }
 
-      monaco.editor.createModel(targetContent, getMonacoLanguage(targetFilePath), uri);
-      debugLog('[explorar:xref] created-reference-model', {
-        filePath,
-        targetFilePath,
+        const modelCreatedWhileFetching = monaco.editor.getModel(uri);
+        if (modelCreatedWhileFetching) {
+          return modelCreatedWhileFetching.uri ?? uri;
+        }
+
+        const createdModel = monaco.editor.createModel(
+          targetContent,
+          getMonacoLanguage(targetFilePath),
+          uri
+        ) as { uri?: unknown } | null;
+        debugLog('[explorar:xref] created-reference-model', {
+          filePath,
+          targetFilePath,
+        });
+        return createdModel?.uri ?? uri;
+      })().finally(() => {
+        monacoModelCreationPromisesRef.current.delete(targetFilePath);
       });
+
+      monacoModelCreationPromisesRef.current.set(targetFilePath, creationPromise);
+      return creationPromise;
     },
     [filePath, getMonacoLanguage, getWorkspaceFileContent]
   );
@@ -1517,7 +1543,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
 
   // Search for pattern and scroll to it
   useEffect(() => {
-    if (editorRef.current && searchPattern && content) {
+    if (hasMountedEditor && editorRef.current && searchPattern && content) {
       setTimeout(() => {
         const lines = content.split('\n');
         const targetLine = findDefinitionLineForPattern(searchPattern, lines);
@@ -1540,14 +1566,16 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     searchPattern,
     content,
     scrollToLine,
+    navigationNonce,
     filePath,
+    hasMountedEditor,
     findDefinitionLineForPattern,
     revealTargetLine,
   ]);
 
   // Scroll to specific line when scrollToLine changes (fallback)
   useEffect(() => {
-    if (editorRef.current && scrollToLine && content && !searchPattern) {
+    if (hasMountedEditor && editorRef.current && scrollToLine && content && !searchPattern) {
       setTimeout(() => {
         debugLog('[explorar:monaco-jump] direct-line', {
           filePath,
@@ -1556,7 +1584,15 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         revealTargetLine(scrollToLine, content.split('\n'));
       }, 200);
     }
-  }, [scrollToLine, content, searchPattern, filePath, revealTargetLine]);
+  }, [
+    scrollToLine,
+    content,
+    searchPattern,
+    filePath,
+    navigationNonce,
+    hasMountedEditor,
+    revealTargetLine,
+  ]);
 
   // Reset scroll position to top when file path changes (unless we have scrollToLine or searchPattern)
   useEffect(() => {
@@ -1919,6 +1955,25 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
                 symbolName,
                 Boolean(context?.includeDeclaration)
               );
+              const providerReferences = await Promise.all(
+                references.map(async (ref) => {
+                  const uri =
+                    ref.file === filePath ? model.uri : await ensureMonacoModelForFile(ref.file);
+                  if (!uri) {
+                    return null;
+                  }
+
+                  return {
+                    uri,
+                    range: new monaco.Range(
+                      ref.line,
+                      ref.column,
+                      ref.line,
+                      ref.column + symbolName.length
+                    ),
+                  };
+                })
+              );
 
               debugLog('[explorar:xref] provide-references', {
                 filePath,
@@ -1928,15 +1983,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
                 sampleReferences: references.slice(0, 5),
               });
 
-              return references.map((ref) => ({
-                uri: ref.file === filePath ? model.uri : monaco.Uri.parse(`file:///${ref.file}`),
-                range: new monaco.Range(
-                  ref.line,
-                  ref.column,
-                  ref.line,
-                  ref.column + symbolName.length
-                ),
-              }));
+              return providerReferences.filter((ref): ref is NonNullable<typeof ref> => !!ref);
             } catch (error) {
               console.error('[explorar:xref] provide-references-failed', {
                 filePath,
@@ -1966,16 +2013,25 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
             const word = model.getWordAtPosition(position);
             if (!word) return [];
 
-            const symbolName = word.word;
-            const definition = await resolveDefinitionAcrossWorkspace(symbolName);
+            try {
+              const symbolName = word.word;
+              const definition = await resolveDefinitionAcrossWorkspace(symbolName);
 
-            if (definition) {
+              if (!definition) {
+                return [];
+              }
+
+              const uri =
+                definition.file === filePath
+                  ? model.uri
+                  : await ensureMonacoModelForFile(definition.file);
+              if (!uri) {
+                return [];
+              }
+
               return [
                 {
-                  uri:
-                    definition.file === filePath
-                      ? model.uri
-                      : monaco.Uri.parse(`file:///${definition.file}`),
+                  uri,
                   range: new monaco.Range(
                     definition.line,
                     definition.column,
@@ -1984,9 +2040,13 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
                   ),
                 },
               ];
+            } catch (error) {
+              console.warn('[explorar:xref] provide-definition-failed', {
+                filePath,
+                error: error instanceof Error ? error.message : String(error),
+              });
+              return [];
             }
-
-            return [];
           },
         })
       );
@@ -2114,6 +2174,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
     backendRegistry,
     content,
     disposeRegisteredProviders,
+    ensureMonacoModelForFile,
     filePath,
     findReferencesAcrossWorkspace,
     getAutoFoldRanges,

@@ -21,6 +21,7 @@ export interface EditorTab {
   isLoading: boolean;
   scrollToLine?: number; // Line number to scroll to when opening
   searchPattern?: string; // Pattern to search for and highlight
+  navigationNonce?: number; // Bumped for repeated navigation to same target
 }
 
 export interface WorkspaceSearchResult {

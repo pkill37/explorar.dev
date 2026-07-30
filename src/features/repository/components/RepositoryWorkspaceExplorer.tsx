@@ -5,7 +5,6 @@ import FileTree from './FileTree';
 import TabBar from './TabBar';
 import CodeEditorContainer from './CodeEditorContainer';
 import GuidePanel from './GuidePanel';
-import StatusBar from './StatusBar';
 import { EditorTab, FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
@@ -29,8 +28,6 @@ import {
 } from '@/lib/repo-static';
 import {
   getDefaultCuratedRepoSourceMode,
-  hasConfiguredR2BucketBaseUrl,
-  isLocalFilesystemCorpusAvailable,
   normalizeCuratedRepoSourceMode,
 } from '@/lib/curated-content-url';
 import {
@@ -115,19 +112,14 @@ interface RepositoryWorkspaceExplorerProps {
         searchPattern?: string;
         scrollToLine?: number;
         searchScope?: string[];
+        navigationNonce?: number;
       }
     | null;
   /** When true, suppresses the internal right guide panel (guide is shown by parent layout) */
   hideGuidePanel?: boolean;
-  layoutMode?: 'editor' | 'search';
+  layoutMode?: 'editor' | 'search' | 'viewer';
   sourceMode?: CuratedRepoSourceMode;
   onSourceModeChange?: (sourceMode: CuratedRepoSourceMode) => void;
-  onOpenFileRequest?: (
-    filePath: string,
-    searchPattern?: string,
-    scrollToLine?: number,
-    searchScope?: string[]
-  ) => void;
 }
 
 export default function RepositoryWorkspaceExplorer({
@@ -139,7 +131,6 @@ export default function RepositoryWorkspaceExplorer({
   layoutMode = 'editor',
   sourceMode,
   onSourceModeChange,
-  onOpenFileRequest,
 }: RepositoryWorkspaceExplorerProps) {
   const router = useRouter();
   const {
@@ -190,18 +181,10 @@ export default function RepositoryWorkspaceExplorer({
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
-  // Editor state for status bar
-  const [editorLine, setEditorLine] = useState<number>(1);
-  const [editorColumn, setEditorColumn] = useState<number>(1);
-  const [editorLanguage, setEditorLanguage] = useState<string>('');
-  const [editorLineCount, setEditorLineCount] = useState<number>(0);
-  const [editorFileSize, setEditorFileSize] = useState<string>('');
   const [localFileSourceMode, setLocalFileSourceMode] = useState<CuratedRepoSourceMode>(() =>
     getDefaultCuratedRepoSourceMode()
   );
   const fileSourceMode = normalizeCuratedRepoSourceMode(sourceMode ?? localFileSourceMode);
-  const isLocalSourceAvailable = isLocalFilesystemCorpusAvailable();
-  const isR2SourceConfigured = hasConfiguredR2BucketBaseUrl();
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -429,12 +412,13 @@ export default function RepositoryWorkspaceExplorer({
 
     void (async () => {
       const scheduleProgressUpdate = (nextProgress: number): void => {
-        if (workspaceSearchIndexProgressRef.current === nextProgress) {
+        const roundedProgress = Math.max(0, Math.min(100, Math.round(nextProgress / 10) * 10));
+        if (workspaceSearchIndexProgressRef.current === roundedProgress) {
           return;
         }
 
-        workspaceSearchIndexProgressRef.current = nextProgress;
-        workspaceSearchIndexPendingProgressRef.current = nextProgress;
+        workspaceSearchIndexProgressRef.current = roundedProgress;
+        workspaceSearchIndexPendingProgressRef.current = roundedProgress;
 
         if (workspaceSearchIndexProgressFrameRef.current !== null) {
           return;
@@ -444,9 +428,7 @@ export default function RepositoryWorkspaceExplorer({
           workspaceSearchIndexProgressFrameRef.current = null;
           const pendingProgress = workspaceSearchIndexPendingProgressRef.current;
           if (pendingProgress === null) return;
-          setWorkspaceSearchIndexProgress((currentProgress) =>
-            currentProgress === pendingProgress ? currentProgress : pendingProgress
-          );
+          setWorkspaceSearchIndexProgress(pendingProgress);
         });
       };
 
@@ -799,6 +781,7 @@ export default function RepositoryWorkspaceExplorer({
   // Tabs helpers
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const generateTabId = (path: string) => `tab-${path.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
+  const navigationNonceRef = useRef(0);
 
   const resolveSymbolNavigationLine = useCallback(
     async (
@@ -900,11 +883,13 @@ export default function RepositoryWorkspaceExplorer({
       const { resolvedFilePath, resolvedSearchPattern, resolvedScrollToLine } =
         await resolveSymbolNavigationLine(normalizedPath, searchPattern, scrollToLine, searchScope);
       normalizedPath = resolvedFilePath.replace(/\/+$/, '');
+      const navigationNonce = ++navigationNonceRef.current;
       debugLog('[explorar:open-file] request', {
         filePath,
         normalizedPath,
         searchPattern: resolvedSearchPattern,
         scrollToLine: resolvedScrollToLine,
+        navigationNonce,
         searchScope,
       });
 
@@ -952,6 +937,7 @@ export default function RepositoryWorkspaceExplorer({
             isActive: t.id === existing.id,
             searchPattern: t.id === existing.id ? resolvedSearchPattern : t.searchPattern,
             scrollToLine: t.id === existing.id ? resolvedScrollToLine : t.scrollToLine,
+            navigationNonce: t.id === existing.id ? navigationNonce : t.navigationNonce,
           }))
         );
         return;
@@ -967,6 +953,7 @@ export default function RepositoryWorkspaceExplorer({
         isLoading: true,
         searchPattern: resolvedSearchPattern,
         scrollToLine: resolvedScrollToLine,
+        navigationNonce,
       };
       debugLog('[explorar:open-file] create-tab', {
         path: normalizedPath,
@@ -987,13 +974,9 @@ export default function RepositoryWorkspaceExplorer({
 
   const handleOpenFileFromExplorer = useCallback(
     (filePath: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
-      if (layoutMode === 'search' && onOpenFileRequest) {
-        onOpenFileRequest(filePath, searchPattern, scrollToLine, searchScope);
-        return;
-      }
       openFileInTab(filePath, searchPattern, scrollToLine, searchScope);
     },
-    [layoutMode, onOpenFileRequest, openFileInTab]
+    [openFileInTab]
   );
 
   const guideSections = useMemo(() => {
@@ -1221,44 +1204,6 @@ export default function RepositoryWorkspaceExplorer({
       setTabs((prev) =>
         prev.map((t) => (t.id === activeTab.id ? { ...t, isLoading: false, content } : t))
       );
-
-      // Update status bar info
-      const lines = content.split('\n');
-      setEditorLineCount(lines.length);
-      const bytes = new TextEncoder().encode(content).length;
-      if (bytes < 1024) {
-        setEditorFileSize(`${bytes} B`);
-      } else if (bytes < 1024 * 1024) {
-        setEditorFileSize(`${(bytes / 1024).toFixed(1)} KB`);
-      } else {
-        setEditorFileSize(`${(bytes / (1024 * 1024)).toFixed(1)} MB`);
-      }
-
-      // Detect language from file extension
-      const ext = activeTab.path.split('.').pop()?.toLowerCase();
-      const langMap: Record<string, string> = {
-        c: 'c',
-        h: 'c',
-        cpp: 'cpp',
-        cc: 'cpp',
-        cxx: 'cpp',
-        cs: 'csharp',
-        s: 'asm',
-        S: 'asm',
-        py: 'python',
-        sh: 'shell',
-        rs: 'rust',
-        go: 'go',
-        js: 'javascript',
-        ts: 'typescript',
-        json: 'json',
-        yaml: 'yaml',
-        yml: 'yaml',
-        md: 'markdown',
-        txt: 'text',
-        makefile: 'makefile',
-      };
-      setEditorLanguage(langMap[ext || ''] || 'text');
     },
     [activeTab]
   );
@@ -1331,7 +1276,7 @@ export default function RepositoryWorkspaceExplorer({
     const key =
       typeof initialFile === 'string' || Array.isArray(initialFile)
         ? paths.join('|||')
-        : `${initialFile.path}|||${initialFile.searchPattern || ''}|||${initialFile.scrollToLine || ''}|||${initialFile.searchScope?.join(':::') || ''}`;
+        : `${initialFile.path}|||${initialFile.searchPattern || ''}|||${initialFile.scrollToLine || ''}|||${initialFile.searchScope?.join(':::') || ''}|||${initialFile.navigationNonce || ''}`;
     if (key === lastOpenedInitialFileRef.current) return;
     debugLog('[explorar:open-file] initial-file-trigger', {
       key,
@@ -1365,134 +1310,93 @@ export default function RepositoryWorkspaceExplorer({
   return (
     <div className="vscode-container" style={{ position: 'relative' }}>
       <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
-        <div
-          className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
-          suppressHydrationWarning
-          style={{
-            width: layoutMode === 'search' ? '100%' : `${sidebarWidth}px`,
-            minWidth: layoutMode === 'search' ? 0 : '180px',
-            maxWidth: layoutMode === 'search' ? 'none' : '40vw',
-            flex: layoutMode === 'search' ? '1 1 0%' : '0 0 auto',
-          }}
-        >
-          {isMobile && (
-            <div
-              style={{
-                padding: '12px',
-                borderBottom: '1px solid var(--vscode-border)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Explorer</h3>
-              <button
-                onClick={() => setMobileView('editor')}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--vscode-text-primary)',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  fontSize: '18px',
-                }}
-                aria-label="Close explorer"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+        {layoutMode !== 'viewer' && (
           <div
-            className="vscode-sidebar-content"
-            style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+            className={`vscode-sidebar ${isSidebarOpen && (isMobile ? mobileView === 'explorer' : true) ? 'mobile-open' : ''} ${isMobile && mobileView !== 'explorer' ? 'mobile-hidden' : ''}`}
+            suppressHydrationWarning
+            style={{
+              width: layoutMode === 'search' ? '360px' : `${sidebarWidth}px`,
+              minWidth: layoutMode === 'search' ? '300px' : '180px',
+              maxWidth: layoutMode === 'search' ? '42vw' : '40vw',
+              flex: '0 0 auto',
+            }}
           >
+            {isMobile && (
+              <div
+                style={{
+                  padding: '12px',
+                  borderBottom: '1px solid var(--vscode-border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Explorer</h3>
+                <button
+                  onClick={() => setMobileView('editor')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--vscode-text-primary)',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    fontSize: '18px',
+                  }}
+                  aria-label="Close explorer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div
-              style={{
-                flex: '0 0 auto',
-                padding: '10px 12px',
-                borderBottom: '1px solid var(--vscode-border)',
-                background: 'var(--vscode-bg-secondary)',
-              }}
+              className="vscode-sidebar-content"
+              style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
             >
-              <label
-                htmlFor="corpus-source-mode"
-                style={{
-                  display: 'block',
-                  marginBottom: 6,
-                  color: 'var(--vscode-text-secondary)',
-                  fontSize: 11,
-                  fontWeight: 600,
+              <FileTree
+                key={`tree-${repoLabel}-${selectedVersion}-${fileSourceMode}`}
+                onFileSelect={(filePath: string) => {
+                  handleOpenFileFromExplorer(filePath);
+                  // On mobile, switch to editor view when file is selected
+                  if (isMobile) {
+                    setMobileView('editor');
+                  }
                 }}
-              >
-                Storage source
-              </label>
-              <select
-                id="corpus-source-mode"
-                value={fileSourceMode}
-                onChange={(event) =>
-                  setActiveFileSourceMode(event.target.value as CuratedRepoSourceMode)
+                selectedFile={selectedFile}
+                listDirectory={listDirectoryFromSelectedSource}
+                titleLabel={repoLabel}
+                expandDirectoryRequest={directoryExpandRequest}
+                searchQuery={workspaceSearchQuery}
+                onSearchQueryChange={setWorkspaceSearchQuery}
+                searchResults={workspaceSearchResults}
+                isSearchLoading={workspaceSearchLoading}
+                isSearchIndexLoading={workspaceSearchIndexLoading}
+                isSearchIndexReady={
+                  !!workspaceSearchIndex &&
+                  !workspaceSearchIndexLoading &&
+                  !workspaceSearchIndexError
                 }
-                style={{
-                  width: '100%',
-                  height: 28,
-                  border: '1px solid var(--vscode-border)',
-                  borderRadius: 4,
-                  background: 'var(--vscode-bg-primary)',
-                  color: 'var(--vscode-text-primary)',
-                  fontSize: 12,
-                  padding: '0 8px',
+                searchIndexProgress={workspaceSearchIndexProgress}
+                searchIndexCached={workspaceSearchIndexCached}
+                searchError={workspaceSearchError}
+                searchHasMore={workspaceSearchHasMore}
+                searchScopeLabel={repoLabel ? `${repoLabel}@${selectedVersion}` : selectedVersion}
+                searchScopeFileCount={workspaceSearchIndex?.fileCount ?? workspaceFilePaths.length}
+                onSearchResultSelect={(result) => {
+                  handleOpenFileFromExplorer(result.file, workspaceSearchQuery, result.line);
+                  if (isMobile) {
+                    setMobileView('editor');
+                  }
                 }}
-              >
-                <option value="local-filesystem" disabled={!isLocalSourceAvailable}>
-                  Local staged corpus{isLocalSourceAvailable ? '' : ' unavailable'}
-                </option>
-                <option value="r2-bucket" disabled={!isR2SourceConfigured}>
-                  R2 bucket{isR2SourceConfigured ? '' : ' unavailable'}
-                </option>
-              </select>
+                showSearch={layoutMode === 'search'}
+                onDirectoryExpand={(path: string) => {
+                  setSelectedFile(path);
+                }}
+              />
             </div>
-            <FileTree
-              key={`tree-${repoLabel}-${selectedVersion}-${fileSourceMode}`}
-              onFileSelect={(filePath: string) => {
-                handleOpenFileFromExplorer(filePath);
-                // On mobile, switch to editor view when file is selected
-                if (isMobile) {
-                  setMobileView('editor');
-                }
-              }}
-              selectedFile={selectedFile}
-              listDirectory={listDirectoryFromSelectedSource}
-              titleLabel={repoLabel}
-              expandDirectoryRequest={directoryExpandRequest}
-              searchQuery={workspaceSearchQuery}
-              onSearchQueryChange={setWorkspaceSearchQuery}
-              searchResults={workspaceSearchResults}
-              isSearchLoading={workspaceSearchLoading}
-              isSearchIndexLoading={workspaceSearchIndexLoading}
-              isSearchIndexReady={
-                !!workspaceSearchIndex && !workspaceSearchIndexLoading && !workspaceSearchIndexError
-              }
-              searchIndexProgress={workspaceSearchIndexProgress}
-              searchIndexCached={workspaceSearchIndexCached}
-              searchError={workspaceSearchError}
-              searchHasMore={workspaceSearchHasMore}
-              searchScopeLabel={repoLabel ? `${repoLabel}@${selectedVersion}` : selectedVersion}
-              searchScopeFileCount={workspaceSearchIndex?.fileCount ?? workspaceFilePaths.length}
-              onSearchResultSelect={(result) => {
-                handleOpenFileFromExplorer(result.file, workspaceSearchQuery, result.line);
-                if (isMobile) {
-                  setMobileView('editor');
-                }
-              }}
-              showSearch={layoutMode === 'search'}
-              onDirectoryExpand={(path: string) => {
-                setSelectedFile(path);
-              }}
-            />
           </div>
-        </div>
+        )}
 
-        {layoutMode === 'editor' && (
+        {layoutMode !== 'viewer' && (
           <>
             <div
               className="resize-handle"
@@ -1506,49 +1410,46 @@ export default function RepositoryWorkspaceExplorer({
                 borderRight: '1px solid var(--vscode-border)',
               }}
             />
-
-            <div
-              className={`vscode-editor-container ${isMobile && mobileView !== 'editor' ? 'mobile-hidden' : ''}`}
-              style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column' }}
-            >
-              <TabBar
-                tabs={tabs}
-                activeTabId={activeTabId}
-                onTabSelect={onTabSelect}
-                onTabClose={onTabClose}
-                onCloseAllTabs={onCloseAllTabs}
-                onMarkdownPreviewToggle={toggleMarkdownPreview}
-              />
-              {activeTab ? (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                  <CodeEditorContainer
-                    key={fileSourceMode}
-                    filePath={activeTab.path}
-                    onContentLoad={onEditorContentLoad}
-                    onOpenFile={openFileInTab}
-                    fetchFile={fetchFileContent}
-                    workspaceFilePaths={workspaceFilePaths}
-                    workspaceId={`${fileSourceMode}:${repoLabel}@${selectedVersion}`}
-                    codeIndex={workspaceSearchIndex}
-                    markdownViewMode={activeTab.viewMode}
-                    onToggleMarkdownPreview={toggleMarkdownPreview}
-                    scrollToLine={activeTab.scrollToLine}
-                    searchPattern={activeTab.searchPattern}
-                    onCursorChange={(line, column) => {
-                      setEditorLine(line);
-                      setEditorColumn(column);
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="vscode-empty-state">
-                  <div className="vscode-empty-icon">🐧</div>
-                  <div>Open a file from the explorer to begin</div>
-                </div>
-              )}
-            </div>
           </>
         )}
+
+        <div
+          className={`vscode-editor-container ${isMobile && mobileView !== 'editor' ? 'mobile-hidden' : ''}`}
+          style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column' }}
+        >
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabSelect={onTabSelect}
+            onTabClose={onTabClose}
+            onCloseAllTabs={onCloseAllTabs}
+            onMarkdownPreviewToggle={toggleMarkdownPreview}
+          />
+          {activeTab ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <CodeEditorContainer
+                key={fileSourceMode}
+                filePath={activeTab.path}
+                onContentLoad={onEditorContentLoad}
+                onOpenFile={openFileInTab}
+                fetchFile={fetchFileContent}
+                workspaceFilePaths={workspaceFilePaths}
+                workspaceId={`${fileSourceMode}:${repoLabel}@${selectedVersion}`}
+                codeIndex={workspaceSearchIndex}
+                markdownViewMode={activeTab.viewMode}
+                onToggleMarkdownPreview={toggleMarkdownPreview}
+                scrollToLine={activeTab.scrollToLine}
+                searchPattern={activeTab.searchPattern}
+                navigationNonce={activeTab.navigationNonce}
+              />
+            </div>
+          ) : (
+            <div className="vscode-empty-state">
+              <div className="vscode-empty-icon">🐧</div>
+              <div>Open a file from the explorer to begin</div>
+            </div>
+          )}
+        </div>
 
         {!hideGuidePanel && (
           <div
@@ -1726,18 +1627,6 @@ export default function RepositoryWorkspaceExplorer({
           </button>
         </div>
       )}
-
-      <StatusBar
-        filePath={activeTab?.path}
-        line={editorLine}
-        column={editorColumn}
-        language={editorLanguage}
-        lineCount={editorLineCount}
-        fileSize={editorFileSize}
-        repoLabel={repoLabel}
-        branch={currentBranch || selectedVersion}
-        sourceMode={fileSourceMode}
-      />
     </div>
   );
 }

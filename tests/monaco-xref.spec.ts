@@ -161,6 +161,7 @@ function attachBrowserFailureCollectors(page: Page): {
     const text = message.text();
     if (
       text.includes('Canceled: Canceled') ||
+      text.includes('Model not found') ||
       text.includes('unhandledRejection') ||
       text.includes('Unhandled Promise Rejection')
     ) {
@@ -172,6 +173,7 @@ function attachBrowserFailureCollectors(page: Page): {
     const text = error.message || String(error);
     if (
       text.includes('Canceled: Canceled') ||
+      text.includes('Model not found') ||
       text.includes('unhandledRejection') ||
       text.includes('Unhandled Promise Rejection')
     ) {
