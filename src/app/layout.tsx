@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import BugReportWidget from '@/components/BugReportWidget';
 import { RepositoryProvider } from '@/contexts/RepositoryContext';
 import { initializeWebPlatform } from '@/shared/platform/web';
 import { config } from '@/shared/config';
@@ -220,6 +221,7 @@ export default function RootLayout({
           }}
         />
         <RepositoryProvider>{children}</RepositoryProvider>
+        <BugReportWidget />
       </body>
     </html>
   );
