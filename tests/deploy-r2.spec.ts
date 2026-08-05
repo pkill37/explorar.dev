@@ -9,6 +9,9 @@ import {
   buildRepoManifestKey,
   buildRepoRequiredArtifactKeys,
   buildRepoSyncArgs,
+  buildManPagesBucketPrefix,
+  buildManPagesManifestKey,
+  buildManPagesSyncArgs,
 } from '../scripts/deploy-r2';
 
 test.describe('R2 deploy', () => {
@@ -41,6 +44,22 @@ test.describe('R2 deploy', () => {
       'sync',
       '/tmp/explorar-repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/',
       's3://explorar-repos/repos/littlekernel/lk/a521fe60e1a16d5670fe24b7fca2c5155b3339c4/',
+      '--no-progress',
+      '--size-only',
+    ]);
+    expect(args).not.toContain('--delete');
+  });
+
+  test('builds man-page object keys and sync args', () => {
+    expect(buildManPagesBucketPrefix('explorar-repos')).toBe('s3://explorar-repos/man-pages/');
+    expect(buildManPagesManifestKey()).toBe('man-pages/linux/man-pages-6.18/manifest.json');
+
+    const args = buildManPagesSyncArgs('/tmp/explorar-man-pages', 's3://explorar-repos/man-pages/');
+    expect(args).toEqual([
+      's3',
+      'sync',
+      '/tmp/explorar-man-pages/',
+      's3://explorar-repos/man-pages/',
       '--no-progress',
       '--size-only',
     ]);

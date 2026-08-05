@@ -447,10 +447,10 @@ export default function GuidePanel({
                   style={{
                     background: 'var(--vscode-bg-secondary)',
                     borderTop: `1px solid ${ACCENT}22`,
-                    padding: '6px 8px 8px',
+                    padding: '10px 10px 12px',
                     color: 'var(--vscode-text-secondary)',
                     fontSize: 12,
-                    lineHeight: 1.55,
+                    lineHeight: 1.65,
                   }}
                 >
                   {s.body}

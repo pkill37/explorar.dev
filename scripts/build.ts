@@ -128,7 +128,7 @@ async function main(): Promise<void> {
     `explorar-code-index-stats-${process.pid}.json`
   );
   let codeIndexStats: CodeIndexRunStats | null = null;
-  console.log('\n[build] starting 5 phases');
+  console.log('\n[build] starting 6 phases');
 
   const corpusState = await inspectCorpusState({
     only: [],
@@ -139,12 +139,12 @@ async function main(): Promise<void> {
   });
 
   if (corpusState.missingAvatars.length === 0 && corpusState.staleRepos.length === 0) {
-    console.log('\n[1/5] Download curated corpus');
+    console.log('\n[1/6] Download curated corpus');
     console.log(
       `  skipped: ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached`
     );
   } else {
-    console.log('\n[1/5] Download curated corpus');
+    console.log('\n[1/6] Download curated corpus');
     console.log('  refresh required before build:');
     if (corpusState.staleRepos.length > 0) {
       console.log(`  - refreshing ${corpusState.staleRepos.length} repo target(s)`);
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
     if (corpusState.missingAvatars.length > 0) {
       console.log(`  - fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
     }
-    await runStep(1, 5, {
+    await runStep(1, 6, {
       name: 'Download curated corpus',
       command: 'tsx',
       args:
@@ -166,7 +166,13 @@ async function main(): Promise<void> {
     codeIndexStats = readCodeIndexStats(codeIndexStatsPath);
   }
 
-  await runConcurrentGroup(2, 5, 'Guide validation', [
+  await runStep(2, 6, {
+    name: 'Build Linux man pages',
+    command: 'tsx',
+    args: ['scripts/build-man-pages.ts'],
+  });
+
+  await runConcurrentGroup(3, 6, 'Guide validation', [
     {
       name: 'Validate guide frontmatter',
       command: 'tsx',
@@ -179,19 +185,19 @@ async function main(): Promise<void> {
     },
   ]);
 
-  await runStep(3, 5, {
+  await runStep(4, 6, {
     name: 'Prepare shell-only public assets',
     command: 'tsx',
     args: ['scripts/prepare-shell-build.ts'],
   });
 
-  await runStep(4, 5, {
+  await runStep(5, 6, {
     name: 'Run Next.js production build',
     command: 'next',
     args: ['build'],
   });
 
-  await runStep(5, 5, {
+  await runStep(6, 6, {
     name: 'Generate build report',
     command: 'tsx',
     args: ['scripts/report-build.ts'],

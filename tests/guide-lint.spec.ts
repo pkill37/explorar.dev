@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import matter from 'gray-matter';
 import { fetchRepositoryFile } from '../src/lib/github-api';
+import { getCuratedRepo } from '../src/lib/curated-repos';
 import {
   checkGuide,
   parseSections,
@@ -12,6 +13,12 @@ import {
   stripFencedBlocks,
 } from '../scripts/check-guide-refs';
 import { CORPUS_REPOS_DIR } from '../scripts/static-asset-paths';
+import {
+  parseSectionIds,
+  validateChapterGraph,
+  validateGuideMarkdown,
+} from '../scripts/validate-guides';
+import { parseMarkdownNavigationTarget } from '../src/lib/markdown-navigation';
 import { resolveCorpusPathFromKnownFiles } from '../src/lib/repo-static';
 
 function makeTempDir(prefix: string): string {
@@ -52,6 +59,182 @@ function normalizeInlineRef(ref: string): string {
 }
 
 test.describe('guide reference linting', () => {
+  test('parses explicit and implicit man-page guide links', () => {
+    expect(parseMarkdownNavigationTarget('man:futex(2)')).toEqual({
+      kind: 'man-page',
+      name: 'futex',
+      section: '2',
+    });
+    expect(parseMarkdownNavigationTarget('sigreturn(2)')).toEqual({
+      kind: 'man-page',
+      name: 'sigreturn',
+      section: '2',
+    });
+    expect(parseMarkdownNavigationTarget('not_a_real_page(2)')).toEqual({
+      kind: 'man-page',
+      name: 'not_a_real_page',
+      section: '2',
+    });
+  });
+
+  test('validates required guide document frontmatter', () => {
+    const guide = `---
+name: Incomplete Guide
+description: Missing repo metadata
+---
+
+---
+id: ch1
+title: Chapter 1
+---
+
+Content.
+`;
+
+    expect(validateGuideMarkdown(guide).errors).toEqual(
+      expect.arrayContaining([
+        'missing doc frontmatter: owner',
+        'missing doc frontmatter: repo',
+        'missing or empty doc frontmatter: defaultOpenIds',
+      ])
+    );
+  });
+
+  test('validates section id, title, and defaultOpenIds coverage', () => {
+    const guide = `---
+owner: torvalds
+repo: linux
+defaultOpenIds:
+  - missing
+---
+
+---
+title: Missing ID
+---
+
+Content.
+
+---
+id: ch2
+---
+
+More content.
+`;
+
+    expect(validateGuideMarkdown(guide).errors).toEqual(
+      expect.arrayContaining([
+        'section missing id (title: "Missing ID")',
+        'section missing title (id: "ch2")',
+        'defaultOpenIds contains "missing" but no section has that id — chapter will never auto-open',
+      ])
+    );
+  });
+
+  test('validates chapter graph syntax and duplicates', () => {
+    expect(validateChapterGraph('a.c -> b.c : calls\nbad edge\na.c -> b.c : repeats', 10)).toEqual(
+      expect.arrayContaining([
+        'line 11: invalid edge syntax (expected "source -> target : label"): bad edge',
+        'line 12: duplicate edge: a.c -> b.c',
+      ])
+    );
+    expect(validateChapterGraph('a.c -> a.c : loops', 20)).toEqual([
+      'line 20: self-loop: a.c -> a.c',
+    ]);
+
+    const guide = `---
+owner: torvalds
+repo: linux
+defaultOpenIds:
+  - ch1
+---
+
+---
+id: ch1
+title: Chapter 1
+---
+
+\`\`\`chapter-graph
+\`\`\`
+`;
+
+    expect(validateGuideMarkdown(guide).errors).toContain(
+      'chapter-graph block at line 13: empty graph'
+    );
+  });
+
+  test('section metadata parsing ignores prose and fenced code separators', () => {
+    const guideContent = `
+Intro text.
+
+\`\`\`md
+---
+id: not-a-real-section
+title: Inside Fence
+---
+\`\`\`
+
+---
+id: ch1
+title: Chapter 1
+---
+
+Chapter prose.
+
+---
+
+Not section metadata.
+
+---
+id: ch2
+title: Chapter 2
+---
+
+More prose.
+`;
+
+    expect(parseSectionIds(guideContent)).toEqual([
+      { id: 'ch1', title: 'Chapter 1' },
+      { id: 'ch2', title: 'Chapter 2' },
+    ]);
+  });
+
+  test('all markdown guides satisfy the guide format validator', () => {
+    const docsDir = path.join(process.cwd(), 'docs');
+    const docFiles = fs
+      .readdirSync(docsDir)
+      .filter((file) => file.endsWith('.md') && file !== 'common.md')
+      .sort();
+
+    for (const fileName of docFiles) {
+      const raw = fs.readFileSync(path.join(docsDir, fileName), 'utf8');
+      const result = validateGuideMarkdown(raw);
+
+      expect(result.errors, `${fileName} guide format errors`).toEqual([]);
+      expect(result.sections.length, `${fileName} should contain sections`).toBeGreaterThan(0);
+    }
+  });
+
+  test('all markdown guide frontmatter matches curated repository config', () => {
+    const docsDir = path.join(process.cwd(), 'docs');
+    const docFiles = fs
+      .readdirSync(docsDir)
+      .filter((file) => file.endsWith('.md') && file !== 'common.md')
+      .sort();
+
+    for (const fileName of docFiles) {
+      const raw = fs.readFileSync(path.join(docsDir, fileName), 'utf8');
+      const { data } = matter(raw);
+      const owner = String(data.owner ?? '');
+      const repo = String(data.repo ?? '');
+      const curatedRepo = getCuratedRepo(owner, repo);
+
+      expect(curatedRepo, `${fileName} references a curated repo`).not.toBeNull();
+      expect(data.curatedRepoId, `${fileName} curatedRepoId`).toBe(curatedRepo?.id);
+      expect(data.revision, `${fileName} revision`).toBe(curatedRepo?.revision);
+      expect(data.guideId, `${fileName} guideId`).toBe(curatedRepo?.guideId);
+    }
+  });
+
   test('resolves bare file names against the downloaded corpus', () => {
     const repoRoot = makeTempDir('explorar-guide-lint-');
     try {
@@ -268,6 +451,9 @@ The markdown link [missing_entry.S](./missing_entry.S) should also be checked.
       expect(resolveRepoPath(repoRoot, 'fs/readdir.c:getdents')).toBe('fs/readdir.c');
       expect(resolveRepoPath(repoRoot, 'fs/readdir.c:271')).toBe('fs/readdir.c');
       expect(stripNavigationSuffix('fs/readdir.c:getdents')).toBe('fs/readdir.c');
+      expect(stripNavigationSuffix('iokit/Kernel/IOService.cpp:IOService::start')).toBe(
+        'iokit/Kernel/IOService.cpp'
+      );
     } finally {
       fs.rmSync(repoRoot, { recursive: true, force: true });
     }

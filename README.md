@@ -16,7 +16,7 @@ npm run dev      # starts at localhost:3000
 ```
 
 ```
-npm run lint     # tsc + eslint + prettier + depcheck
+npm run lint     # tsc + eslint + prettier + markdownlint + depcheck
 npm run build    # static export to out/ for a static host
 npm run deploy   # production deploy: R2 sync of repo corpus
 npm test         # Playwright tests (requires built output)

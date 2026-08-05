@@ -162,15 +162,15 @@ export function refExists(repoRoot: string, refPath: string): boolean {
 
 export function stripNavigationSuffix(refPath: string): string {
   const withoutHash = refPath.split('#')[0] || refPath;
-  const lastColon = withoutHash.lastIndexOf(':');
   const lastSlash = withoutHash.lastIndexOf('/');
-  if (lastColon <= lastSlash) {
+  const navigationColon = withoutHash.indexOf(':', lastSlash + 1);
+  if (navigationColon <= lastSlash) {
     return withoutHash;
   }
 
-  const suffix = withoutHash.slice(lastColon + 1);
+  const suffix = withoutHash.slice(navigationColon + 1);
   if (/^L?\d+$/i.test(suffix) || /^[A-Za-z_][A-Za-z0-9_:.<>\-~]*$/.test(suffix)) {
-    return withoutHash.slice(0, lastColon);
+    return withoutHash.slice(0, navigationColon);
   }
 
   return withoutHash;

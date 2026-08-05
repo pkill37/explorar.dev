@@ -15,6 +15,7 @@
   --vscode-text-primary: #cccccc;
   --vscode-text-secondary: #969696;
   --vscode-text-tertiary: #6a6a6a;
+  --vscode-text-muted: #7f7f7f;
   --vscode-text-accent: #569cd6;
   --vscode-text-error: #f48771;
   --vscode-text-warning: #dcdcaa;
@@ -31,6 +32,39 @@
   --syntax-type: #4ec9b0;
   --syntax-number: #b5cea8;
   --syntax-operator: #d4d4d4;
+}
+
+.vscode-theme-light {
+  color-scheme: light;
+
+  --vscode-bg-primary: #ffffff;
+  --vscode-bg-secondary: #f3f3f3;
+  --vscode-bg-tertiary: #e8e8e8;
+  --vscode-bg-quaternary: #d4d4d4;
+  --vscode-bg-hover: #e5e5e5;
+  --vscode-bg-selected: #dbeafe;
+  --vscode-bg-focus: #bfdbfe;
+
+  --vscode-border: #d0d0d0;
+  --vscode-border-light: #c6c6c6;
+
+  --vscode-text-primary: #1f2328;
+  --vscode-text-secondary: #57606a;
+  --vscode-text-tertiary: #8c959f;
+  --vscode-text-muted: #6e7781;
+  --vscode-text-accent: #0969da;
+  --vscode-text-error: #cf222e;
+  --vscode-text-warning: #9a6700;
+  --vscode-text-success: #1a7f37;
+
+  --syntax-keyword: #cf222e;
+  --syntax-string: #0a3069;
+  --syntax-comment: #6e7781;
+  --syntax-function: #8250df;
+  --syntax-variable: #953800;
+  --syntax-type: #116329;
+  --syntax-number: #0550ae;
+  --syntax-operator: #24292f;
 }
 
 /* Reset and base styles for VSCode theme */
@@ -124,6 +158,31 @@
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+}
+
+.vscode-activity-theme-toggle {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--vscode-text-accent);
+  border-radius: 8px;
+  background: var(--vscode-bg-selected);
+  color: var(--vscode-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.vscode-activity-theme-toggle:hover {
+  background: var(--vscode-bg-hover);
+}
+
+.vscode-activity-theme-toggle:focus-visible {
+  outline: 1px solid var(--vscode-text-accent);
+  outline-offset: 2px;
 }
 
 /* File Tree */

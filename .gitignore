@@ -45,8 +45,11 @@ next-env.d.ts
 
 # repos
 /repos
+/man-pages
+/.cache
 /avatars
 /public/repos
+/public/man-pages
 /public/monaco-editor
 
 # Cloudflare Workers / Wrangler

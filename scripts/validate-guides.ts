@@ -15,22 +15,36 @@ const DOCS_DIR = path.join(process.cwd(), 'docs');
 // Files without a repo config (shared references, not guide files)
 const SKIP_FILES = new Set(['common.md']);
 
-interface SectionMeta {
+export interface SectionMeta {
   id?: string;
   title?: string;
 }
 
+export interface GuideValidationResult {
+  errors: string[];
+  sections: SectionMeta[];
+  graphBlocks: Array<{ code: string; line: number }>;
+}
+
+function isFenceMarker(line: string): boolean {
+  const t = line.trim();
+  return t.startsWith('```') || t.startsWith('~~~');
+}
+
 /** Split content into sections by --- delimiter pairs, returning frontmatter strings */
-function parseSectionIds(content: string): SectionMeta[] {
+export function parseSectionIds(content: string): SectionMeta[] {
   const sections: SectionMeta[] = [];
   const lines = content.split('\n');
   let i = 0;
+  let inFence = false;
 
   while (i < lines.length) {
-    if (lines[i].trim() !== '---') {
+    if (isFenceMarker(lines[i])) inFence = !inFence;
+    if (inFence || lines[i].trim() !== '---') {
       i++;
       continue;
     }
+    const sectionStart = i;
     i++; // skip opening ---
     while (i < lines.length && lines[i].trim() === '') i++;
 
@@ -52,6 +66,8 @@ function parseSectionIds(content: string): SectionMeta[] {
         id: idMatch?.[1].trim(),
         title: titleMatch?.[1].trim(),
       });
+    } else {
+      i = sectionStart + 1;
     }
   }
 
@@ -59,7 +75,10 @@ function parseSectionIds(content: string): SectionMeta[] {
 }
 
 /** Extract all fenced code blocks of a given language with their 1-based start line numbers */
-function extractFencedBlocks(raw: string, language: string): Array<{ code: string; line: number }> {
+export function extractFencedBlocks(
+  raw: string,
+  language: string
+): Array<{ code: string; line: number }> {
   const blocks: Array<{ code: string; line: number }> = [];
   const lines = raw.split('\n');
   const fence = '```' + language;
@@ -91,7 +110,7 @@ const EDGE_RE = /^(\S+)\s*->\s*(\S+)\s*:\s*(.+)$/;
  * Validate a chapter-graph block.
  * Returns an array of error strings (empty = valid).
  */
-function validateChapterGraph(graph: string, blockLine: number): string[] {
+export function validateChapterGraph(graph: string, blockLine: number): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
 
@@ -122,7 +141,57 @@ function validateChapterGraph(graph: string, blockLine: number): string[] {
   return errors;
 }
 
-(async () => {
+export function validateGuideMarkdown(raw: string): GuideValidationResult {
+  const { data: frontmatter, content } = matter(raw);
+
+  const errors: string[] = [];
+
+  // 1. Doc-level frontmatter checks
+  if (!frontmatter.owner) errors.push('missing doc frontmatter: owner');
+  if (!frontmatter.repo) errors.push('missing doc frontmatter: repo');
+  if (!Array.isArray(frontmatter.defaultOpenIds) || frontmatter.defaultOpenIds.length === 0) {
+    errors.push('missing or empty doc frontmatter: defaultOpenIds');
+  }
+
+  // 2. Section frontmatter checks
+  const sections = parseSectionIds(content);
+
+  if (sections.length === 0) {
+    errors.push('no section frontmatter found — chapters will not open correctly');
+  }
+
+  for (const section of sections) {
+    if (!section.id) errors.push(`section missing id (title: "${section.title}")`);
+    if (!section.title) errors.push(`section missing title (id: "${section.id}")`);
+  }
+
+  // 3. defaultOpenIds coverage check
+  if (Array.isArray(frontmatter.defaultOpenIds)) {
+    const sectionIds = new Set(sections.map((s) => s.id));
+    for (const openId of frontmatter.defaultOpenIds) {
+      if (!sectionIds.has(openId)) {
+        errors.push(
+          `defaultOpenIds contains "${openId}" but no section has that id — chapter will never auto-open`
+        );
+      }
+    }
+  }
+
+  // 4. Chapter-graph edge syntax check
+  const graphBlocks = extractFencedBlocks(raw, 'chapter-graph');
+  for (const block of graphBlocks) {
+    if (!block.code.trim()) {
+      errors.push(`chapter-graph block at line ${block.line}: empty graph`);
+      continue;
+    }
+    const graphErrors = validateChapterGraph(block.code, block.line + 1);
+    errors.push(...graphErrors);
+  }
+
+  return { errors, sections, graphBlocks };
+}
+
+export function main(): number {
   let errors = 0;
 
   const files = fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith('.md') && !SKIP_FILES.has(f));
@@ -130,51 +199,7 @@ function validateChapterGraph(graph: string, blockLine: number): string[] {
   for (const file of files) {
     const filepath = path.join(DOCS_DIR, file);
     const raw = fs.readFileSync(filepath, 'utf-8');
-    const { data: frontmatter, content } = matter(raw);
-
-    const fileErrors: string[] = [];
-
-    // 1. Doc-level frontmatter checks
-    if (!frontmatter.owner) fileErrors.push('missing doc frontmatter: owner');
-    if (!frontmatter.repo) fileErrors.push('missing doc frontmatter: repo');
-    if (!Array.isArray(frontmatter.defaultOpenIds) || frontmatter.defaultOpenIds.length === 0) {
-      fileErrors.push('missing or empty doc frontmatter: defaultOpenIds');
-    }
-
-    // 2. Section frontmatter checks
-    const sections = parseSectionIds(content);
-
-    if (sections.length === 0) {
-      fileErrors.push('no section frontmatter found — chapters will not open correctly');
-    }
-
-    for (const section of sections) {
-      if (!section.id) fileErrors.push(`section missing id (title: "${section.title}")`);
-      if (!section.title) fileErrors.push(`section missing title (id: "${section.id}")`);
-    }
-
-    // 3. defaultOpenIds coverage check
-    if (Array.isArray(frontmatter.defaultOpenIds)) {
-      const sectionIds = new Set(sections.map((s) => s.id));
-      for (const openId of frontmatter.defaultOpenIds) {
-        if (!sectionIds.has(openId)) {
-          fileErrors.push(
-            `defaultOpenIds contains "${openId}" but no section has that id — chapter will never auto-open`
-          );
-        }
-      }
-    }
-
-    // 4. Chapter-graph edge syntax check
-    const graphBlocks = extractFencedBlocks(raw, 'chapter-graph');
-    for (const block of graphBlocks) {
-      if (!block.code.trim()) {
-        fileErrors.push(`chapter-graph block at line ${block.line}: empty graph`);
-        continue;
-      }
-      const graphErrors = validateChapterGraph(block.code, block.line + 1);
-      fileErrors.push(...graphErrors);
-    }
+    const { errors: fileErrors, sections, graphBlocks } = validateGuideMarkdown(raw);
 
     if (fileErrors.length > 0) {
       console.error(`\n❌ ${file}:`);
@@ -193,8 +218,13 @@ function validateChapterGraph(graph: string, blockLine: number): string[] {
 
   if (errors > 0) {
     console.error(`\n${errors} guide validation error(s) found.`);
-    process.exit(1);
+    return 1;
   } else {
     console.log(`\nAll ${files.length} guide files valid.`);
+    return 0;
   }
-})();
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  process.exit(main());
+}

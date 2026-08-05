@@ -37,7 +37,7 @@ fileRecommendations:
     - path: configs/seL4Config.cmake
       description: Kernel configuration entry point for build-time options and feature selection
       type: source
-    - path: manual/README.md
+    - path: manual/README.md#the-sel4-reference-manual
       description: Reference manual entry point and documentation structure
       type: docs
     - path: include/config.h
@@ -59,7 +59,7 @@ id: ch2
 title: Chapter 2 — Boot and Architecture Bring-Up
 fileRecommendations:
   readingOrder:
-    - path: src/kernel/boot.c
+    - path: src/kernel/boot.c:init_core_state
       description: Kernel bootstrap logic that connects architecture bring-up to the initial kernel state
       type: source
     - path: include/kernel/boot.h
@@ -99,16 +99,16 @@ fileRecommendations:
     - path: src/kernel/cspace.c
       description: Capability lookup and derivation logic
       type: source
-    - path: src/object/objecttype.c
+    - path: src/object/objecttype.c:createObject
       description: Object dispatch and type-level behavior for kernel objects
       type: source
     - path: src/object/cnode.c
       description: Capability node implementation and CSpace structure
       type: source
-    - path: src/object/tcb.c
+    - path: src/object/tcb.c#L114
       description: Thread control block implementation and thread state transitions
       type: source
-    - path: src/object/endpoint.c
+    - path: src/object/endpoint.c#L47
       description: IPC endpoint object used for message passing
       type: source
     - path: src/object/notification.c
@@ -167,10 +167,10 @@ id: ch5
 title: Chapter 5 — Scheduling, Faults, and MCS
 fileRecommendations:
   readingOrder:
-    - path: src/kernel/thread.c
+    - path: src/kernel/thread.c:schedule
       description: Thread lifecycle, scheduling, and runnable state management
       type: source
-    - path: src/kernel/faulthandler.c
+    - path: src/kernel/faulthandler.c:handleFault
       description: Fault delivery and kernel-side fault handling
       type: source
     - path: src/kernel/sporadic.c

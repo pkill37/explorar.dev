@@ -3,10 +3,13 @@
 import React, { useMemo } from 'react';
 import { marked } from 'marked';
 import {
+  decodeHtmlEntities,
   escapeHtml,
+  getManualPageLinkAttributes,
   getRepoLinkAttributes,
   hasUnsafeScheme,
   isExternalHref,
+  parseMarkdownNavigationTarget,
   parseRepoNavigationTarget,
   resolveRepoRelativePath,
 } from '@/lib/markdown-navigation';
@@ -16,6 +19,7 @@ interface MarkdownPreviewProps {
   filePath: string;
   isLoading: boolean;
   onOpenFile?: (path: string, searchPattern?: string, scrollToLine?: number) => void;
+  onOpenManPage?: (name: string, section: string) => void;
 }
 
 const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
@@ -23,6 +27,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   filePath,
   isLoading,
   onOpenFile,
+  onOpenManPage,
 }) => {
   const html = useMemo(() => {
     const renderer = new marked.Renderer();
@@ -41,9 +46,15 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         return `<a href="${escapeHtml(safeHref)}"${titleAttr}>${text}</a>`;
       }
 
-      const repoTarget = parseRepoNavigationTarget(safeHref, filePath);
-      if (repoTarget) {
-        return `<a href="#" ${getRepoLinkAttributes(repoTarget)}${titleAttr}>${text}</a>`;
+      const navigationTarget = parseMarkdownNavigationTarget(safeHref, filePath, {
+        linkText: text,
+        title: title ?? undefined,
+      });
+      if (navigationTarget?.kind === 'man-page') {
+        return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+      }
+      if (navigationTarget?.kind === 'repo-file') {
+        return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
       }
 
       const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
@@ -51,8 +62,14 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     };
 
     renderer.codespan = (code) => {
-      const repoTarget = parseRepoNavigationTarget(code, filePath);
-      const codeHtml = `<code>${escapeHtml(code)}</code>`;
+      const decodedCode = decodeHtmlEntities(code);
+      const navigationTarget = parseMarkdownNavigationTarget(decodedCode, filePath);
+      if (navigationTarget?.kind === 'man-page') {
+        return `<a href="#" class="inline-code-link" ${getManualPageLinkAttributes(navigationTarget)}><code>${escapeHtml(decodedCode)}</code></a>`;
+      }
+
+      const repoTarget = parseRepoNavigationTarget(decodedCode, filePath);
+      const codeHtml = `<code>${escapeHtml(decodedCode)}</code>`;
       if (!repoTarget) {
         return codeHtml;
       }
@@ -122,13 +139,23 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           dangerouslySetInnerHTML={{ __html: html }}
           onClick={(event) => {
             const target = event.target as HTMLElement;
-            const anchor = target.closest('a[data-repo-path], img[data-repo-path]');
-            if (!anchor || !onOpenFile) {
+            const anchor = target.closest(
+              'a[data-repo-path], img[data-repo-path], a[data-man-page-name]'
+            );
+            if (!anchor) {
+              return;
+            }
+
+            const manPageName = anchor.getAttribute('data-man-page-name');
+            const manPageSection = anchor.getAttribute('data-man-page-section');
+            if (manPageName && manPageSection && onOpenManPage) {
+              event.preventDefault();
+              onOpenManPage(manPageName, manPageSection);
               return;
             }
 
             const repoPath = anchor.getAttribute('data-repo-path');
-            if (!repoPath) {
+            if (!repoPath || !onOpenFile) {
               return;
             }
 

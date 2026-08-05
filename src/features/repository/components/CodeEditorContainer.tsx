@@ -17,6 +17,7 @@ interface CodeEditorContainerProps {
     scrollToLine?: number,
     searchScope?: string[]
   ) => void;
+  onOpenManPage?: (name: string, section: string) => void;
   fetchFile?: (path: string) => Promise<FileFetchResult>;
   markdownViewMode?: 'source' | 'preview';
   onToggleMarkdownPreview?: () => void;
@@ -27,6 +28,7 @@ interface CodeEditorContainerProps {
   workspaceFilePaths?: string[];
   workspaceId?: string;
   codeIndex?: LoadedCodeIndex | null;
+  editorTheme?: 'vs-dark' | 'vs';
 }
 
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
@@ -35,6 +37,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   filePath,
   onContentLoad,
   onOpenFile,
+  onOpenManPage,
   fetchFile,
   markdownViewMode = 'source',
   onToggleMarkdownPreview,
@@ -45,6 +48,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
   workspaceFilePaths,
   workspaceId,
   codeIndex,
+  editorTheme = 'vs-dark',
 }) => {
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -204,6 +208,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
         content={content}
         isLoading={isLoading}
         onOpenFile={onOpenFile}
+        onOpenManPage={onOpenManPage}
       />
     );
   }
@@ -223,6 +228,7 @@ const CodeEditorContainer: React.FC<CodeEditorContainerProps> = ({
       workspaceFilePaths={workspaceFilePaths}
       workspaceId={workspaceId}
       codeIndex={codeIndex}
+      editorTheme={editorTheme}
     />
   );
 };

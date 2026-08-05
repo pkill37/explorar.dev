@@ -11,6 +11,7 @@ import {
 } from './repo-static';
 import { getDefaultCuratedRepoSourceMode } from './curated-content-url';
 import { getCuratedRepoRevision } from './curated-repos';
+import { debugLog } from './browser-debug';
 import type { FileFetchResult } from './file-fetch-debug';
 
 type GitHubConfig = {
@@ -162,7 +163,14 @@ async function tryFetchFileFromStorage(
       return null;
     }
   } catch (error) {
-    console.error(`Error fetching file from ${sourceMode}:`, error);
+    debugLog('[explorar:file-fetch-storage] error', {
+      owner,
+      repo,
+      branch,
+      path,
+      sourceMode,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }

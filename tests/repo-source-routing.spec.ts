@@ -11,6 +11,7 @@ import {
   getTreeStructureFromStatic,
   readFileFromStatic,
 } from '@/lib/repo-static';
+import { fetchRepositoryFile } from '@/lib/github-api';
 
 const OWNER = 'littlekernel';
 const REPO = 'lk';
@@ -188,6 +189,28 @@ test.describe('curated repo source routing', () => {
     );
   });
 
+  test('fetches repository files from an explicit local source even when R2 is configured', async () => {
+    await withR2BaseUrl(() =>
+      withMockedFetch(
+        (url) => {
+          if (url === `/repos/${OWNER}/${REPO}/${BRANCH}/top/main.c`) {
+            return new Response('local explicit content', { status: 200 });
+          }
+          return new Response('wrong source', { status: 500 });
+        },
+        async (calls) => {
+          const result = await fetchRepositoryFile(OWNER, REPO, BRANCH, 'top/main.c', {
+            sourceMode: 'local-filesystem',
+          });
+
+          expect(result.content).toBe('local explicit content');
+          expect(result.debugInfo?.source).toBe('local-filesystem');
+          expect(calls).toEqual([`/repos/${OWNER}/${REPO}/${BRANCH}/top/main.c`]);
+        }
+      )
+    );
+  });
+
   test('reads file content only from the selected R2 bucket source', async () => {
     await withR2BaseUrl(() =>
       withMockedFetch(
@@ -208,6 +231,35 @@ test.describe('curated repo source routing', () => {
         }
       )
     );
+  });
+
+  test('does not emit console errors when an R2 file fetch fails', async () => {
+    const originalConsoleError = console.error;
+    const consoleErrors: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      consoleErrors.push(args);
+    };
+
+    try {
+      await withR2BaseUrl(() =>
+        withMockedFetch(
+          () => {
+            throw new TypeError('Failed to fetch');
+          },
+          async () => {
+            await expect(
+              fetchRepositoryFile(OWNER, REPO, BRANCH, 'top/main.c', {
+                sourceMode: 'r2-bucket',
+              })
+            ).rejects.toThrow(`Failed to load "top/main.c" from r2-bucket`);
+          }
+        )
+      );
+
+      expect(consoleErrors).toEqual([]);
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 
   test('keeps manifest cache entries separated by source mode', async () => {

@@ -30,7 +30,7 @@ id: ch1
 title: Chapter 1 — Introduction to LLVM
 fileRecommendations:
   readingOrder:
-    - path: llvm/docs/LangRef.rst
+    - path: llvm/docs/LangRef.rst#abstract
       description: LLVM Language Reference Manual
       type: docs
     - path: llvm/docs/WritingAnLLVMPass.rst
@@ -48,7 +48,7 @@ fileRecommendations:
     - path: llvm/include/llvm/IR/Function.h
       description: LLVM IR function representation
       type: source
-    - path: llvm/lib/IR/Verifier.cpp
+    - path: llvm/lib/IR/Verifier.cpp:Verifier::visitFunction
       description: IR validity checking — learn the rules here
       type: source
 ---
@@ -189,20 +189,20 @@ id: ch2
 title: Chapter 2 — LLVM IR and Code Generation
 fileRecommendations:
   readingOrder:
-    - path: llvm/docs/LangRef.rst
+    - path: llvm/docs/LangRef.rst#abstract
       description: Complete LLVM IR language reference
       type: docs
-    - path: llvm/lib/IR/Instructions.cpp
-      description: All IR instruction types (~4,000 lines)
+    - path: llvm/lib/IR/Instructions.cpp#L1
+      description: All IR instruction types (about 4,000 lines)
       type: source
-    - path: llvm/lib/IR/Verifier.cpp
+    - path: llvm/lib/IR/Verifier.cpp:Verifier::visitFunction
       description: IR validity checking — the rules of valid IR
       type: source
     - path: llvm/lib/CodeGen/SelectionDAG/
       description: Instruction selection via SelectionDAG
       type: source
     - path: llvm/lib/Target/X86/X86ISelLowering.cpp
-      description: x86 IR lowering (~50,000 lines!)
+      description: x86 IR lowering (about 50,000 lines!)
       type: source
 ---
 
@@ -327,15 +327,15 @@ Key CodeGen files:
 
 **IR Core ([llvm/lib/IR/](llvm/lib/IR/)):**
 
-- [llvm/lib/IR/Type.cpp](llvm/lib/IR/Type.cpp) (~860 lines) - Type system implementation
-- [llvm/lib/IR/Value.cpp](llvm/lib/IR/Value.cpp) (~1,300 lines) - Base value class
-- [llvm/lib/IR/Instructions.cpp](llvm/lib/IR/Instructions.cpp) (~4,000 lines) - All instruction types
-- [llvm/lib/IR/BasicBlock.cpp](llvm/lib/IR/BasicBlock.cpp) (~1,200 lines) - Basic block implementation
-- [llvm/lib/IR/Verifier.cpp](llvm/lib/IR/Verifier.cpp) (~7,200 lines) - IR validity checking
+- [llvm/lib/IR/Type.cpp](llvm/lib/IR/Type.cpp) (about 860 lines) - Type system implementation
+- [llvm/lib/IR/Value.cpp](llvm/lib/IR/Value.cpp) (about 1,300 lines) - Base value class
+- [llvm/lib/IR/Instructions.cpp](llvm/lib/IR/Instructions.cpp) (about 4,000 lines) - All instruction types
+- [llvm/lib/IR/BasicBlock.cpp](llvm/lib/IR/BasicBlock.cpp) (about 1,200 lines) - Basic block implementation
+- [llvm/lib/IR/Verifier.cpp](llvm/lib/IR/Verifier.cpp) (about 7,200 lines) - IR validity checking
 
 **Target-Specific ([llvm/lib/Target/X86/](llvm/lib/Target/X86/)):**
 
-- [llvm/lib/Target/X86/X86ISelLowering.cpp](llvm/lib/Target/X86/X86ISelLowering.cpp) (~50,000 lines!) - Lower IR to x86
+- [llvm/lib/Target/X86/X86ISelLowering.cpp](llvm/lib/Target/X86/X86ISelLowering.cpp) (about 50,000 lines!) - Lower IR to x86
 - [llvm/lib/Target/X86/X86InstrInfo.td](llvm/lib/Target/X86/X86InstrInfo.td) - x86 instruction descriptions (TableGen)
 - [llvm/lib/Target/X86/X86RegisterInfo.td](llvm/lib/Target/X86/X86RegisterInfo.td) - x86 register descriptions
 
@@ -356,13 +356,13 @@ fileRecommendations:
     - path: clang/include/clang/AST/Expr.h
       description: Expression AST nodes
       type: source
-    - path: clang/lib/Sema/SemaDecl.cpp
+    - path: clang/lib/Sema/SemaDecl.cpp:Sema::ActOnDeclarator
       description: Semantic analysis for declarations
       type: source
     - path: clang/lib/CodeGen/CodeGenModule.cpp
       description: Module-level LLVM IR generation
       type: source
-    - path: clang/lib/Parse/ParseDecl.cpp
+    - path: clang/lib/Parse/ParseDecl.cpp:Parser::ParseDeclaration
       description: Parser for declarations
       type: source
 ---
@@ -444,7 +444,7 @@ Key parser files:
 
 ### Semantic Analysis: Type Checking and Validation
 
-Sema is the largest component of Clang (~100k lines). It handles:
+Sema is the largest component of Clang (about 100k lines). It handles:
 
 - **Name lookup**: Resolving identifiers to their declarations
 - **Type checking**: Ensuring operations are valid for their types
@@ -511,19 +511,19 @@ fileRecommendations:
     - path: llvm/docs/Passes.rst
       description: Built-in LLVM passes reference
       type: docs
-    - path: llvm/lib/Transforms/Scalar/DCE.cpp
+    - path: llvm/lib/Transforms/Scalar/DCE.cpp:DCEPass::run
       description: Dead Code Elimination — simplest transform pass
       type: source
-    - path: llvm/lib/Transforms/Scalar/SCCP.cpp
+    - path: llvm/lib/Transforms/Scalar/SCCP.cpp:SCCPPass::run
       description: Sparse Conditional Constant Propagation
       type: source
-    - path: llvm/lib/Transforms/Utils/Mem2Reg.cpp
+    - path: llvm/lib/Transforms/Utils/Mem2Reg.cpp:PromotePass::run
       description: Promote stack allocas to SSA registers
       type: source
     - path: llvm/lib/Transforms/InstCombine/
-      description: Instruction combining (~50,000 lines of peepholes)
+      description: Instruction combining (about 50,000 lines of peepholes)
       type: source
-    - path: llvm/include/llvm/IR/PassManager.h
+    - path: llvm/include/llvm/IR/PassManager.h#L42
       description: New Pass Manager infrastructure
       type: source
 ---
@@ -651,7 +651,7 @@ store i32 5, i32* %x
 
 **4. InstCombine: Peephole Optimizations**
 
-A large collection (~50,000 lines) of algebraic simplifications and canonicalizations.
+A large collection (about 50,000 lines) of algebraic simplifications and canonicalizations.
 
 Directory: [llvm/lib/Transforms/InstCombine/](llvm/lib/Transforms/InstCombine/)
 
@@ -703,4 +703,3 @@ opt -O2 -debug-pass-manager input.ll 2>&1 | grep "Running pass"
 - [LLVM Programmer's Manual](https://llvm.org/docs/ProgrammersManual.html) — Core API guide
 - [Clang Internals Manual](https://clang.llvm.org/docs/InternalsManual.html) — Clang architecture deep dive
 ---
-

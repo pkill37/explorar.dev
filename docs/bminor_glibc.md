@@ -39,17 +39,17 @@ fileRecommendations:
     - path: sysdeps/x86_64/start.S
       description: Program startup — _start assembly entry point
       type: source
-    - path: csu/libc-start.c
+    - path: csu/libc-start.c:__libc_start_main
       description: __libc_start_main — sets up runtime and calls main()
       type: source
     - path: sysdeps/unix/sysv/linux/x86_64/syscall.S
       description: x86-64 syscall assembly wrapper
       type: source
     - path: stdio-common/vfprintf-internal.c
-      description: Core printf formatting (~1,570 lines)
+      description: Core printf formatting (about 1,570 lines)
       type: source
-    - path: elf/rtld.c
-      description: Dynamic linker / runtime loader (~3,000 lines)
+    - path: elf/rtld.c:_dl_start
+      description: Dynamic linker / runtime loader (about 3,000 lines)
       type: source
 ---
 
@@ -182,7 +182,7 @@ grep -r "open" sysdeps/unix/sysv/linux/syscalls.list
 
 1. `libio/libio.h` - I/O library structures
 2. `libio/fileops.c` - File operations
-3. `stdio-common/vfprintf-internal.c` - Printf formatting core (~1,570 lines)
+3. `stdio-common/vfprintf-internal.c` - Printf formatting core (about 1,570 lines)
 4. `libio/iofread.c` - fread() implementation
 
 **Practical Exercise:**
@@ -195,7 +195,7 @@ printf("Test\n");      // Immediately writes (no buffer)
 
 **Month 2: Memory Management**
 
-1. `malloc/malloc.c` - Main allocator (~6,000 lines)
+1. `malloc/malloc.c` - Main allocator (about 6,000 lines)
 2. `malloc/arena.c` - Per-thread arenas
 3. `malloc/malloc.h` - Internal structures (chunk format)
 4. Study malloc implementation in detail (see Chapter 3)
@@ -214,7 +214,7 @@ fileRecommendations:
     - path: sysdeps/unix/syscall-template.S
       description: Template for generated syscall wrappers
       type: source
-    - path: sysdeps/unix/sysv/linux/read.c
+    - path: sysdeps/unix/sysv/linux/read.c:__libc_read
       description: "Example: read() syscall wrapper"
       type: source
 ---
@@ -238,8 +238,8 @@ id: ch3
 title: Chapter 3 — Memory Management Deep Dive
 fileRecommendations:
   readingOrder:
-    - path: malloc/malloc.c
-      description: Main allocator (~6,000 lines) — the whole implementation
+    - path: malloc/malloc.c:__libc_malloc
+      description: Main allocator (about 6,000 lines) — the whole implementation
       type: source
     - path: malloc/arena.c
       description: Per-thread arena management
@@ -560,10 +560,10 @@ Fast per-thread caching layer (added in glibc 2.26):
 
 **Allocation Performance:**
 
-- Fastbin hit: ~10-20 ns
-- Small bin hit: ~20-40 ns
-- Large allocation: ~100-500 ns
-- mmap allocation: ~1000-5000 ns
+- Fastbin hit: about 10-20 ns
+- Small bin hit: about 20-40 ns
+- Large allocation: about 100-500 ns
+- mmap allocation: about 1000-5000 ns
 
 **Memory Overhead:**
 
@@ -618,16 +618,16 @@ id: ch4
 title: Chapter 4 — String and Memory Functions
 fileRecommendations:
   readingOrder:
-    - path: string/strlen.c
+    - path: string/strlen.c:__strlen
       description: Generic (portable) strlen implementation
       type: source
     - path: sysdeps/x86_64/multiarch/strlen-avx2.S
       description: AVX2-optimized strlen — processes 32 bytes per cycle
       type: source
-    - path: sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+    - path: sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S#L255
       description: AVX memcpy/memmove for unaligned buffers (includes memmove-vec-unaligned-erms.S)
       type: source
-    - path: sysdeps/x86_64/multiarch/ifunc-impl-list.c
+    - path: sysdeps/x86_64/multiarch/ifunc-impl-list.c:__libc_ifunc_impl_list
       description: IFUNC dispatch table — maps CPU features to implementations
       type: source
     - path: sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
@@ -698,7 +698,7 @@ vpxor       %ymm0, %ymm0, %ymm0
     jmp         .loop
 ```
 
-This processes 32 bytes per iteration vs. 1 for the naive version — a ~32x throughput improvement for long strings.
+This processes 32 bytes per iteration vs. 1 for the naive version — about a 32x throughput improvement for long strings.
 
 ### Deep Dive: memcpy Implementations
 

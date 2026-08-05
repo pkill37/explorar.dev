@@ -43,7 +43,7 @@ fileRecommendations:
     - path: iokit/Kernel/IOStartIOKit.cpp
       description: I/O Kit startup — C++ runtime and driver matching begins
       type: source
-    - path: osfmk/kern/task.c
+    - path: osfmk/kern/task.c:task_create
       description: Mach task — the fundamental unit of resource ownership
       type: source
 ---
@@ -73,16 +73,16 @@ fileRecommendations:
     - path: osfmk/mach/message.h
       description: Mach message header layout
       type: docs
-    - path: osfmk/kern/task.c
+    - path: osfmk/kern/task.c:task_create
       description: task_create(), task_terminate() — Mach task lifecycle
       type: source
-    - path: osfmk/kern/thread.c
+    - path: osfmk/kern/thread.c:thread_create
       description: thread_create(), thread_terminate() — Mach thread lifecycle
       type: source
     - path: osfmk/ipc/ipc_port.c
       description: Port allocation, rights management, and port destruction
       type: source
-    - path: osfmk/ipc/mach_msg.c
+    - path: osfmk/ipc/mach_msg.c:mach_msg_overwrite_trap
       description: mach_msg() — the fundamental IPC primitive
       type: source
     - path: osfmk/kern/ipc_tt.c
@@ -112,10 +112,10 @@ fileRecommendations:
     - path: osfmk/vm/vm_shared_region.h
       description: Shared memory region (dyld shared cache)
       type: docs
-    - path: osfmk/vm/vm_map.c
+    - path: osfmk/vm/vm_map.c:vm_map_enter
       description: vm_map_enter(), vm_map_remove() — virtual address range management
       type: source
-    - path: osfmk/vm/vm_fault.c
+    - path: osfmk/vm/vm_fault.c:vm_fault
       description: vm_fault() — page fault resolution and pager dispatch
       type: source
     - path: osfmk/vm/memory_object.c
@@ -154,10 +154,10 @@ fileRecommendations:
     - path: bsd/kern/kern_proc.c
       description: BSD proc structure — POSIX process state anchored to a Mach task
       type: source
-    - path: bsd/kern/kern_fork.c
+    - path: bsd/kern/kern_fork.c:fork1
       description: fork() — creates a new BSD proc and duplicates the Mach task
       type: source
-    - path: bsd/kern/kern_exec.c
+    - path: bsd/kern/kern_exec.c:execve
       description: execve() — loads a new image into an existing task
       type: source
     - path: bsd/kern/sys_generic.c
@@ -190,13 +190,13 @@ fileRecommendations:
     - path: bsd/sys/mount.h
       description: mount structure — per-filesystem state
       type: docs
-    - path: bsd/vfs/vfs_vnops.c
+    - path: bsd/vfs/vfs_vnops.c:vn_read
       description: vn_read(), vn_write() — vnode read/write dispatch
       type: source
     - path: bsd/vfs/vfs_syscalls.c
       description: open(), read(), stat() — VFS syscall entry points
       type: source
-    - path: bsd/vfs/vfs_lookup.c
+    - path: bsd/vfs/vfs_lookup.c:namei
       description: namei() — path resolution to a vnode
       type: source
     - path: bsd/vfs/vfs_cache.c
@@ -232,19 +232,19 @@ fileRecommendations:
     - path: libkern/libkern/c++/OSObject.h
       description: OSObject — root of the I/O Kit class hierarchy
       type: docs
-    - path: iokit/Kernel/IOService.cpp
+    - path: iokit/Kernel/IOService.cpp:IOService::start
       description: IOService — base class for every I/O Kit driver
       type: source
     - path: iokit/Kernel/IORegistryEntry.cpp
       description: IORegistryEntry — the node in the hardware device graph
       type: source
-    - path: iokit/Kernel/IOMemoryDescriptor.cpp
+    - path: iokit/Kernel/IOMemoryDescriptor.cpp#L1120
       description: IOMemoryDescriptor — DMA-safe memory abstraction
       type: source
     - path: iokit/Kernel/IOInterruptEventSource.cpp
       description: Interrupt event source — wires hardware IRQs into the workloop
       type: source
-    - path: iokit/Kernel/IOWorkLoop.cpp
+    - path: iokit/Kernel/IOWorkLoop.cpp#L900
       description: IOWorkLoop — single-threaded serialization for a driver stack
       type: source
 ---
@@ -350,16 +350,16 @@ fileRecommendations:
     - path: osfmk/kern/startup.c
       description: Kernel entry — read top-to-bottom for the init sequence
       type: source
-    - path: bsd/kern/kern_fork.c
+    - path: bsd/kern/kern_fork.c:fork1
       description: fork() — best cross-layer example (Mach task + BSD proc)
       type: source
-    - path: osfmk/ipc/mach_msg.c
+    - path: osfmk/ipc/mach_msg.c:mach_msg_overwrite_trap
       description: mach_msg() — the IPC core
       type: source
-    - path: osfmk/vm/vm_fault.c
+    - path: osfmk/vm/vm_fault.c:vm_fault
       description: vm_fault() — VM fault resolution and code signing enforcement
       type: source
-    - path: iokit/Kernel/IOService.cpp
+    - path: iokit/Kernel/IOService.cpp:IOService::start
       description: IOService::probe/start/stop — driver lifecycle in full
       type: source
 ---

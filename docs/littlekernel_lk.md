@@ -31,19 +31,19 @@ fileRecommendations:
     - path: README.md
       description: High-level overview, supported architectures, and the project's stated goals
       type: source
-    - path: top/main.c
+    - path: top/main.c:lk_main
       description: Main entry point and staged boot sequence from architecture handoff into the kernel
       type: source
-    - path: kernel/init.c
+    - path: kernel/init.c:lk_primary_cpu_init_level
       description: "Earliest kernel bring-up: threads, timers, ports, and multiprocessor support"
       type: source
-    - path: kernel/thread.c
+    - path: kernel/thread.c:thread_create
       description: Core threading subsystem that makes LK a real preemptive kernel instead of a linear boot stub
       type: source
     - path: arch/arch.c
       description: Architecture-neutral front door into CPU-family implementations
       type: source
-    - path: app/app.c
+    - path: app/app.c:app_init
       description: App runtime that turns product behavior into boot-time kernel threads
       type: source
 ---
@@ -72,10 +72,10 @@ id: ch2
 title: Chapter 2 — The Boot Flow
 fileRecommendations:
   readingOrder:
-    - path: top/main.c
+    - path: top/main.c:lk_main
       description: Full staged boot path from lk_main() through bootstrap2()
       type: source
-    - path: kernel/init.c
+    - path: kernel/init.c:lk_primary_cpu_init_level
       description: Kernel early-init sequence invoked by top/main.c
       type: source
     - path: arch/arm/arm/arch.c
@@ -87,10 +87,10 @@ fileRecommendations:
     - path: target/init.c
       description: Target-level init stage that binds the image to a concrete deployment board
       type: source
-    - path: app/app.c
+    - path: app/app.c:app_init
       description: App launch path that hands control to LK's product-facing threads
       type: source
-    - path: app/lkboot/lkboot.c
+    - path: app/lkboot/lkboot.c:lkboot_task
       description: Concrete bootloader app showing what LK does after core init completes
       type: source
 ---
@@ -119,16 +119,16 @@ fileRecommendations:
     - path: docs/source_tree_structure.md
       description: LK's own explanation of the tree layout
       type: docs
-    - path: app/app.c
+    - path: app/app.c:app_init
       description: Generic app registry and launcher that defines the product-behavior layer
       type: source
     - path: dev/dev.c
       description: Common device model entry point beneath product apps
       type: source
-    - path: lib/console/console.c
+    - path: lib/console/console.c#L666
       description: Shared library subsystem used across the tree without being part of the kernel core
       type: source
-    - path: top/main.c
+    - path: top/main.c:lk_main
       description: Integration glue that stitches arch, platform, target, kernel, and apps into one boot flow
       type: source
     - path: project/mt6797.mk
@@ -197,19 +197,19 @@ id: ch5
 title: Chapter 5 — Concurrency in a Bootloader Kernel
 fileRecommendations:
   readingOrder:
-    - path: docs/threading_and_scheduler.md
+    - path: docs/threading_and_scheduler.md#thread-states
       description: LK's own overview of threading and scheduling concepts
       type: docs
     - path: docs/blocking_primitives.md
       description: Documentation for wait queues, mutexes, semaphores, and related primitives
       type: docs
-    - path: kernel/thread.c
+    - path: kernel/thread.c:thread_create
       description: Scheduler, run queue management, and thread lifecycle
       type: source
-    - path: kernel/event.c
+    - path: kernel/event.c:event_wait_timeout
       description: Event primitive used for blocking and wake-up coordination
       type: source
-    - path: kernel/mutex.c
+    - path: kernel/mutex.c:mutex_acquire_timeout
       description: Mutex implementation for contended critical sections
       type: source
     - path: kernel/semaphore.c
@@ -221,7 +221,7 @@ fileRecommendations:
     - path: arch/arm/arm/thread.c
       description: Architecture-specific context switch and low-level thread support
       type: source
-    - path: app/app.c
+    - path: app/app.c:app_init
       description: App threads as the visible consumers of LK's concurrency model
       type: source
 ---
@@ -252,10 +252,10 @@ fileRecommendations:
     - path: engine.mk
       description: Revisit the build engine once the directory roles make more sense
       type: source
-    - path: top/main.c
+    - path: top/main.c:lk_main
       description: Revisit the full system handoff now that the subsystem roles are clearer
       type: source
-    - path: app/lkboot/lkboot.c
+    - path: app/lkboot/lkboot.c:lkboot_task
       description: Product-facing boot app that shows LK acting as a real bootloader
       type: source
     - path: lib/bootimage/bootimage.c

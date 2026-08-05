@@ -40,22 +40,22 @@ fileRecommendations:
     - path: Documentation/kernel-hacking/hacking.rst
       description: Rules for writing correct kernel code
       type: docs
-    - path: init/main.c
+    - path: init/main.c:start_kernel
       description: start_kernel() — the first C function after boot
       type: source
-    - path: include/linux/sched.h
-      description: task_struct — every process/thread as the kernel sees it (~850 fields)
+    - path: include/linux/sched.h:task_struct
+      description: task_struct — every process/thread as the kernel sees it (about 850 fields)
       type: source
     - path: arch/arm64/include/asm/current.h
       description: current macro — how arm64 finds the running task_struct
       type: source
-    - path: kernel/fork.c
+    - path: kernel/fork.c:kernel_clone
       description: kernel_clone() — how fork() and clone() create tasks
       type: source
     - path: kernel/kthread.c
       description: Kernel threads — how they differ from user processes
       type: source
-    - path: fs/readdir.c
+    - path: fs/readdir.c:getdents
       description: getdents() syscall path — userspace directory reads through the VFS
       type: source
 ---
@@ -91,7 +91,7 @@ fileRecommendations:
     - path: arch/arm64/kernel/entry.S
       description: Syscall and interrupt entry for arm64
       type: source
-    - path: mm/mmap.c
+    - path: mm/mmap.c:do_mmap
       description: Virtual memory area management — mmap() implementation
       type: source
     - path: mm/page_alloc.c
@@ -107,7 +107,7 @@ fileRecommendations:
 
 Six directories account for nearly all kernel behavior:
 
-- **`kernel/`** — scheduling, process creation, signal delivery, and timers. The scheduler lives under `kernel/sched/`; `kernel/fork.c` creates tasks; `kernel/signal.c` delivers signals. CFS alone spans `kernel/sched/fair.c` (~12k lines), `kernel/sched/core.c` (~11k lines), and `kernel/sched/rt.c` for real-time policies.
+- **`kernel/`** — scheduling, process creation, signal delivery, and timers. The scheduler lives under `kernel/sched/`; `kernel/fork.c` creates tasks; `kernel/signal.c` delivers signals. CFS alone spans `kernel/sched/fair.c` (about 12k lines), `kernel/sched/core.c` (about 11k lines), and `kernel/sched/rt.c` for real-time policies.
 - **`mm/`** — physical and virtual memory. `mm/page_alloc.c` is the buddy allocator for page-granularity requests; `mm/slub.c` is the slab allocator for small kernel objects; `mm/mmap.c` manages virtual memory areas (VMAs) and implements the `mmap(2)` syscall.
 - **`fs/`** — the Virtual Filesystem Switch, a uniform interface over all filesystems. `fs/namei.c` resolves paths to dentries; `fs/open.c` and `fs/read_write.c` implement file syscalls; concrete filesystems such as `fs/ext4/`, `fs/btrfs/`, and `fs/xfs/` plug in below.
 - **`net/`** — the TCP/IP stack. Socket buffers (`sk_buff`) flow through `net/core/dev.c` for device handling, `net/ipv4/tcp.c` for protocol behavior, and `net/netfilter/` for packet filtering.
@@ -142,7 +142,7 @@ fileRecommendations:
     - path: Documentation/virt/
       description: Virtual memory documentation
       type: docs
-    - path: mm/mmap.c
+    - path: mm/mmap.c:do_mmap
       description: mmap() implementation — VMA creation and management
       type: source
     - path: mm/page_alloc.c
@@ -178,10 +178,10 @@ fileRecommendations:
     - path: Documentation/bpf/
       description: eBPF subsystem — runtime extensibility
       type: docs
-    - path: init/main.c
+    - path: init/main.c:start_kernel
       description: start_kernel() — subsystem initialization sequence
       type: source
-    - path: arch/arm64/kernel/head.S
+    - path: arch/arm64/kernel/head.S#L73
       description: Early arm64 boot — image entry and setup before start_kernel()
       type: source
     - path: init/init_task.c
@@ -249,22 +249,22 @@ fileRecommendations:
     - path: Documentation/locking/
       description: All locking primitives — spinlocks, mutexes, RCU
       type: docs
-    - path: Documentation/core-api/workqueue.rst
+    - path: Documentation/core-api/workqueue.rst#workqueues
       description: Workqueues — deferred work from interrupt context
       type: docs
-    - path: kernel/fork.c
+    - path: kernel/fork.c:kernel_clone
       description: kernel_clone() — complete process/thread creation path
       type: source
-    - path: kernel/exit.c
+    - path: kernel/exit.c:do_exit
       description: do_exit() — process termination and resource cleanup
       type: source
-    - path: fs/exec.c
+    - path: fs/exec.c:do_execveat_common
       description: execve() — loading and starting a new program image
       type: source
-    - path: kernel/sched/core.c
+    - path: kernel/sched/core.c:schedule
       description: schedule() and context_switch() — the core dispatcher
       type: source
-    - path: kernel/sched/fair.c
+    - path: kernel/sched/fair.c:enqueue_task_fair
       description: CFS — virtual runtime and the red-black tree
       type: source
 ---
@@ -288,7 +288,7 @@ fileRecommendations:
     - path: Documentation/RCU/
       description: Read-Copy-Update synchronization mechanism
       type: docs
-    - path: Documentation/core-api/workqueue.rst
+    - path: Documentation/core-api/workqueue.rst#workqueues
       description: Workqueues — cross-context deferred work
       type: docs
     - path: Documentation/filesystems/proc.rst
@@ -310,7 +310,7 @@ fileRecommendations:
 
 Signals are the kernel's oldest delivery mechanism. `kill()` queues a `siginfo_t` on the target task's signal queue. Delivery happens at the next return from kernel mode: `arch/arm64/kernel/entry.S` checks `TIF_SIGPENDING` on every kernel exit and, if set, calls `do_signal()` to dispatch. Signal handlers run in user space — the kernel builds a special stack frame so the handler returns through `sigreturn(2)`.
 
-User-space mutexes are built on **futexes** (fast userspace mutexes). The fast path is a single atomic compare-and-swap in user memory — the kernel is never involved. Only on contention does `futex(2)` enter the kernel to park the waiting thread. Uncontested locks cost ~5 ns with zero syscalls; contended locks pay one syscall to sleep and one to wake.
+User-space mutexes are built on **futexes** (fast userspace mutexes). The fast path is a single atomic compare-and-swap in user memory — the kernel is never involved. Only on contention does `futex(2)` enter the kernel to park the waiting thread. Uncontested locks cost about 5 ns with zero syscalls; contended locks pay one syscall to sleep and one to wake.
 
 Wait queues (`kernel/sched/wait.c`) are the general sleep mechanism inside the kernel. A subsystem declares a `wait_queue_head_t`; a task calls `wait_event()` to sleep until a condition is true; another path calls `wake_up()` to wake waiters. Block I/O completion, network data arrival, and pipe writes all follow this pattern.
 
@@ -339,13 +339,13 @@ fileRecommendations:
     - path: Documentation/virt/kvm/api.rst
       description: KVM API reference
       type: docs
-    - path: kernel/sched/core.c
+    - path: kernel/sched/core.c:schedule
       description: schedule() — the core dispatcher
       type: source
-    - path: kernel/sched/fair.c
+    - path: kernel/sched/fair.c:enqueue_task_fair
       description: CFS — vruntime, red-black tree, and load balancing
       type: source
-    - path: block/blk-core.c
+    - path: block/blk-core.c:submit_bio
       description: Block I/O core — submit_bio() and request dispatch
       type: source
 ---
@@ -363,7 +363,7 @@ id: ch9
 title: Chapter 9 — Where to Go Next
 fileRecommendations:
   readingOrder:
-    - path: Documentation/process/howto.rst
+    - path: Documentation/process/howto.rst#how-to-participate-in-the-linux-community
       description: How to contribute patches to the Linux kernel
       type: docs
     - path: Documentation/admin-guide/

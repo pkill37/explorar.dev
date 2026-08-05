@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { PUBLIC_REPOS_DIR } from './static-asset-paths';
+import { PUBLIC_MAN_PAGES_DIR, PUBLIC_REPOS_DIR } from './static-asset-paths';
 
 const SQLITE_WASM_SOURCE = path.join(
   process.cwd(),
@@ -55,8 +55,11 @@ function copySqliteRuntime(): void {
 
 function main(): void {
   removeIfPresent(PUBLIC_REPOS_DIR);
+  removeIfPresent(PUBLIC_MAN_PAGES_DIR);
   copySqliteRuntime();
-  console.log('Public repo corpus cleared for shell-only Next build. Avatars retained.');
+  console.log(
+    'Public repo and man-page corpora cleared for shell-only Next build. Avatars retained.'
+  );
 }
 
 main();

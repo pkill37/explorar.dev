@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 
 import { loadDeployEnv } from './deploy-env';
 import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
-import { CORPUS_REPOS_DIR } from './static-asset-paths';
+import { CORPUS_REPOS_DIR, MAN_PAGES_DIR } from './static-asset-paths';
 import { CURATED_REPOS } from '../src/lib/curated-repos';
 import { runPhase } from './tqdm';
 
@@ -267,6 +267,25 @@ export function buildRepoRequiredArtifactKeys(repo: {
 
 export function buildRepoSyncArgs(repoDir: string, bucketPrefix: string): string[] {
   return ['s3', 'sync', `${repoDir}/`, bucketPrefix, '--no-progress', ...R2_SYNC_COMPARISON_ARGS];
+}
+
+export function buildManPagesBucketPrefix(bucketName: string): string {
+  return `s3://${bucketName}/man-pages/`;
+}
+
+export function buildManPagesManifestKey(): string {
+  return 'man-pages/linux/man-pages-6.18/manifest.json';
+}
+
+export function buildManPagesSyncArgs(manPagesDir: string, bucketPrefix: string): string[] {
+  return [
+    's3',
+    'sync',
+    `${manPagesDir}/`,
+    bucketPrefix,
+    '--no-progress',
+    ...R2_SYNC_COMPARISON_ARGS,
+  ];
 }
 
 async function readRemoteBuildSignature(
@@ -522,10 +541,48 @@ async function syncCorpusRepos(env: DeployEnv): Promise<void> {
   }
 }
 
+async function ensureManPageArtifactsUploaded(env: DeployEnv): Promise<void> {
+  const key = buildManPagesManifestKey();
+  const exists = await runAwsHeadObjectQuiet(env.bucketName, key, env);
+  if (!exists) {
+    fail(`Missing uploaded man-page artifact: ${key}`);
+  }
+}
+
+async function syncManPages(env: DeployEnv): Promise<void> {
+  ensureCorpusDir(MAN_PAGES_DIR, 'man pages');
+
+  const retryAttempts = getRetryAttempts();
+  const retryBaseDelayMs = getRetryBaseDelayMs();
+  const fileCount = countFiles(MAN_PAGES_DIR);
+  const size = directorySizeBytes(MAN_PAGES_DIR);
+
+  await runPhase(
+    '📚 Sync Linux man pages',
+    async () => {
+      await runWithRetries(
+        'Linux man pages sync',
+        () =>
+          runAwsCommandAsync(
+            buildManPagesSyncArgs(MAN_PAGES_DIR, buildManPagesBucketPrefix(env.bucketName)),
+            env,
+            'Man-page corpus sync failed'
+          ),
+        retryAttempts,
+        retryBaseDelayMs
+      );
+    },
+    `${fileCount} files · ${formatBytes(size)}`
+  );
+
+  await ensureManPageArtifactsUploaded(env);
+}
+
 export async function runAwsSync(env: DeployEnv): Promise<void> {
   console.log(`\nSyncing corpus artifacts to R2 bucket ${env.bucketName}`);
   console.log(`Endpoint: https://${env.accountId}.r2.cloudflarestorage.com`);
   console.log(`Corpus root: ${CORPUS_REPOS_DIR}`);
+  console.log(`Man pages root: ${MAN_PAGES_DIR}`);
   console.log(
     'Sync strategy: rely on `aws s3 sync --size-only` diffing so R2 timestamp drift does not trigger false updates.'
   );
@@ -538,6 +595,7 @@ export async function runAwsSync(env: DeployEnv): Promise<void> {
   runBucketAccessPreflight(env);
 
   await syncCorpusRepos(env);
+  await syncManPages(env);
 }
 
 async function main(): Promise<void> {

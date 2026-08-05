@@ -6,8 +6,13 @@ import { GuideSection, FileRecommendation } from '@/lib/project-guides';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
 import { debugLog } from '@/lib/browser-debug';
 import {
+  decodeHtmlEntities,
   escapeHtml,
+  getManualPageLinkAttributes,
   getRepoLinkAttributes,
+  hasUnsafeScheme,
+  isExternalHref,
+  parseMarkdownNavigationTarget,
   parseRepoNavigationTarget,
 } from '@/lib/markdown-navigation';
 
@@ -30,17 +35,57 @@ function isLikelySymbolCode(code: string): boolean {
   return /^(?:[A-Za-z_]\w*|[A-Za-z_]\w*::[A-Za-z_]\w*)(?:\(\))?$/.test(trimmed);
 }
 
+type OpenFileInTab = (
+  path: string,
+  searchPattern?: string,
+  scrollToLine?: number,
+  searchScope?: string[]
+) => void;
+
+type OpenManPageInTab = (name: string, section: string) => void;
+
 function createMarkdownRenderer(symbolScopePaths: string[]) {
   const renderer = new marked.Renderer();
 
+  renderer.link = (href, title, text) => {
+    const safeHref = href?.trim() || '#';
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+
+    if (hasUnsafeScheme(safeHref)) {
+      return `<span>${text}</span>`;
+    }
+
+    const navigationTarget = parseMarkdownNavigationTarget(safeHref, undefined, {
+      linkText: text,
+      title: title ?? undefined,
+    });
+
+    if (navigationTarget?.kind === 'man-page') {
+      return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+    }
+
+    if (navigationTarget?.kind === 'repo-file') {
+      return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+    }
+
+    const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
+    return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+  };
+
   renderer.codespan = function (code) {
-    const repoTarget = parseRepoNavigationTarget(code);
-    const codeHtml = `<code>${escapeHtml(code)}</code>`;
+    const decodedCode = decodeHtmlEntities(code);
+    const navigationTarget = parseMarkdownNavigationTarget(decodedCode);
+    if (navigationTarget?.kind === 'man-page') {
+      return `<a href="#" class="inline-code-link" ${getManualPageLinkAttributes(navigationTarget)}><code>${escapeHtml(decodedCode)}</code></a>`;
+    }
+
+    const repoTarget = parseRepoNavigationTarget(decodedCode);
+    const codeHtml = `<code>${escapeHtml(decodedCode)}</code>`;
 
     if (!repoTarget) {
-      if (symbolScopePaths.length > 0 && isLikelySymbolCode(code)) {
+      if (symbolScopePaths.length > 0 && isLikelySymbolCode(decodedCode)) {
         return `<a href="#" class="inline-code-link" data-search-pattern="${escapeHtml(
-          code.trim()
+          decodedCode.trim()
         )}" data-symbol-scope="${escapeHtml(symbolScopePaths.join('|||'))}">${codeHtml}</a>`;
       }
       return codeHtml;
@@ -201,12 +246,8 @@ function parseSectionFrontmatter(yaml: string): SectionFrontmatter {
  */
 export function parseGuideMarkdown(
   markdown: string,
-  openFileInTab: (
-    path: string,
-    searchPattern?: string,
-    scrollToLine?: number,
-    searchScope?: string[]
-  ) => void
+  openFileInTab: OpenFileInTab,
+  openManPageInTab?: OpenManPageInTab
 ): GuideSection[] {
   // Validate inputs
   if (!markdown || markdown.trim().length === 0) {
@@ -281,6 +322,8 @@ export function parseGuideMarkdown(
               if (!anchor) return;
               const href = anchor.getAttribute('href');
               const repoPath = anchor.getAttribute('data-repo-path');
+              const manPageName = anchor.getAttribute('data-man-page-name');
+              const manPageSection = anchor.getAttribute('data-man-page-section');
               const searchPattern = anchor.getAttribute('data-search-pattern') || undefined;
               const scrollToLineAttr = anchor.getAttribute('data-scroll-to-line');
               const scrollToLine = scrollToLineAttr ? parseInt(scrollToLineAttr, 10) : undefined;
@@ -288,6 +331,12 @@ export function parseGuideMarkdown(
               const symbolScope = symbolScopeAttr
                 ? symbolScopeAttr.split('|||').filter(Boolean)
                 : undefined;
+
+              if (manPageName && manPageSection && openManPageInTab) {
+                e.preventDefault();
+                openManPageInTab(manPageName, manPageSection);
+                return;
+              }
 
               if (repoPath) {
                 e.preventDefault();

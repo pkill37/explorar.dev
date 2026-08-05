@@ -5,11 +5,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20.9.0",
+    "node": ">=22.22.2",
     "npm": ">=9.0.0"
   },
   "scripts": {
-    "predev": "tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=reactos/reactos --only=python/cpython --only=torvalds/linux --only=littlekernel/lk --only=mrcxlinux/srv03rtm-anika --depth=1 && tsx scripts/stage-public-static-assets.ts --mode=dev",
+    "predev": "tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=reactos/reactos --only=python/cpython --only=torvalds/linux --only=littlekernel/lk --only=mrcxlinux/srv03rtm-anika --depth=1 && tsx scripts/build-man-pages.ts && tsx scripts/stage-public-static-assets.ts --mode=dev",
     "dev": "next dev --turbopack --port 3000",
     "build": "tsx scripts/build.ts",
     "deploy:r2": "tsx scripts/deploy-r2.ts",
@@ -17,12 +17,13 @@
     "start": "next start",
     "serve": "serve -l 3000 out -c",
     "serve:public": "serve -l 3000 public",
-    "clean": "rm -rf repos public/repos public/avatars public/public-stage-manifest.json out node_modules .next .eslintcache",
+    "clean": "rm -rf repos man-pages public/repos public/man-pages public/avatars public/public-stage-manifest.json out node_modules .next .eslintcache",
     "clean:all": "npm run clean && rm -rf package-lock.json",
-    "lint": "npm run lint:types && npm run lint:eslint && npm run lint:prettier && npm run lint:deps",
+    "lint": "npm run lint:types && npm run lint:eslint && npm run lint:prettier && npm run lint:markdown && npm run lint:deps",
     "lint:types": "tsc --noEmit",
     "lint:eslint": "eslint . --cache --cache-location .eslintcache --max-warnings 0",
     "lint:prettier": "prettier --config prettier.config.mjs --check .",
+    "lint:markdown": "markdownlint docs/*.md",
     "lint:deps": "depcheck",
     "fix": "npm run fix:eslint && npm run fix:prettier && npm run fix:audit && npm run lint:types",
     "fix:eslint": "eslint . --fix",
@@ -46,14 +47,14 @@
     "gray-matter": "^4.0.3",
     "marked": "^12.0.0",
     "monaco-editor": "^0.55.1",
-    "next": "^16.2.9",
+    "next": "^16.3.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "sql.js": "^1.14.1"
   },
   "overrides": {
     "dompurify": "3.4.12",
-    "postcss": "8.5.19",
+    "postcss": "8.5.25",
     "sharp": "0.35.3"
   },
   "devDependencies": {
@@ -68,6 +69,7 @@
     "eslint-config-next": "^16.0.7",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
+    "markdownlint-cli": "^0.49.1",
     "prettier": "^3.7.4",
     "raw-loader": "^4.0.2",
     "serve": "^14.2.6",

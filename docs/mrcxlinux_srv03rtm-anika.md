@@ -32,7 +32,7 @@ id: ch1
 title: Chapter 1 — Trace the Boot Path First
 fileRecommendations:
   readingOrder:
-    - path: base/boot/bldr/osloader.c
+    - path: base/boot/bldr/osloader.c#L1
       description: Main OS loader handoff logic; this is the concrete start of the runtime story
       type: source
     - path: base/boot/lib/blmemory.c
@@ -76,13 +76,13 @@ id: ch2
 title: Chapter 2 — Follow the Kernel Bring-Up
 fileRecommendations:
   readingOrder:
-    - path: base/ntos/init/init.c
+    - path: base/ntos/init/init.c:ExpInitializeExecutive
       description: Primary kernel initialization path after the loader transfers control
       type: source
     - path: base/ntos/init/ntoskrnl.c
       description: Kernel image identity and composition entry file
       type: source
-    - path: base/ntos/ke/kiinit.c
+    - path: base/ntos/ke/kiinit.c:KiSystemStartup
       description: Kernel dispatcher and low-level initialization glue
       type: source
     - path: base/ntos/ke/kernldat.c
@@ -125,10 +125,10 @@ id: ch3
 title: Chapter 3 — Read Memory Management as a System
 fileRecommendations:
   readingOrder:
-    - path: base/ntos/mm/mminit.c
+    - path: base/ntos/mm/mminit.c:MmInitSystem
       description: Memory manager initialization; the best single file for understanding Mm's starting state
       type: source
-    - path: base/ntos/mm/pagfault.c
+    - path: base/ntos/mm/pagfault.c:MmAccessFault
       description: Central page fault handling path
       type: source
     - path: base/ntos/mm/mmfault.c
@@ -177,10 +177,10 @@ fileRecommendations:
     - path: base/ntos/ob/obinit.c
       description: Object manager initialization and namespace bring-up
       type: source
-    - path: base/ntos/ob/obcreate.c
+    - path: base/ntos/ob/obcreate.c:ObCreateObject
       description: Object creation path
       type: source
-    - path: base/ntos/ob/obinsert.c
+    - path: base/ntos/ob/obinsert.c:ObInsertObject
       description: Handle-table insertion and publication of new objects
       type: source
     - path: base/ntos/ob/obhandle.c
@@ -189,7 +189,7 @@ fileRecommendations:
     - path: base/ntos/ob/obdir.c
       description: Object directory namespace behavior
       type: source
-    - path: base/ntos/ps/psinit.c
+    - path: base/ntos/ps/psinit.c:PspInitPhase0
       description: Process manager initialization
       type: source
     - path: base/ntos/ps/create.c
@@ -226,7 +226,7 @@ id: ch5
 title: Chapter 5 — Registry, Cache, and I/O as Runtime Glue
 fileRecommendations:
   readingOrder:
-    - path: base/ntos/config/cminit.c
+    - path: base/ntos/config/cminit.c:CmInitSystem1
       description: Registry initialization and hive bring-up
       type: source
     - path: base/ntos/config/cmboot.c
@@ -238,7 +238,7 @@ fileRecommendations:
     - path: base/ntos/config/hiveload.c
       description: Persistent hive loading logic
       type: source
-    - path: base/ntos/cache/cachesub.c
+    - path: base/ntos/cache/cachesub.c:CcInitializeCacheManager
       description: Core cache manager behavior
       type: source
     - path: base/ntos/cache/lazyrite.c
@@ -372,31 +372,31 @@ id: ch8
 title: Chapter 8 — How to Read the Tree End to End
 fileRecommendations:
   readingOrder:
-    - path: base/boot/bldr/osloader.c
+    - path: base/boot/bldr/osloader.c#L1
       description: Start at the last major loader stage
       type: source
-    - path: base/ntos/init/init.c
+    - path: base/ntos/init/init.c:ExpInitializeExecutive
       description: Jump into generic kernel initialization
       type: source
-    - path: base/ntos/ke/kiinit.c
+    - path: base/ntos/ke/kiinit.c:KiSystemStartup
       description: Follow dispatcher and low-level kernel bring-up
       type: source
-    - path: base/ntos/mm/mminit.c
+    - path: base/ntos/mm/mminit.c:MmInitSystem
       description: Follow memory manager initialization
       type: source
-    - path: base/ntos/mm/pagfault.c
+    - path: base/ntos/mm/pagfault.c:MmAccessFault
       description: Read the fault path once memory initialization is clear
       type: source
     - path: base/ntos/ob/obinit.c
       description: Read object namespace bring-up
       type: source
-    - path: base/ntos/ps/psinit.c
+    - path: base/ntos/ps/psinit.c:PspInitPhase0
       description: Read process manager bring-up
       type: source
-    - path: base/ntos/config/cminit.c
+    - path: base/ntos/config/cminit.c:CmInitSystem1
       description: Read registry bring-up
       type: source
-    - path: base/ntos/cache/cachesub.c
+    - path: base/ntos/cache/cachesub.c:CcInitializeCacheManager
       description: Read cache manager core behavior
       type: source
     - path: base/ntos/io/iop.h

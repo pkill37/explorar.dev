@@ -71,7 +71,7 @@ npm run deploy:r2        # Sync corpus repos/avatars to R2
 npm run clean            # Remove build artifacts and downloaded repos
 
 # Code Quality
-npm run lint             # TypeScript + ESLint + depcheck (0 warnings required)
+npm run lint             # TypeScript + ESLint + Prettier + markdownlint + depcheck
 npm run fix              # Auto-fix ESLint, format with Prettier
 
 # Testing

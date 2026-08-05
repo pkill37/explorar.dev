@@ -91,5 +91,12 @@
       "mtimeMs": 1783971286205.1113,
       "size": 3021963
     }
+  ],
+  "manPageManifests": [
+    {
+      "path": "linux/man-pages-6.18/manifest.json",
+      "mtimeMs": 1785880333360.526,
+      "size": 767436
+    }
   ]
 }

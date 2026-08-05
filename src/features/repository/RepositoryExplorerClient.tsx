@@ -27,7 +27,10 @@ const GUIDE_COLLAPSED_WIDTH = 44;
 const ENTITY_CONTEXT_WIDTH = 420;
 const CORPUS_SOURCE_MODE_STORAGE_KEY = 'repository-workspace-explorer-corpus-source-mode';
 const GUIDE_SIDEBAR_OPEN_STORAGE_KEY = 'repository-explorer-guide-sidebar-open';
+const WORKSPACE_THEME_STORAGE_KEY = 'repository-workspace-explorer-theme';
 let navigationNonceCounter = 0;
+
+type WorkspaceTheme = 'dark' | 'light';
 
 function createNavigationNonce(): number {
   navigationNonceCounter = (navigationNonceCounter + 1) % Number.MAX_SAFE_INTEGER;
@@ -43,10 +46,17 @@ type InitialFileTarget =
   | string
   | string[]
   | {
+      kind?: 'repo-file';
       path: string;
       searchPattern?: string;
       scrollToLine?: number;
       searchScope?: string[];
+      navigationNonce?: number;
+    }
+  | {
+      kind: 'man-page';
+      name: string;
+      section: string;
       navigationNonce?: number;
     };
 
@@ -60,6 +70,18 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const [fileSourceMode, setFileSourceMode] = useState<CuratedRepoSourceMode>(() =>
     getDefaultCuratedRepoSourceMode()
   );
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(() => {
+    try {
+      if (typeof window === 'undefined') return 'dark';
+      const savedTheme = localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY);
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        return savedTheme;
+      }
+    } catch {
+      // Keep the default dark workspace.
+    }
+    return 'dark';
+  });
   const [initialFile, setInitialFile] = useState<InitialFileTarget | null>(null);
   const [isGuideSidebarOpen, setIsGuideSidebarOpen] = useState(() => {
     try {
@@ -101,6 +123,16 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     []
   );
 
+  const handleEnterManPage = useCallback((name: string, section: string) => {
+    setInitialFile({
+      kind: 'man-page',
+      name,
+      section,
+      navigationNonce: createNavigationNonce(),
+    });
+    setMode('editor');
+  }, []);
+
   const handleOpenFileInCurrentMode = useCallback(
     (fileId: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
       debugLog('[explorar:open-file] context-request', {
@@ -131,13 +163,13 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     const guideId = projectConfig?.guides[0]?.id;
     if (guideId) {
       try {
-        return loadGuideFromMarkdown(guideId, handleEnterFile);
+        return loadGuideFromMarkdown(guideId, handleEnterFile, handleEnterManPage);
       } catch {
         // fall through to generic
       }
     }
     return createGenericGuide(owner, repo);
-  }, [projectConfig, owner, repo, handleEnterFile]);
+  }, [projectConfig, owner, repo, handleEnterFile, handleEnterManPage]);
 
   const defaultOpenIds = useMemo(
     () =>
@@ -201,6 +233,14 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     }
   }, [isGuideSidebarOpen]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORKSPACE_THEME_STORAGE_KEY, workspaceTheme);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [workspaceTheme]);
+
   // ── Guide panel resize ──────────────────────────────────────────────────────
   const [guideWidth, setGuideWidth] = useState(GUIDE_DEFAULT_WIDTH);
   const isResizingGuide = useRef(false);
@@ -256,6 +296,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
 
   return (
     <main
+      className={`vscode-theme-${workspaceTheme}`}
       suppressHydrationWarning
       style={{
         width: '100vw',
@@ -263,7 +304,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        background: '#0d0d0d',
+        background: 'var(--vscode-bg-primary)',
+        color: 'var(--vscode-text-primary)',
       }}
     >
       <h1
@@ -293,8 +335,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
             alignItems: 'stretch',
             gap: 8,
             padding: '10px 8px',
-            borderRight: '1px solid #1f1f1f',
-            background: '#111111',
+            borderRight: '1px solid var(--vscode-border)',
+            background: 'var(--vscode-bg-secondary)',
           }}
         >
           {[
@@ -331,9 +373,11 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
                   height: 36,
                   borderRadius: 8,
                   border: '1px solid',
-                  borderColor: isActive ? 'var(--vscode-text-accent, #0078d4)' : '#262626',
-                  background: isActive ? 'rgba(0, 120, 212, 0.22)' : '#171717',
-                  color: isActive ? '#fff' : '#a7a7a7',
+                  borderColor: isActive
+                    ? 'var(--vscode-text-accent, #0078d4)'
+                    : 'var(--vscode-border)',
+                  background: isActive ? 'var(--vscode-bg-selected)' : 'var(--vscode-bg-tertiary)',
+                  color: isActive ? 'var(--vscode-text-primary)' : 'var(--vscode-text-secondary)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -348,6 +392,20 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               </button>
             );
           })}
+          <button
+            type="button"
+            className="vscode-activity-theme-toggle"
+            onClick={() => setWorkspaceTheme((theme) => (theme === 'light' ? 'dark' : 'light'))}
+            title={workspaceTheme === 'light' ? 'Use dark theme' : 'Use light theme'}
+            aria-label={workspaceTheme === 'light' ? 'Use dark theme' : 'Use light theme'}
+            aria-pressed={workspaceTheme === 'light'}
+            style={{
+              marginTop: 'auto',
+              marginBottom: 48,
+            }}
+          >
+            <span aria-hidden="true">{workspaceTheme === 'light' ? '☾' : '☀'}</span>
+          </button>
         </div>
 
         {/* ── Main content area ── */}
@@ -374,6 +432,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               layoutMode={mode === 'search' ? 'search' : mode === 'entities' ? 'viewer' : 'editor'}
               sourceMode={fileSourceMode}
               onSourceModeChange={handleSourceModeChange}
+              workspaceTheme={workspaceTheme}
             />
           </div>
 
@@ -390,7 +449,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               transition: 'opacity 0.35s ease',
               zIndex: mode === 'entities' ? 2 : 0,
               borderRight: '1px solid var(--vscode-border)',
-              background: '#0b0b0b',
+              background: 'var(--vscode-bg-primary)',
             }}
           >
             {(mode === 'entities' || entitiesMounted) && (
@@ -416,11 +475,13 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               width: 4,
               cursor: 'col-resize',
               background: 'transparent',
-              borderLeft: '1px solid #2a2a2a',
+              borderLeft: '1px solid var(--vscode-border)',
               flexShrink: 0,
               transition: 'background 0.15s',
             }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#3c3c3c')}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLElement).style.background = 'var(--vscode-bg-quaternary)')
+            }
             onMouseLeave={(e) =>
               ((e.currentTarget as HTMLElement).style.background = 'transparent')
             }

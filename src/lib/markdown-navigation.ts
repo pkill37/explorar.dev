@@ -1,7 +1,24 @@
+import {
+  getManualPageLinkAttributes,
+  parseManPageReference,
+  type ManPageTarget,
+} from './man-pages';
+
+export { getManualPageLinkAttributes };
+
 export interface RepoNavigationTarget {
   path: string;
   searchPattern?: string;
   scrollToLine?: number;
+}
+
+export type MarkdownNavigationTarget =
+  | ({ kind: 'repo-file' } & RepoNavigationTarget)
+  | ManPageTarget;
+
+interface ParseRepoNavigationTargetOptions {
+  linkText?: string;
+  title?: string;
 }
 
 export function escapeHtml(value: string): string {
@@ -11,6 +28,15 @@ export function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+export function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 export function hasUnsafeScheme(href: string): boolean {
@@ -56,6 +82,75 @@ function normalizeSearchPattern(pattern: string): string {
   return pattern.replace(/\(\)$/, '');
 }
 
+function decodeNavigationSuffix(suffix: string): string {
+  const stripped = suffix.trim().replace(/^#/, '');
+  try {
+    return decodeURIComponent(stripped);
+  } catch {
+    return stripped;
+  }
+}
+
+function applyNavigationSuffix(
+  target: RepoNavigationTarget,
+  rawSuffix: string
+): RepoNavigationTarget {
+  const suffix = decodeNavigationSuffix(rawSuffix);
+  if (!suffix) {
+    return target;
+  }
+
+  const lineMatch = suffix.match(/^(?:L|line-)?(\d+)(?:[-:](?:L)?\d+)?$/i);
+  if (lineMatch) {
+    target.scrollToLine = parseInt(lineMatch[1], 10);
+    return target;
+  }
+
+  const normalizedPattern = normalizeSearchPattern(suffix);
+  if (/^[A-Za-z_][A-Za-z0-9_:.<>\-~]*$/.test(normalizedPattern)) {
+    target.searchPattern = normalizedPattern;
+  }
+
+  return target;
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]*>/g, ' ');
+}
+
+function inferSearchPatternFromText(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const stripped = decodeHtmlEntities(stripHtml(value)).trim();
+  if (!stripped || stripped.length > 160) {
+    return undefined;
+  }
+
+  const functionMatch = stripped.match(/\b([A-Za-z_][A-Za-z0-9_:.<>~]*)(?:\s*\([^)]*\)|\(\))/);
+  if (functionMatch) {
+    return normalizeSearchPattern(functionMatch[1]);
+  }
+
+  const leadingPhrase = stripped.split(/[—–:]/)[0]?.trim() || '';
+  if (/^(?:struct|class|enum)\s+[A-Za-z_][A-Za-z0-9_:.<>~]*$/.test(leadingPhrase)) {
+    return normalizeSearchPattern(leadingPhrase);
+  }
+  if (/^[A-Za-z_][A-Za-z0-9_:.<>~]{2,}$/.test(leadingPhrase)) {
+    return normalizeSearchPattern(leadingPhrase);
+  }
+
+  if (/<code\b/i.test(value)) {
+    const symbolMatch = stripped.match(/\b([A-Za-z_][A-Za-z0-9_:.<>~]{2,})\b/);
+    if (symbolMatch) {
+      return normalizeSearchPattern(symbolMatch[1]);
+    }
+  }
+
+  return undefined;
+}
+
 function looksLikeRepoPath(path: string): boolean {
   if (!path || /\s/.test(path) || isExternalHref(path)) {
     return false;
@@ -82,28 +177,34 @@ function looksLikeRepoPath(path: string): boolean {
 
 export function parseRepoNavigationTarget(
   rawValue: string,
-  currentFilePath?: string
+  currentFilePath?: string,
+  options: ParseRepoNavigationTargetOptions = {}
 ): RepoNavigationTarget | null {
   const trimmed = rawValue.trim();
   if (!trimmed || trimmed.length > 200) {
     return null;
   }
 
-  const withoutHash = trimmed.split('#')[0] || trimmed;
-  const lastColon = withoutHash.lastIndexOf(':');
+  const hashIndex = trimmed.indexOf('#');
+  const hashSuffix = hashIndex >= 0 ? trimmed.slice(hashIndex + 1) : '';
+  const withoutHash = hashIndex >= 0 ? trimmed.slice(0, hashIndex) : trimmed;
   const lastSlash = withoutHash.lastIndexOf('/');
+  const navigationColon = withoutHash.indexOf(':', lastSlash + 1);
 
   let pathPart = withoutHash;
   let suffix = '';
 
-  if (lastColon > lastSlash) {
-    pathPart = withoutHash.slice(0, lastColon);
-    suffix = withoutHash.slice(lastColon + 1);
+  if (navigationColon > lastSlash) {
+    pathPart = withoutHash.slice(0, navigationColon);
+    suffix = withoutHash.slice(navigationColon + 1);
   }
 
-  const resolvedPath = currentFilePath
-    ? (resolveRepoRelativePath(currentFilePath, pathPart) ?? pathPart.replace(/^\/+/, ''))
-    : pathPart.replace(/^\/+/, '');
+  const resolvedPath =
+    !pathPart && currentFilePath
+      ? currentFilePath
+      : currentFilePath
+        ? (resolveRepoRelativePath(currentFilePath, pathPart) ?? pathPart.replace(/^\/+/, ''))
+        : pathPart.replace(/^\/+/, '');
 
   if (!looksLikeRepoPath(resolvedPath)) {
     return null;
@@ -111,22 +212,40 @@ export function parseRepoNavigationTarget(
 
   const target: RepoNavigationTarget = { path: resolvedPath };
 
-  if (!suffix) {
-    return target;
+  if (suffix) {
+    return applyNavigationSuffix(target, suffix);
   }
 
-  if (/^L?\d+$/.test(suffix)) {
-    target.scrollToLine = parseInt(suffix.replace(/^L/i, ''), 10);
-    return target;
+  if (hashSuffix) {
+    return applyNavigationSuffix(target, hashSuffix);
   }
 
-  const normalizedPattern = normalizeSearchPattern(suffix);
-  if (/^[A-Za-z_][A-Za-z0-9_:.<>\-~]*$/.test(normalizedPattern)) {
-    target.searchPattern = normalizedPattern;
-    return target;
+  const inferredSearchPattern =
+    inferSearchPatternFromText(options.title) ?? inferSearchPatternFromText(options.linkText);
+  if (inferredSearchPattern) {
+    target.searchPattern = inferredSearchPattern;
   }
 
-  return { path: resolvedPath };
+  return target;
+}
+
+export function parseMarkdownNavigationTarget(
+  rawValue: string,
+  currentFilePath?: string,
+  options: ParseRepoNavigationTargetOptions = {}
+): MarkdownNavigationTarget | null {
+  const trimmed = rawValue.trim();
+  if (/^man:/i.test(trimmed)) {
+    return parseManPageReference(trimmed);
+  }
+
+  const manTarget = parseManPageReference(trimmed);
+  if (manTarget) {
+    return manTarget;
+  }
+
+  const repoTarget = parseRepoNavigationTarget(rawValue, currentFilePath, options);
+  return repoTarget ? { kind: 'repo-file', ...repoTarget } : null;
 }
 
 export function getRepoLinkAttributes(target: RepoNavigationTarget): string {

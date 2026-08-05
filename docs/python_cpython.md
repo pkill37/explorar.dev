@@ -46,13 +46,13 @@ fileRecommendations:
     - path: Doc/c-api/memory.rst
       description: Memory management overview
       type: docs
-    - path: Python/ceval.c
+    - path: Python/ceval.c:_PyEval_EvalFrameDefault
       description: Main evaluation loop — the heart of CPython
       type: source
-    - path: Include/object.h
+    - path: Include/object.h:PyObject_HEAD
       description: PyObject struct — foundation of all Python objects
       type: source
-    - path: Modules/gcmodule.c
+    - path: Modules/gcmodule.c:gc_collect_main
       description: Cyclic garbage collector
       type: source
 ---
@@ -88,19 +88,19 @@ fileRecommendations:
     - path: Doc/
       description: Official Python documentation source
       type: docs
-    - path: Doc/c-api/veryhigh.rst
+    - path: Doc/c-api/veryhigh.rst#the-very-high-level-layer
       description: High-level compilation API
       type: docs
-    - path: Python/ceval.c
-      description: Main evaluation loop (~2,800 lines)
+    - path: Python/ceval.c:_PyEval_EvalFrameDefault
+      description: Main evaluation loop (about 2,800 lines)
       type: source
     - path: Python/compile.c
       description: Bytecode compiler — AST to bytecode
       type: source
-    - path: Objects/typeobject.c
-      description: Type system (~10,600 lines)
+    - path: Objects/typeobject.c:type_new
+      description: Type system (about 10,600 lines)
       type: source
-    - path: Include/object.h
+    - path: Include/object.h:PyObject_HEAD
       description: PyObject and PyTypeObject definitions
       type: source
     - path: Parser/tokenizer.c
@@ -124,10 +124,10 @@ The CPython source code is organized into clear directories, each serving a spec
 
 **Key File Statistics:**
 
-- Total C code: ~500,000 lines
-- Core interpreter ([Python/](Python/)): ~100,000 lines
-- Object implementations ([Objects/](Objects/)): ~150,000 lines
-- Standard library ([Lib/](Lib/)): ~500,000+ lines of Python
+- Total C code: about 500,000 lines
+- Core interpreter ([Python/](Python/)): about 100,000 lines
+- Object implementations ([Objects/](Objects/)): about 150,000 lines
+- Standard library ([Lib/](Lib/)): about 500,000+ lines of Python
 
 ### The Compilation Pipeline: From Source to Bytecode
 
@@ -150,7 +150,7 @@ id: ch3
 title: Chapter 3 — The Object Model
 fileRecommendations:
   readingOrder:
-    - path: Doc/c-api/object.rst
+    - path: Doc/c-api/object.rst#object-protocol
       description: Object protocol
       type: docs
     - path: Doc/c-api/typeobj.rst
@@ -162,16 +162,16 @@ fileRecommendations:
     - path: Doc/c-api/gcsupport.rst
       description: Garbage collector support
       type: docs
-    - path: Include/object.h
+    - path: Include/object.h:PyObject_HEAD
       description: PyObject and PyTypeObject definitions
       type: source
     - path: Objects/object.c
       description: Base object implementation
       type: source
-    - path: Objects/typeobject.c
-      description: Type system (~10,600 lines)
+    - path: Objects/typeobject.c:type_new
+      description: Type system (about 10,600 lines)
       type: source
-    - path: Modules/gcmodule.c
+    - path: Modules/gcmodule.c:gc_collect_main
       description: Cyclic garbage collector
       type: source
     - path: Objects/abstract.c
@@ -203,7 +203,7 @@ Key files:
 In Python, types are themselves objects. The `PyTypeObject` structure defines how objects of a particular type behave: what methods they support, how they're created, how they're compared, and how they're represented as strings. Understanding type objects reveals how Python's dynamic typing and method resolution work.
 
 Key files:
-- [Objects/typeobject.c](Objects/typeobject.c) — Type object implementation (~10,600 lines)
+- [Objects/typeobject.c](Objects/typeobject.c) — Type object implementation (about 10,600 lines)
 - [Include/cpython/object.h](Include/cpython/object.h) — Type object structure internals
 - [Objects/abstract.c](Objects/abstract.c) — Abstract object protocol
 
@@ -240,16 +240,16 @@ fileRecommendations:
     - path: Doc/c-api/dict.rst
       description: Dictionary objects
       type: docs
-    - path: Objects/longobject.c
+    - path: Objects/longobject.c:long_add
       description: Integer implementation — arbitrary precision
       type: source
-    - path: Objects/unicodeobject.c
-      description: Unicode string implementation (~15,000 lines)
+    - path: Objects/unicodeobject.c:PyUnicode_New
+      description: Unicode string implementation (about 15,000 lines)
       type: source
-    - path: Objects/listobject.c
+    - path: Objects/listobject.c:list_resize
       description: List — dynamic array implementation
       type: source
-    - path: Objects/dictobject.c
+    - path: Objects/dictobject.c:PyDict_SetItem
       description: Dictionary — hash table implementation
       type: source
     - path: Objects/setobject.c
@@ -281,7 +281,7 @@ Key files:
 Python strings are immutable sequences of Unicode code points. CPython uses several internal representations to optimize for different string characteristics (ASCII, compact Unicode, or legacy strings). Understanding string implementation reveals how Python handles text encoding, string interning, and memory efficiency.
 
 Key files:
-- [Objects/unicodeobject.c](Objects/unicodeobject.c) — Unicode string implementation (~15,000 lines)
+- [Objects/unicodeobject.c](Objects/unicodeobject.c) — Unicode string implementation (about 15,000 lines)
 - [Include/unicodeobject.h](Include/unicodeobject.h) — Unicode object definitions
 
 ### Lists: Dynamic Arrays
@@ -297,7 +297,7 @@ Key files:
 Python dictionaries are implemented as hash tables with open addressing. They use a clever probing strategy and maintain insertion order (as of Python 3.7). Understanding dictionary implementation reveals how Python achieves average O(1) lookups while maintaining predictable iteration order.
 
 Key files:
-- [Objects/dictobject.c](Objects/dictobject.c) — Dictionary implementation (~5,850 lines)
+- [Objects/dictobject.c](Objects/dictobject.c) — Dictionary implementation (about 5,850 lines)
 - [Include/dictobject.h](Include/dictobject.h) — Dictionary object definitions
 
 ---
@@ -305,13 +305,13 @@ id: ch5
 title: Chapter 5 — The Evaluation Loop
 fileRecommendations:
   readingOrder:
-    - path: Doc/library/dis.rst
+    - path: Doc/library/dis.rst#python-bytecode-instructions
       description: Bytecode disassembler module documentation
       type: docs
     - path: Doc/c-api/init.rst
       description: Interpreter state and frame objects
       type: docs
-    - path: Python/ceval.c
+    - path: Python/ceval.c:_PyEval_EvalFrameDefault
       description: Main evaluation loop — the heart of CPython
       type: source
     - path: Include/opcode.h
@@ -323,7 +323,7 @@ fileRecommendations:
     - path: Include/frameobject.h
       description: Frame object structure
       type: source
-    - path: Lib/dis.py
+    - path: Lib/dis.py:dis
       description: Python bytecode disassembler
       type: source
 ---
@@ -343,7 +343,7 @@ Include/opcode.h -> Lib/dis.py : Python disassembler decodes same table
 The heart of CPython is the evaluation loop in [Python/ceval.c](Python/ceval.c). This function interprets bytecode instructions, manipulating a value stack and maintaining execution state. Each bytecode instruction is a case in a large switch statement (or computed goto), and the loop continues until the frame completes or an exception is raised.
 
 Key files:
-- [Python/ceval.c](Python/ceval.c) — Main evaluation loop (~2,800 lines)
+- [Python/ceval.c](Python/ceval.c) — Main evaluation loop (about 2,800 lines)
 - [Include/opcode.h](Include/opcode.h) — Bytecode opcodes
 
 ### Frames: Execution Context
@@ -379,7 +379,7 @@ fileRecommendations:
     - path: Doc/c-api/module.rst
       description: Module objects
       type: docs
-    - path: Python/import.c
+    - path: Python/import.c:PyImport_ImportModule
       description: Import system implementation
       type: source
     - path: Objects/moduleobject.c
@@ -422,13 +422,13 @@ fileRecommendations:
     - path: Doc/c-api/exceptions.rst
       description: Exception handling and traceback objects
       type: docs
-    - path: Python/errors.c
+    - path: Python/errors.c:PyErr_SetString
       description: Exception raising and handling machinery
       type: source
-    - path: Objects/exceptions.c
+    - path: Objects/exceptions.c:BaseException_new
       description: Built-in exception type hierarchy
       type: source
-    - path: Python/traceback.c
+    - path: Python/traceback.c:PyTraceBack_Here
       description: Traceback object construction
       type: source
     - path: Include/pyerrors.h
@@ -480,13 +480,13 @@ fileRecommendations:
     - path: Doc/extending/
       description: Extending Python with C
       type: docs
-    - path: Objects/genobject.c
+    - path: Objects/genobject.c:gen_send_ex
       description: Generator and coroutine implementation
       type: source
     - path: Include/cpython/genobject.h
       description: Generator object definitions
       type: source
-    - path: Objects/descrobject.c
+    - path: Objects/descrobject.c:PyDescr_NewMethod
       description: Descriptor protocol implementation
       type: source
     - path: Include/Python.h

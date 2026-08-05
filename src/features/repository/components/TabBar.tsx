@@ -20,7 +20,12 @@ const TabBar: React.FC<TabBarProps> = ({
   onCloseAllTabs,
   onMarkdownPreviewToggle,
 }) => {
-  const getFileIcon = (path: string): string => {
+  const getFileIcon = (tab: EditorTab): string => {
+    if (tab.kind === 'man-page') {
+      return '📚';
+    }
+
+    const path = tab.path;
     const extension = path.split('.').pop()?.toLowerCase();
     switch (extension) {
       case 'c':
@@ -101,7 +106,7 @@ const TabBar: React.FC<TabBarProps> = ({
               {tab.isLoading ? (
                 <div className="vscode-spinner" style={{ width: '10px', height: '10px' }} />
               ) : (
-                getFileIcon(tab.path)
+                getFileIcon(tab)
               )}
             </span>
 

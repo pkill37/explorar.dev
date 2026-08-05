@@ -27,19 +27,19 @@ id: ch1
 title: Chapter 1 — The Tree and the Build Are the First Abstractions
 fileRecommendations:
   readingOrder:
-    - path: README.md
+    - path: README.md#reactos
       description: Project overview, compatibility goals, and build instructions
       type: source
     - path: INSTALL
       description: Installation and build prerequisites
       type: source
-    - path: CMakeLists.txt
+    - path: CMakeLists.txt#L1
       description: Top-level build definition
       type: source
-    - path: configure.sh
+    - path: configure.sh#L1
       description: Unix-like configure entry point
       type: source
-    - path: configure.cmd
+    - path: configure.cmd#L1
       description: Windows configure entry point
       type: source
 ---
@@ -113,7 +113,7 @@ id: ch5
 title: Chapter 5 — How to Read ReactOS Effectively
 fileRecommendations:
   readingOrder:
-    - path: README.md
+    - path: README.md#reactos
       description: Re-anchor on project scope and compatibility claims
       type: source
     - path: ntoskrnl/

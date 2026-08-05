@@ -1,6 +1,7 @@
 // Dynamic project guide configuration system using docs/ markdown files
 import React from 'react';
 import { getCuratedGuideByRepo } from '@/features/guides/docs-loader';
+import { parseRepoNavigationTarget } from '@/lib/markdown-navigation';
 
 export interface FileRecommendation {
   path: string;
@@ -64,7 +65,7 @@ export function createFileRecommendationsComponent(
   docs: FileRecommendation[] = [],
   source: FileRecommendation[] = [],
   directories: FileRecommendation[] = [],
-  onFileClick: (path: string) => void
+  onFileClick: (path: string, searchPattern?: string, scrollToLine?: number) => void
 ) {
   const normalizeDirectoryPath = (path: string) => (path.endsWith('/') ? path : `${path}/`);
   const orderedItems: RecommendationItem[] =
@@ -164,7 +165,16 @@ export function createFileRecommendationsComponent(
                 {group.items.map((file, index) => (
                   <button
                     key={`${group.type}-${index + 1}-${file.path}`}
-                    onClick={() => onFileClick(getItemPath(file))}
+                    onClick={() => {
+                      const target = parseRepoNavigationTarget(getItemPath(file), undefined, {
+                        title: file.description,
+                      });
+                      if (target) {
+                        onFileClick(target.path, target.searchPattern, target.scrollToLine);
+                        return;
+                      }
+                      onFileClick(getItemPath(file));
+                    }}
                     style={{
                       textAlign: 'left',
                       padding: '4px 8px',

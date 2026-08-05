@@ -287,6 +287,7 @@ interface MonacoCodeEditorProps {
   workspaceFilePaths?: string[];
   workspaceId?: string;
   codeIndex?: LoadedCodeIndex | null;
+  editorTheme?: 'vs-dark' | 'vs';
 }
 
 type MonacoEditorLike = {
@@ -368,6 +369,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   workspaceFilePaths = [],
   workspaceId = 'default',
   codeIndex = null,
+  editorTheme = 'vs-dark',
 }) => {
   const editorRef = useRef<unknown>(null);
   const monacoRef = useRef<unknown>(null);
@@ -421,6 +423,40 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   const findDefinitionLineForPattern = useCallback((pattern: string, lines: string[]): number => {
     const normalizedPattern = pattern.trim().replace(/\(\)$/, '');
     if (!normalizedPattern) return -1;
+
+    const slugifyHeading = (value: string) =>
+      value
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/<[^>]*>/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9 _-]+/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+    const normalizedSlug = slugifyHeading(normalizedPattern);
+    if (normalizedSlug) {
+      for (let i = 0; i < lines.length; i++) {
+        const markdownHeading = lines[i].match(/^#{1,6}\s+(.+?)\s*#*$/);
+        if (markdownHeading) {
+          const headingText = markdownHeading[1].trim();
+          if (headingText === normalizedPattern || slugifyHeading(headingText) === normalizedSlug) {
+            return i + 1;
+          }
+        }
+
+        const currentLine = lines[i].trim();
+        const nextLine = lines[i + 1]?.trim() || '';
+        if (
+          currentLine &&
+          /^[=\-~^"']+$/.test(nextLine) &&
+          (currentLine === normalizedPattern || slugifyHeading(currentLine) === normalizedSlug)
+        ) {
+          return i + 1;
+        }
+      }
+    }
 
     const directDefinition = findDefinition(normalizedPattern, symbolsRef.current);
     if (directDefinition) {
@@ -1635,7 +1671,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         wordWrap: 'off',
         readOnly: true, // Read-only for now since we're just viewing
         automaticLayout: true,
-        theme: 'vs-dark',
+        theme: editorTheme,
         renderWhitespace: 'selection',
         showFoldingControls: 'always',
         folding: true,
@@ -1651,6 +1687,10 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
           seedSearchStringFromSelection: 'always',
         },
       });
+
+      (monaco as { editor?: { setTheme?: (theme: string) => void } }).editor?.setTheme?.(
+        editorTheme
+      );
 
       // Track cursor position changes for status bar
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1780,8 +1820,13 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         });
       });
     },
-    [content, filePath, language, onCursorChange, syncMonacoTestApi]
+    [content, editorTheme, filePath, language, onCursorChange, syncMonacoTestApi]
   );
+
+  useEffect(() => {
+    const monaco = monacoRef.current as { editor?: { setTheme?: (theme: string) => void } } | null;
+    monaco?.editor?.setTheme?.(editorTheme);
+  }, [editorTheme]);
 
   useEffect(() => {
     if (!hasMountedEditor || !monacoRef.current) {
@@ -2230,7 +2275,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
           width="100%"
           language={language}
           value={content}
-          theme="vs-dark"
+          theme={editorTheme}
           onMount={handleEditorDidMount}
           options={{
             readOnly: true,

@@ -483,10 +483,53 @@ body {
 :where([data-markdown-preview], [data-guide-markdown]) ul,
 :where([data-markdown-preview], [data-guide-markdown]) ol {
   padding-left: 1.5em;
+  list-style-position: outside;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) ul {
+  list-style-type: disc;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) ul ul {
+  list-style-type: circle;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) ul ul ul {
+  list-style-type: square;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) ol {
+  list-style-type: decimal;
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) li + li {
   margin-top: 0.25em;
+}
+
+[data-guide-markdown] {
+  line-height: 1.65;
+}
+
+[data-guide-markdown] p {
+  margin: 0 0 1.15em;
+}
+
+[data-guide-markdown] ul,
+[data-guide-markdown] ol {
+  margin: 1em 0 1.25em;
+  padding-left: 1.65em;
+}
+
+[data-guide-markdown] li {
+  padding-left: 0.2em;
+}
+
+[data-guide-markdown] li + li {
+  margin-top: 0.65em;
+}
+
+[data-guide-markdown] li p {
+  margin: 0.4em 0 0;
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) blockquote {
@@ -568,4 +611,58 @@ body {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
+}
+
+.manual-page-preview {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px 40px 56px;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.manual-page-preview .manual-page-kicker {
+  margin-bottom: 12px;
+  color: var(--vscode-text-muted, #999);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.manual-page-preview h1,
+.manual-page-preview h2,
+.manual-page-preview h3 {
+  margin: 22px 0 10px;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+
+.manual-page-preview h1 {
+  margin-top: 0;
+  font-size: 24px;
+}
+
+.manual-page-preview h2 {
+  font-size: 18px;
+}
+
+.manual-page-preview h3 {
+  font-size: 15px;
+}
+
+.manual-page-preview pre {
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  background: var(--vscode-bg-secondary, #252526);
+}
+
+.manual-page-preview code,
+.manual-page-preview pre {
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+}
+
+.manual-page-preview a {
+  color: var(--vscode-text-accent, #4ea1ff);
 }

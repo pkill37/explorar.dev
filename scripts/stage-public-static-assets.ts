@@ -5,6 +5,8 @@ import path from 'path';
 
 import {
   CORPUS_REPOS_DIR,
+  MAN_PAGES_DIR,
+  PUBLIC_MAN_PAGES_DIR,
   PUBLIC_STAGE_MANIFEST_PATH,
   PUBLIC_REPOS_DIR,
 } from './static-asset-paths';
@@ -12,6 +14,7 @@ import {
 type StageSnapshot = {
   mode: 'dev-symlink' | 'mirror';
   repoManifests: Array<{ path: string; mtimeMs: number; size: number }>;
+  manPageManifests: Array<{ path: string; mtimeMs: number; size: number }>;
 };
 
 type StageMode = 'dev-symlink' | 'mirror';
@@ -85,6 +88,17 @@ function buildSnapshot(mode: StageMode): StageSnapshot {
         size: stat.size,
       };
     }),
+    manPageManifests: listFilesRecursive(
+      MAN_PAGES_DIR,
+      (absolutePath) => path.basename(absolutePath) === 'manifest.json'
+    ).map((absolutePath) => {
+      const stat = fs.statSync(absolutePath);
+      return {
+        path: path.relative(MAN_PAGES_DIR, absolutePath),
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+      };
+    }),
   };
 }
 
@@ -108,12 +122,20 @@ type RepoTargetState =
   | 'unexpected-directory';
 
 function getRepoTargetState(mode: StageMode): RepoTargetState {
-  if (!fs.existsSync(PUBLIC_REPOS_DIR)) {
+  return getTargetState(mode, PUBLIC_REPOS_DIR, CORPUS_REPOS_DIR);
+}
+
+function getManPagesTargetState(mode: StageMode): RepoTargetState {
+  return getTargetState(mode, PUBLIC_MAN_PAGES_DIR, MAN_PAGES_DIR);
+}
+
+function getTargetState(mode: StageMode, targetDir: string, sourceDir: string): RepoTargetState {
+  if (!fs.existsSync(targetDir)) {
     return 'missing';
   }
 
-  const isExpectedSymlink = pathExistsAsSymlinkTo(PUBLIC_REPOS_DIR, CORPUS_REPOS_DIR);
-  const isAnySymlink = pathExistsAsSymlink(PUBLIC_REPOS_DIR);
+  const isExpectedSymlink = pathExistsAsSymlinkTo(targetDir, sourceDir);
+  const isAnySymlink = pathExistsAsSymlink(targetDir);
   if (mode === 'dev-symlink') {
     return isExpectedSymlink ? 'expected-dev-symlink' : 'unexpected-directory';
   }
@@ -193,20 +215,30 @@ function main(): void {
   console.log(`   Mode: ${mode}`);
   console.log(`   Source repos: ${CORPUS_REPOS_DIR}`);
   console.log(`   Target repos: ${PUBLIC_REPOS_DIR}`);
+  console.log(`   Source man pages: ${MAN_PAGES_DIR}`);
+  console.log(`   Target man pages: ${PUBLIC_MAN_PAGES_DIR}`);
 
   const snapshot = buildSnapshot(mode);
   const previousSnapshot = readPreviousSnapshot();
   const snapshotChanged = JSON.stringify(snapshot) !== JSON.stringify(previousSnapshot);
   const repoTargetState = getRepoTargetState(mode);
+  const manPagesTargetState = getManPagesTargetState(mode);
   const repoTargetMatchesMode =
     repoTargetState === 'expected-dev-symlink' || repoTargetState === 'expected-mirror';
+  const manPagesTargetMatchesMode =
+    manPagesTargetState === 'expected-dev-symlink' || manPagesTargetState === 'expected-mirror';
 
   console.log(`   Snapshot: ${snapshot.repoManifests.length} repo manifests`);
+  console.log(`   Man pages: ${snapshot.manPageManifests.length} manifest(s)`);
 
   if (repoTargetState === 'missing') {
     console.log('   Reason: public staged repo assets are missing');
+  } else if (manPagesTargetState === 'missing') {
+    console.log('   Reason: public staged man-page assets are missing');
   } else if (!repoTargetMatchesMode) {
     console.log(`   Reason: public staged repo assets do not match ${mode} mode`);
+  } else if (!manPagesTargetMatchesMode) {
+    console.log(`   Reason: public staged man-page assets do not match ${mode} mode`);
   } else if (!previousSnapshot) {
     console.log('   Reason: no previous staging manifest found');
   } else if (snapshotChanged) {
@@ -219,8 +251,10 @@ function main(): void {
 
   if (mode === 'dev-symlink') {
     linkDirectory(CORPUS_REPOS_DIR, PUBLIC_REPOS_DIR);
+    linkDirectory(MAN_PAGES_DIR, PUBLIC_MAN_PAGES_DIR);
   } else {
     mirrorDirectory(CORPUS_REPOS_DIR, PUBLIC_REPOS_DIR);
+    mirrorDirectory(MAN_PAGES_DIR, PUBLIC_MAN_PAGES_DIR);
   }
   persistSnapshot(snapshot);
   console.log(`done: Stage public static assets (${fmtDuration(Date.now() - startedAt)})`);

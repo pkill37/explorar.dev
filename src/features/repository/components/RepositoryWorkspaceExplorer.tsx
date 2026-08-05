@@ -4,11 +4,12 @@ import { notFound, useRouter } from 'next/navigation';
 import FileTree from './FileTree';
 import TabBar from './TabBar';
 import CodeEditorContainer from './CodeEditorContainer';
+import ManualPagePreview from './ManualPagePreview';
 import GuidePanel from './GuidePanel';
 import { EditorTab, FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
-  fetchFileContent,
+  fetchRepositoryFile,
   setCurrentCorpusSourceMode,
   getCurrentRepoLabel,
   setGitHubRepoWithDefaultBranch,
@@ -38,6 +39,7 @@ import {
   type LoadedCodeIndex,
 } from '@/lib/code-index';
 import { debugLog } from '@/lib/browser-debug';
+import { buildManualPageTabPath, getManPageLabel } from '@/lib/man-pages';
 import '@/app/vscode.css';
 
 // Helper functions for safe localStorage operations
@@ -76,6 +78,8 @@ const getRepoScopedKey = (baseKey: string, repoIdentifier: string | null): strin
 const EXPLORER_STORAGE_KEY_PREFIX = 'repository-workspace-explorer';
 const CORPUS_SOURCE_MODE_STORAGE_KEY = `${EXPLORER_STORAGE_KEY_PREFIX}-corpus-source-mode`;
 
+type WorkspaceTheme = 'dark' | 'light';
+
 const isPreviewableMarkupFile = (path: string) => /\.(md|rst)$/i.test(path);
 
 function flattenFilePaths(nodes: FileNode[]): string[] {
@@ -100,6 +104,57 @@ function resolveWorkspaceFilePath(filePath: string, workspaceFilePaths: string[]
   return resolveCorpusPathFromKnownFiles(filePath, workspaceFilePaths);
 }
 
+function findPedagogicalLandingLine(filePath: string, content: string): number | undefined {
+  const lines = content.split('\n');
+
+  if (/\.(md|rst|txt)$/i.test(filePath)) {
+    for (let i = 0; i < lines.length; i++) {
+      const markdownHeading = lines[i].match(/^#{1,6}\s+\S/);
+      if (markdownHeading) {
+        return i + 1;
+      }
+
+      const currentLine = lines[i].trim();
+      const nextLine = lines[i + 1]?.trim() || '';
+      if (currentLine && /^[=\-~^"']+$/.test(nextLine)) {
+        return i + 1;
+      }
+    }
+  }
+
+  const symbols = findSymbolsInFile(content, filePath);
+  const preferredDefinition =
+    symbols.find(
+      (symbol) =>
+        symbol.isDefinition &&
+        symbol.line > 0 &&
+        (symbol.type === 'function' || symbol.type === 'class' || symbol.type === 'struct')
+    ) ??
+    symbols.find(
+      (symbol) =>
+        symbol.isDefinition &&
+        symbol.line > 0 &&
+        (symbol.type === 'typedef' || symbol.type === 'macro')
+    );
+
+  if (preferredDefinition) {
+    return preferredDefinition.line;
+  }
+
+  const firstCodeLine = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return (
+      trimmed &&
+      !trimmed.startsWith('//') &&
+      !trimmed.startsWith('/*') &&
+      !trimmed.startsWith('*') &&
+      !trimmed.startsWith('#')
+    );
+  });
+
+  return firstCodeLine >= 0 ? firstCodeLine + 1 : undefined;
+}
+
 interface RepositoryWorkspaceExplorerProps {
   owner?: string;
   repo?: string;
@@ -108,10 +163,17 @@ interface RepositoryWorkspaceExplorerProps {
     | string
     | string[]
     | {
+        kind?: 'repo-file';
         path: string;
         searchPattern?: string;
         scrollToLine?: number;
         searchScope?: string[];
+        navigationNonce?: number;
+      }
+    | {
+        kind: 'man-page';
+        name: string;
+        section: string;
         navigationNonce?: number;
       }
     | null;
@@ -120,6 +182,7 @@ interface RepositoryWorkspaceExplorerProps {
   layoutMode?: 'editor' | 'search' | 'viewer';
   sourceMode?: CuratedRepoSourceMode;
   onSourceModeChange?: (sourceMode: CuratedRepoSourceMode) => void;
+  workspaceTheme: WorkspaceTheme;
 }
 
 export default function RepositoryWorkspaceExplorer({
@@ -131,6 +194,7 @@ export default function RepositoryWorkspaceExplorer({
   layoutMode = 'editor',
   sourceMode,
   onSourceModeChange,
+  workspaceTheme,
 }: RepositoryWorkspaceExplorerProps) {
   const router = useRouter();
   const {
@@ -185,6 +249,7 @@ export default function RepositoryWorkspaceExplorer({
     getDefaultCuratedRepoSourceMode()
   );
   const fileSourceMode = normalizeCuratedRepoSourceMode(sourceMode ?? localFileSourceMode);
+  const editorTheme = workspaceTheme === 'light' ? 'vs' : 'vs-dark';
 
   // Mobile panel state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
@@ -729,6 +794,14 @@ export default function RepositoryWorkspaceExplorer({
     [fileSourceMode]
   );
 
+  const fetchFileFromSelectedSource = useCallback(
+    (path: string) =>
+      fetchRepositoryFile(owner || '', repo || '', selectedVersion, path, {
+        sourceMode: fileSourceMode,
+      }),
+    [owner, repo, selectedVersion, fileSourceMode]
+  );
+
   // Resize handlers
   const handleMouseDown = useCallback((panel: 'sidebar' | 'rightPanel') => {
     setIsResizing(panel);
@@ -790,7 +863,7 @@ export default function RepositoryWorkspaceExplorer({
       scrollToLine?: number,
       searchScope?: string[]
     ) => {
-      if (!searchPattern || scrollToLine || !owner || !repo) {
+      if (scrollToLine || !owner || !repo) {
         return {
           resolvedFilePath: filePath,
           resolvedSearchPattern: searchPattern,
@@ -810,7 +883,29 @@ export default function RepositoryWorkspaceExplorer({
           if (resolvedCandidatePath === candidatePath && !candidatePath.includes('/')) {
             continue;
           }
-          const fileResult = await fetchFileContent(resolvedCandidatePath);
+          const fileResult = await fetchFileFromSelectedSource(resolvedCandidatePath);
+
+          if (!searchPattern) {
+            const landingLine = findPedagogicalLandingLine(
+              resolvedCandidatePath,
+              fileResult.content
+            );
+            if (landingLine) {
+              debugLog('[explorar:open-file] resolved-default-landing-line', {
+                filePath: resolvedCandidatePath,
+                branch: branchToUse,
+                line: landingLine,
+                candidatePathCount: candidatePaths.length,
+              });
+              return {
+                resolvedFilePath: resolvedCandidatePath,
+                resolvedSearchPattern: undefined,
+                resolvedScrollToLine: landingLine,
+              };
+            }
+            continue;
+          }
+
           const parsedSymbols = findSymbolsInFile(fileResult.content, resolvedCandidatePath);
           const normalizedQuery = searchPattern
             .trim()
@@ -858,7 +953,16 @@ export default function RepositoryWorkspaceExplorer({
         resolvedScrollToLine: scrollToLine,
       };
     },
-    [owner, repo, currentBranch, branch, selectedVersion, projectConfig, workspaceFilePaths]
+    [
+      owner,
+      repo,
+      currentBranch,
+      branch,
+      selectedVersion,
+      projectConfig,
+      workspaceFilePaths,
+      fetchFileFromSelectedSource,
+    ]
   );
 
   const openFileInTab = useCallback(
@@ -880,18 +984,6 @@ export default function RepositoryWorkspaceExplorer({
       }
 
       let normalizedPath = (resolvedWorkspacePath ?? filePath).replace(/\/+$/, '');
-      const { resolvedFilePath, resolvedSearchPattern, resolvedScrollToLine } =
-        await resolveSymbolNavigationLine(normalizedPath, searchPattern, scrollToLine, searchScope);
-      normalizedPath = resolvedFilePath.replace(/\/+$/, '');
-      const navigationNonce = ++navigationNonceRef.current;
-      debugLog('[explorar:open-file] request', {
-        filePath,
-        normalizedPath,
-        searchPattern: resolvedSearchPattern,
-        scrollToLine: resolvedScrollToLine,
-        navigationNonce,
-        searchScope,
-      });
 
       // Check if this is a Documentation folder - open index.rst instead
       if (filePath.startsWith('Documentation/') && filePath.endsWith('/')) {
@@ -913,6 +1005,19 @@ export default function RepositoryWorkspaceExplorer({
         handleDirectoryExpand();
         return;
       }
+
+      const { resolvedFilePath, resolvedSearchPattern, resolvedScrollToLine } =
+        await resolveSymbolNavigationLine(normalizedPath, searchPattern, scrollToLine, searchScope);
+      normalizedPath = resolvedFilePath.replace(/\/+$/, '');
+      const navigationNonce = ++navigationNonceRef.current;
+      debugLog('[explorar:open-file] request', {
+        filePath,
+        normalizedPath,
+        searchPattern: resolvedSearchPattern,
+        scrollToLine: resolvedScrollToLine,
+        navigationNonce,
+        searchScope,
+      });
 
       // For files: expand all parent directories recursively to make the file visible
       // Extract the parent directory path from the file path
@@ -965,6 +1070,39 @@ export default function RepositoryWorkspaceExplorer({
     [tabs, resolveSymbolNavigationLine, workspaceFilePaths]
   );
 
+  const openManPageInTab = useCallback(
+    (name: string, section: string) => {
+      const normalizedName = name.trim();
+      const normalizedSection = section.trim();
+      const tabPath = buildManualPageTabPath(normalizedName, normalizedSection);
+      const existing = tabs.find((t) => t.kind === 'man-page' && t.path === tabPath);
+
+      if (existing) {
+        setActiveTabId(existing.id);
+        setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.id === existing.id })));
+        return;
+      }
+
+      const newTab: EditorTab = {
+        id: generateTabId(tabPath),
+        title: getManPageLabel(normalizedName, normalizedSection),
+        path: tabPath,
+        kind: 'man-page',
+        manPage: {
+          name: normalizedName,
+          section: normalizedSection,
+        },
+        isActive: true,
+        isDirty: false,
+        isLoading: false,
+      };
+
+      setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
+      setActiveTabId(newTab.id);
+    },
+    [tabs]
+  );
+
   const guideOpenFileInTab = useCallback(
     (filePath: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
       openFileInTab(filePath, searchPattern, scrollToLine, searchScope);
@@ -987,20 +1125,20 @@ export default function RepositoryWorkspaceExplorer({
     const guideId = projectConfig.guides[0]?.id;
     if (guideId) {
       try {
-        return loadGuideFromMarkdown(guideId, guideOpenFileInTab);
+        return loadGuideFromMarkdown(guideId, guideOpenFileInTab, openManPageInTab);
       } catch (error) {
         console.error(`Failed to load guide ${guideId}:`, error);
       }
     }
 
     return createGenericGuide(projectConfig.owner, projectConfig.repo);
-  }, [projectConfig, owner, repo, guideOpenFileInTab]);
+  }, [projectConfig, owner, repo, guideOpenFileInTab, openManPageInTab]);
 
   const onTabSelect = (tabId: string) => {
     setActiveTabId(tabId);
     setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.id === tabId })));
     const t = tabs.find((x) => x.id === tabId);
-    if (t) setSelectedFile(t.path);
+    if (t) setSelectedFile(t.kind === 'man-page' ? '' : t.path);
   };
 
   const toggleMarkdownPreview = useCallback(() => {
@@ -1029,7 +1167,7 @@ export default function RepositoryWorkspaceExplorer({
           const newIdx = Math.max(0, idx - 1);
           const nextActive = nextTabs[newIdx] || null;
           setActiveTabId(nextActive ? nextActive.id : null);
-          setSelectedFile(nextActive ? nextActive.path : '');
+          setSelectedFile(nextActive && nextActive.kind !== 'man-page' ? nextActive.path : '');
         }
         return nextTabs;
       });
@@ -1132,7 +1270,7 @@ export default function RepositoryWorkspaceExplorer({
               }
 
               try {
-                const fileResult = await fetchFileContent(entry.path);
+                const fileResult = await fetchFileFromSelectedSource(entry.path);
                 workspaceSearchPreviewCacheRef.current.set(entry.path, fileResult.content);
                 const preview = buildSearchPreview(fileResult.content, normalizedQuery);
                 if (!preview) {
@@ -1196,6 +1334,7 @@ export default function RepositoryWorkspaceExplorer({
     workspaceSearchIndexError,
     workspaceSearchIndexLoading,
     workspaceSearchQuery,
+    fetchFileFromSelectedSource,
   ]);
 
   const onEditorContentLoad = useCallback(
@@ -1268,15 +1407,44 @@ export default function RepositoryWorkspaceExplorer({
   // not block the editor from opening and fetching a file.
   useEffect(() => {
     if (!initialFile) return;
-    const paths = Array.isArray(initialFile)
-      ? initialFile
-      : typeof initialFile === 'string'
-        ? [initialFile]
-        : [initialFile.path];
+    const isManualPageTarget =
+      typeof initialFile === 'object' &&
+      !Array.isArray(initialFile) &&
+      initialFile.kind === 'man-page';
+
+    if (isManualPageTarget) {
+      const key = `man:${initialFile.name}(${initialFile.section})|||${initialFile.navigationNonce || ''}`;
+      if (key === lastOpenedInitialFileRef.current) return;
+      debugLog('[explorar:open-file] initial-file-trigger', {
+        key,
+        initialFile,
+        isTreeStructureReady,
+      });
+      lastOpenedInitialFileRef.current = key;
+      setTimeout(() => {
+        openManPageInTab(initialFile.name, initialFile.section);
+      }, 0);
+      return;
+    }
+
+    const repoInitialFile = initialFile;
+    if (
+      typeof repoInitialFile === 'object' &&
+      !Array.isArray(repoInitialFile) &&
+      !('path' in repoInitialFile)
+    ) {
+      return;
+    }
+
+    const paths = Array.isArray(repoInitialFile)
+      ? repoInitialFile
+      : typeof repoInitialFile === 'string'
+        ? [repoInitialFile]
+        : [repoInitialFile.path];
     const key =
-      typeof initialFile === 'string' || Array.isArray(initialFile)
+      typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)
         ? paths.join('|||')
-        : `${initialFile.path}|||${initialFile.searchPattern || ''}|||${initialFile.scrollToLine || ''}|||${initialFile.searchScope?.join(':::') || ''}|||${initialFile.navigationNonce || ''}`;
+        : `${repoInitialFile.path}|||${repoInitialFile.searchPattern || ''}|||${repoInitialFile.scrollToLine || ''}|||${repoInitialFile.searchScope?.join(':::') || ''}|||${repoInitialFile.navigationNonce || ''}`;
     if (key === lastOpenedInitialFileRef.current) return;
     debugLog('[explorar:open-file] initial-file-trigger', {
       key,
@@ -1288,18 +1456,18 @@ export default function RepositoryWorkspaceExplorer({
     // Open header first so the primary (.c) ends up as the active tab.
     setTimeout(() => {
       for (let i = 0; i < paths.length - 1; i++) openFileInTab(paths[i]);
-      if (typeof initialFile === 'string' || Array.isArray(initialFile)) {
+      if (typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)) {
         openFileInTab(paths[paths.length - 1]);
       } else {
         openFileInTab(
-          initialFile.path,
-          initialFile.searchPattern,
-          initialFile.scrollToLine,
-          initialFile.searchScope
+          repoInitialFile.path,
+          repoInitialFile.searchPattern,
+          repoInitialFile.scrollToLine,
+          repoInitialFile.searchScope
         );
       }
     }, 0);
-  }, [initialFile, isTreeStructureReady, openFileInTab]);
+  }, [initialFile, isTreeStructureReady, openFileInTab, openManPageInTab]);
 
   // Repository error
   if (repoError) {
@@ -1308,7 +1476,10 @@ export default function RepositoryWorkspaceExplorer({
   }
 
   return (
-    <div className="vscode-container" style={{ position: 'relative' }}>
+    <div
+      className={`vscode-container vscode-theme-${workspaceTheme}`}
+      style={{ position: 'relative' }}
+    >
       <div style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
         {layoutMode !== 'viewer' && (
           <div
@@ -1427,21 +1598,31 @@ export default function RepositoryWorkspaceExplorer({
           />
           {activeTab ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-              <CodeEditorContainer
-                key={fileSourceMode}
-                filePath={activeTab.path}
-                onContentLoad={onEditorContentLoad}
-                onOpenFile={openFileInTab}
-                fetchFile={fetchFileContent}
-                workspaceFilePaths={workspaceFilePaths}
-                workspaceId={`${fileSourceMode}:${repoLabel}@${selectedVersion}`}
-                codeIndex={workspaceSearchIndex}
-                markdownViewMode={activeTab.viewMode}
-                onToggleMarkdownPreview={toggleMarkdownPreview}
-                scrollToLine={activeTab.scrollToLine}
-                searchPattern={activeTab.searchPattern}
-                navigationNonce={activeTab.navigationNonce}
-              />
+              {activeTab.kind === 'man-page' && activeTab.manPage ? (
+                <ManualPagePreview
+                  name={activeTab.manPage.name}
+                  section={activeTab.manPage.section}
+                  sourceMode={fileSourceMode}
+                />
+              ) : (
+                <CodeEditorContainer
+                  key={fileSourceMode}
+                  filePath={activeTab.path}
+                  onContentLoad={onEditorContentLoad}
+                  onOpenFile={openFileInTab}
+                  onOpenManPage={openManPageInTab}
+                  fetchFile={fetchFileFromSelectedSource}
+                  workspaceFilePaths={workspaceFilePaths}
+                  workspaceId={`${fileSourceMode}:${repoLabel}@${selectedVersion}`}
+                  codeIndex={workspaceSearchIndex}
+                  markdownViewMode={activeTab.viewMode}
+                  onToggleMarkdownPreview={toggleMarkdownPreview}
+                  scrollToLine={activeTab.scrollToLine}
+                  searchPattern={activeTab.searchPattern}
+                  navigationNonce={activeTab.navigationNonce}
+                  editorTheme={editorTheme}
+                />
+              )}
             </div>
           ) : (
             <div className="vscode-empty-state">
