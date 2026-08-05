@@ -1,6 +1,7 @@
 'use client';
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import SidebarSearchHeader from './SidebarSearchHeader';
 import { fetchRepositoryFile } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/features/guides/docs-loader';
@@ -188,7 +189,7 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
       onClick={() => onOpenFile(entity.filePath, entity.name, entity.line)}
       style={{
         fontFamily: 'monospace',
-        background: '#1a1a1a',
+        background: 'var(--vscode-bg-primary)',
         border: `1px solid ${color}33`,
         borderTop: `${borderTopWidth}px solid ${color}`,
         borderRadius: 7,
@@ -240,7 +241,7 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
           style={{
             fontSize: headerFontSize,
             fontWeight: isHero ? 800 : 700,
-            color: isHero ? '#f0f0f0' : isMajor ? '#ddd' : '#bbb',
+            color: 'var(--vscode-text-primary)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -283,8 +284,8 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
           <span
             style={{
               fontSize: fieldFontSize - 1,
-              color: '#cfcfcf',
-              background: '#ffffff10',
+              color: 'var(--vscode-text-secondary)',
+              background: 'var(--vscode-bg-tertiary)',
               padding: '2px 5px',
               borderRadius: 3,
               fontWeight: 600,
@@ -305,14 +306,14 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
               display: 'flex',
               alignItems: 'center',
               padding: fieldPad,
-              background: idx % 2 === 0 ? '#1e1e1e' : '#191919',
-              borderBottom: `1px solid #252525`,
+              background: idx % 2 === 0 ? 'var(--vscode-bg-primary)' : 'var(--vscode-bg-secondary)',
+              borderBottom: '1px solid var(--vscode-border)',
             }}
           >
             <span
               style={{
                 fontSize: fieldFontSize,
-                color: '#9cdcfe',
+                color: 'var(--syntax-variable)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -325,7 +326,7 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
               <span
                 style={{
                   fontSize: fieldFontSize,
-                  color: '#4ec9b0',
+                  color: 'var(--syntax-type)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -345,10 +346,12 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
               display: 'flex',
               alignItems: 'center',
               padding: fieldPad,
-              background: '#191919',
+              background: 'var(--vscode-bg-secondary)',
             }}
           >
-            <span style={{ fontSize: fieldFontSize - 1, color: '#444' }}>+{hidden} more…</span>
+            <span style={{ fontSize: fieldFontSize - 1, color: 'var(--vscode-text-tertiary)' }}>
+              +{hidden} more…
+            </span>
           </div>
         )}
       </div>
@@ -357,15 +360,15 @@ function EntityCard({ scored, onOpenFile, color, folderLabel }: EntityCardProps)
       <div
         style={{
           padding: `4px ${isHero ? '12px' : isMajor ? '10px' : '8px'}`,
-          background: '#141414',
-          borderTop: `1px solid #232323`,
+          background: 'var(--vscode-bg-secondary)',
+          borderTop: '1px solid var(--vscode-border)',
           flexShrink: 0,
         }}
       >
         <span
           style={{
             fontSize: footerFontSize,
-            color: '#3a3a3a',
+            color: 'var(--vscode-text-tertiary)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -395,6 +398,8 @@ interface EntityViewProps {
   guideSections?: GuideSection[];
   isActive?: boolean;
   sourceMode?: CuratedRepoSourceMode;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
 }
 
 const FETCH_CAP = 40;
@@ -821,6 +826,8 @@ export function EntityView({
   guideSections,
   isActive = true,
   sourceMode = 'r2-bucket',
+  searchQuery = '',
+  onSearchQueryChange,
 }: EntityViewProps) {
   const projectConfig = useMemo(() => getProjectConfig(owner, repo), [owner, repo]);
   const branch = projectConfig?.defaultRevision ?? 'main';
@@ -830,8 +837,7 @@ export function EntityView({
 
   const [scored, setScored] = useState<ScoredEntity[]>([]);
   const [loading, setLoading] = useState(false);
-  const [entityFilter, setEntityFilter] = useState('');
-  const deferredEntityFilter = useDeferredValue(entityFilter.trim().toLowerCase());
+  const deferredEntityFilter = useDeferredValue(searchQuery.trim().toLowerCase());
   const filteredScored = useMemo(
     () => scored.filter((item) => matchesEntityQuery(item, deferredEntityFilter)),
     [scored, deferredEntityFilter]
@@ -1018,268 +1024,169 @@ export function EntityView({
     });
   }, [owner, repo, activeChapterId, loading, scored.length, folderGroups.length]);
 
-  if (loading) {
-    return (
+  const isEntityCacheReady = cacheRef.current.has(currentKey);
+  const content = loading ? (
+    <div
+      style={{
+        minHeight: 320,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'monospace',
+        color: 'var(--vscode-text-tertiary)',
+        gap: 10,
+      }}
+    >
       <div
         style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'monospace',
-          color: '#444',
-          gap: 10,
-          background: '#0d0d0d',
+          width: 24,
+          height: 24,
+          border: '2px solid var(--vscode-border)',
+          borderTopColor: 'var(--vscode-text-secondary)',
+          borderRadius: '50%',
+          animation: 'spin 0.9s linear infinite',
         }}
-      >
+      />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{ fontSize: 11 }}>scanning entities…</span>
+    </div>
+  ) : scored.length === 0 ? (
+    <div
+      style={{
+        minHeight: 320,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'monospace',
+        fontSize: 13,
+        color: 'var(--vscode-text-tertiary)',
+      }}
+    >
+      No entities found.
+    </div>
+  ) : (
+    <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {filteredScored.length === 0 ? (
         <div
           style={{
-            width: 24,
-            height: 24,
-            border: '2px solid #333',
-            borderTopColor: '#555',
-            borderRadius: '50%',
-            animation: 'spin 0.9s linear infinite',
+            minHeight: 240,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'monospace',
+            fontSize: 13,
+            color: 'var(--vscode-text-tertiary)',
+            background: 'var(--vscode-bg-primary)',
+            border: '1px solid var(--vscode-border)',
+            borderRadius: 10,
           }}
-        />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <span style={{ fontSize: 11 }}>scanning entities…</span>
-      </div>
-    );
-  }
-
-  if (scored.length === 0) {
-    return (
-      <div
-        style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'monospace',
-          fontSize: 13,
-          color: '#444',
-          background: '#0d0d0d',
-        }}
-      >
-        No entities found.
-      </div>
-    );
-  }
-
-  const heroCount = filteredScored.filter((s) => s.tier === 'hero').length;
-  const majorCount = filteredScored.filter((s) => s.tier === 'major').length;
-  const hasFilter = deferredEntityFilter.length > 0;
-
-  const chapterLabel =
-    activeChapterId && chapterMapEntries
-      ? (chapterMapEntries.find((e) => e.id === activeChapterId)?.id ?? null)
-      : null;
+        >
+          No entities match the current filter.
+        </div>
+      ) : (
+        folderGroups.map((group) => (
+          <section
+            key={group.folder}
+            style={{
+              border: `1px solid ${group.color}26`,
+              borderRadius: 10,
+              overflow: 'hidden',
+              background: 'var(--vscode-bg-primary)',
+              boxShadow: `0 0 0 1px ${group.color}10 inset`,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                background: `${group.color}14`,
+                borderBottom: `1px solid ${group.color}26`,
+                fontFamily: 'monospace',
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: group.color,
+                  boxShadow: `0 0 12px ${group.color}88`,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--vscode-text-primary)' }}>
+                {group.folder}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--vscode-text-secondary)' }}>
+                {group.items.length} entities
+              </span>
+            </div>
+            <div
+              style={{
+                padding: 12,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 10,
+                alignItems: 'start',
+              }}
+            >
+              {group.items.map((item, index) => (
+                <EntityCard
+                  key={`${item.entity.filePath}::${item.entity.name}::${index}`}
+                  scored={item}
+                  onOpenFile={onOpenFile}
+                  color={group.color}
+                  folderLabel={group.folder}
+                />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        background: '#0d0d0d',
+        background: 'var(--vscode-bg-secondary)',
         overflow: 'auto',
         position: 'relative',
       }}
     >
-      {/* Stats bar */}
-      <div
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          padding: '6px 16px',
-          background: '#0d0d0d',
-          borderBottom: '1px solid #1e1e1e',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          fontFamily: 'monospace',
-          fontSize: 10,
-        }}
-      >
-        {chapterLabel && (
-          <span
-            style={{
-              color: '#0078d4',
-              background: '#0078d420',
-              border: '1px solid #0078d440',
-              padding: '1px 7px',
-              borderRadius: 3,
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-            }}
-          >
-            {chapterLabel}
-          </span>
-        )}
-        <span style={{ color: '#555' }}>{scored.length} entities</span>
-        {hasFilter && (
-          <span style={{ color: '#666' }}>
-            <span style={{ color: '#888' }}>{filteredScored.length}</span> matched
-          </span>
-        )}
-        {heroCount > 0 && (
-          <span style={{ color: '#666' }}>
-            <span style={{ color: '#888' }}>{heroCount}</span> core
-          </span>
-        )}
-        {majorCount > 0 && (
-          <span style={{ color: '#555' }}>
-            <span style={{ color: '#666' }}>{majorCount}</span> major
-          </span>
-        )}
-        <span style={{ color: '#555' }}>{folderGroups.length} folders</span>
-        <div
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minWidth: 0,
-          }}
-        >
-          <div style={{ position: 'relative', width: 260, maxWidth: '40vw' }}>
-            <input
-              aria-label="Filter entities"
-              type="search"
-              value={entityFilter}
-              onChange={(e) => setEntityFilter(e.target.value)}
-              placeholder="Filter entities"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                background: '#111',
-                color: '#e5e5e5',
-                border: '1px solid #2a2a2a',
-                borderRadius: 6,
-                padding: '5px 28px 5px 10px',
-                fontFamily: 'monospace',
-                fontSize: 11,
-                outline: 'none',
-              }}
-            />
-            {entityFilter && (
-              <button
-                type="button"
-                onClick={() => setEntityFilter('')}
-                aria-label="Clear entity filter"
-                title="Clear filter"
-                style={{
-                  position: 'absolute',
-                  right: 6,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 18,
-                  height: 18,
-                  border: 'none',
-                  borderRadius: 4,
-                  background: '#2a2a2a',
-                  color: '#bdbdbd',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  lineHeight: '18px',
-                  padding: 0,
-                }}
-              >
-                ×
-              </button>
-            )}
-          </div>
-          <span style={{ color: '#333', fontSize: 9, whiteSpace: 'nowrap' }}>
-            ×N = referenced by N entities · click to open file
-          </span>
-        </div>
-      </div>
-
-      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {filteredScored.length === 0 ? (
-          <div
-            style={{
-              minHeight: 240,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'monospace',
-              fontSize: 13,
-              color: '#555',
-              background: '#101010',
-              border: '1px solid #1e1e1e',
-              borderRadius: 10,
-            }}
-          >
-            No entities match the current filter.
-          </div>
-        ) : (
-          folderGroups.map((group) => (
-            <section
-              key={group.folder}
-              style={{
-                border: `1px solid ${group.color}26`,
-                borderRadius: 10,
-                overflow: 'hidden',
-                background: '#101010',
-                boxShadow: `0 0 0 1px ${group.color}10 inset`,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 14px',
-                  background: `${group.color}14`,
-                  borderBottom: `1px solid ${group.color}26`,
-                  fontFamily: 'monospace',
-                }}
-              >
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    background: group.color,
-                    boxShadow: `0 0 12px ${group.color}88`,
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#e5e5e5' }}>
-                  {group.folder}
-                </span>
-                <span style={{ fontSize: 10, color: '#8f8f8f' }}>
-                  {group.items.length} entities
-                </span>
-              </div>
-              <div
-                style={{
-                  padding: 12,
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                  gap: 10,
-                  alignItems: 'start',
-                }}
-              >
-                {group.items.map((item, index) => (
-                  <EntityCard
-                    key={`${item.entity.filePath}::${item.entity.name}::${index}`}
-                    scored={item}
-                    onOpenFile={onOpenFile}
-                    color={group.color}
-                    folderLabel={group.folder}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
-        )}
-      </div>
+      <SidebarSearchHeader
+        titleLabel={`${owner}/${repo}`}
+        query={searchQuery}
+        onQueryChange={onSearchQueryChange ?? (() => undefined)}
+        placeholder="Search entities"
+        ariaLabel="Search entities"
+        statusVisible={loading || scored.length > 0}
+        statusLoading={loading}
+        statusReady={!loading && scored.length > 0}
+        statusCached={isEntityCacheReady}
+        statusProgress={loading ? 35 : 100}
+        statusLabel={
+          loading
+            ? 'Scanning entities'
+            : isEntityCacheReady
+              ? 'Cached entities ready'
+              : 'Entities ready'
+        }
+        statusBadgeLabel={loading ? 'loading' : isEntityCacheReady ? 'cached' : 'ready'}
+        meta={
+          searchQuery && !loading ? (
+            <div className="vscode-tree-search-meta">
+              {filteredScored.length} match{filteredScored.length === 1 ? '' : 'es'}
+            </div>
+          ) : null
+        }
+      />
+      {content}
     </div>
   );
 }

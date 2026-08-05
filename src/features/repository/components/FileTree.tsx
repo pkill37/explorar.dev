@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import SidebarSearchHeader from './SidebarSearchHeader';
 import { FileNode, WorkspaceSearchResult } from '@/types';
 import {
   buildFileTree,
@@ -206,25 +207,9 @@ const FileTree: React.FC<FileTreeProps> = ({
   const handledRequestRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchIndexCollapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchIndexHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const searchIndexAnimationFrameRef = useRef<number | null>(null);
   const normalizedSearchQuery = searchQuery.trim();
 
   const clampedSearchIndexProgress = Math.max(0, Math.min(100, searchIndexProgress));
-  const [displayedSearchIndexProgress, setDisplayedSearchIndexProgress] = useState(0);
-  const [isSearchIndexIndicatorVisible, setIsSearchIndexIndicatorVisible] = useState(false);
-  const [isSearchIndexIndicatorCollapsing, setIsSearchIndexIndicatorCollapsing] = useState(false);
-  const setSearchIndexIndicatorVisible = useCallback((nextVisible: boolean) => {
-    setIsSearchIndexIndicatorVisible((current) =>
-      current === nextVisible ? current : nextVisible
-    );
-  }, []);
-  const setSearchIndexIndicatorCollapsing = useCallback((nextCollapsing: boolean) => {
-    setIsSearchIndexIndicatorCollapsing((current) =>
-      current === nextCollapsing ? current : nextCollapsing
-    );
-  }, []);
   const shouldShowSearchIndexIndicator =
     showSearch && (isSearchIndexLoading || isSearchIndexReady || !!searchError);
   const rootNodeVersion = rootNodes.length;
@@ -244,92 +229,6 @@ const FileTree: React.FC<FileTreeProps> = ({
       : searchError
         ? 'error'
         : 'ready';
-  const searchIndexBarProgress = searchError ? 100 : displayedSearchIndexProgress;
-
-  useEffect(() => {
-    if (searchIndexCollapseTimeoutRef.current) {
-      clearTimeout(searchIndexCollapseTimeoutRef.current);
-      searchIndexCollapseTimeoutRef.current = null;
-    }
-    if (searchIndexHideTimeoutRef.current) {
-      clearTimeout(searchIndexHideTimeoutRef.current);
-      searchIndexHideTimeoutRef.current = null;
-    }
-
-    if (!shouldShowSearchIndexIndicator) {
-      setSearchIndexIndicatorCollapsing(false);
-      setSearchIndexIndicatorVisible(false);
-      return;
-    }
-
-    setSearchIndexIndicatorVisible(true);
-    setSearchIndexIndicatorCollapsing(false);
-
-    if (!isSearchIndexLoading && (isSearchIndexReady || searchError)) {
-      searchIndexCollapseTimeoutRef.current = setTimeout(() => {
-        setSearchIndexIndicatorCollapsing(true);
-        searchIndexHideTimeoutRef.current = setTimeout(() => {
-          setSearchIndexIndicatorVisible(false);
-        }, 280);
-      }, 2600);
-    }
-
-    return () => {
-      if (searchIndexCollapseTimeoutRef.current) {
-        clearTimeout(searchIndexCollapseTimeoutRef.current);
-        searchIndexCollapseTimeoutRef.current = null;
-      }
-      if (searchIndexHideTimeoutRef.current) {
-        clearTimeout(searchIndexHideTimeoutRef.current);
-        searchIndexHideTimeoutRef.current = null;
-      }
-    };
-  }, [
-    isSearchIndexLoading,
-    isSearchIndexReady,
-    searchError,
-    setSearchIndexIndicatorCollapsing,
-    setSearchIndexIndicatorVisible,
-    shouldShowSearchIndexIndicator,
-  ]);
-
-  useEffect(() => {
-    if (searchIndexAnimationFrameRef.current !== null) {
-      cancelAnimationFrame(searchIndexAnimationFrameRef.current);
-      searchIndexAnimationFrameRef.current = null;
-    }
-
-    if (!shouldShowSearchIndexIndicator) {
-      if (displayedSearchIndexProgress !== 0) {
-        setDisplayedSearchIndexProgress(0);
-      }
-      return;
-    }
-
-    const targetProgress = searchError
-      ? 100
-      : isSearchIndexReady
-        ? 100
-        : clampedSearchIndexProgress;
-    if (displayedSearchIndexProgress !== targetProgress) {
-      searchIndexAnimationFrameRef.current = requestAnimationFrame(() => {
-        setDisplayedSearchIndexProgress(targetProgress);
-      });
-    }
-
-    return () => {
-      if (searchIndexAnimationFrameRef.current !== null) {
-        cancelAnimationFrame(searchIndexAnimationFrameRef.current);
-        searchIndexAnimationFrameRef.current = null;
-      }
-    };
-  }, [
-    clampedSearchIndexProgress,
-    displayedSearchIndexProgress,
-    isSearchIndexReady,
-    searchError,
-    shouldShowSearchIndexIndicator,
-  ]);
 
   const groupedSearchResults = useMemo(() => {
     const groups = new Map<
@@ -660,125 +559,51 @@ const FileTree: React.FC<FileTreeProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       {titleLabel && (
-        <div
-          style={{
-            padding: '8px 10px',
-            borderBottom: '1px solid var(--vscode-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'stretch',
-            gap: '8px',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: 'var(--vscode-text-muted, #999)',
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={titleLabel}
-          >
-            {titleLabel || 'Explorer'}
-          </div>
-          {showSearch && onSearchQueryChange && (
-            <div className="vscode-tree-search">
-              <div className="vscode-tree-search-input-wrap">
-                <span className="vscode-tree-search-input-icon" aria-hidden="true" />
-                <input
-                  className="vscode-tree-search-input vscode-tree-search-input-with-icon"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => onSearchQueryChange(event.target.value)}
-                  placeholder="Search all files"
-                  aria-label="Search all files"
-                  spellCheck={false}
-                />
+        <SidebarSearchHeader
+          titleLabel={titleLabel || 'Explorer'}
+          query={searchQuery}
+          onQueryChange={onSearchQueryChange ?? (() => undefined)}
+          placeholder="Search all files"
+          ariaLabel="Search all files"
+          searchVisible={showSearch && !!onSearchQueryChange}
+          isRegex={searchIsRegex}
+          onRegexChange={onSearchIsRegexChange}
+          statusVisible={shouldShowSearchIndexIndicator}
+          statusLoading={isSearchIndexLoading}
+          statusReady={isSearchIndexReady}
+          statusCached={searchIndexCached}
+          statusError={!!searchError}
+          statusProgress={isSearchIndexReady ? 100 : clampedSearchIndexProgress}
+          statusLabel={searchIndexStatusLabel || 'Loading repository index'}
+          statusBadgeLabel={searchIndexBadgeLabel}
+          meta={
+            showSearch && normalizedSearchQuery && !isSearchIndexLoading ? (
+              <div className="vscode-tree-search-meta">
+                {isSearchLoading ? (
+                  <span>
+                    Searching {searchScopeFileCount ?? 'all'} file
+                    {(searchScopeFileCount ?? 0) === 1 ? '' : 's'}
+                    {searchScopeLabel ? ` in ${searchScopeLabel}` : ''}…
+                  </span>
+                ) : searchError ? (
+                  <span>{searchError}</span>
+                ) : (
+                  <span>
+                    {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
+                    {searchHasMore ? ' (showing first 200)' : ''}
+                  </span>
+                )}
               </div>
-              {onSearchIsRegexChange && (
-                <button
-                  type="button"
-                  className={`vscode-tree-search-toggle${searchIsRegex ? ' is-active' : ''}`}
-                  onClick={() => onSearchIsRegexChange(!searchIsRegex)}
-                  title={searchIsRegex ? 'Regex search on' : 'Regex search off'}
-                  aria-label={searchIsRegex ? 'Disable regex search' : 'Enable regex search'}
-                >
-                  .*
-                </button>
-              )}
-              {normalizedSearchQuery && (
-                <button
-                  type="button"
-                  className="vscode-tree-search-clear"
-                  onClick={() => onSearchQueryChange('')}
-                  title="Clear search"
-                  aria-label="Clear search"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          )}
-          {isSearchIndexIndicatorVisible && (
-            <div
-              className={`vscode-tree-search-index-status${
-                isSearchIndexIndicatorCollapsing ? ' is-collapsing' : ''
-              }`}
-            >
-              <div className="vscode-tree-search-index-status-header">
-                <span>{searchIndexStatusLabel || 'Loading repository index'}</span>
-                <span
-                  className={`vscode-tree-search-index-badge${
-                    isSearchIndexReady ? ' is-ready' : searchError ? ' is-error' : ''
-                  }`}
-                >
-                  {searchIndexBadgeLabel}
-                </span>
-              </div>
-              <div className="vscode-tree-search-index-track" aria-hidden="true">
-                <div
-                  className={`vscode-tree-search-index-bar${
-                    isSearchIndexReady ? ' is-ready' : searchError ? ' is-error' : ''
-                  }`}
-                  style={{
-                    width: `${searchIndexBarProgress}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {showSearch && normalizedSearchQuery && !isSearchIndexLoading && (
-            <div className="vscode-tree-search-meta">
-              {isSearchLoading ? (
-                <span>
-                  Searching {searchScopeFileCount ?? 'all'} file
-                  {(searchScopeFileCount ?? 0) === 1 ? '' : 's'}
-                  {searchScopeLabel ? ` in ${searchScopeLabel}` : ''}…
-                </span>
-              ) : searchError ? (
-                <span>{searchError}</span>
-              ) : (
-                <span>
-                  {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
-                  {searchHasMore ? ' (showing first 200)' : ''}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+            ) : null
+          }
+        />
       )}
       <div
         ref={treeContainerRef}
         className={isLoading || error ? undefined : 'vscode-file-tree'}
         tabIndex={isLoading || error ? undefined : 0}
         role="region"
-        aria-label="Repository file tree"
+        aria-label={showSearch ? 'Repository file search results' : 'Repository file tree'}
         style={{ flex: 1, minHeight: 0 }}
       >
         {isLoading ? (
@@ -791,72 +616,69 @@ const FileTree: React.FC<FileTreeProps> = ({
             <div>⚠️ Failed to load</div>
             <div style={{ fontSize: '12px', marginTop: '4px' }}>{error}</div>
           </div>
-        ) : (
-          <>
-            {showSearch && normalizedSearchQuery && (
-              <div className="vscode-tree-search-results">
-                {isSearchIndexLoading || isSearchLoading ? (
-                  <div className="vscode-tree-search-empty">
-                    <div style={{ marginTop: '8px' }}>
-                      {isSearchIndexLoading
-                        ? `${clampedSearchIndexProgress.toFixed(1)}% loaded`
-                        : `Searching ${searchScopeFileCount ?? 'all'} file${
-                            (searchScopeFileCount ?? 0) === 1 ? '' : 's'
-                          }${searchScopeLabel ? ` in ${searchScopeLabel}` : ''}...`}
-                    </div>
-                  </div>
-                ) : searchError ? (
-                  <div className="vscode-tree-search-empty">{searchError}</div>
-                ) : searchResults.length === 0 ? (
-                  <div className="vscode-tree-search-empty">No matches found.</div>
-                ) : (
-                  groupedSearchResults.map((group) => (
-                    <section key={group.file} className="vscode-tree-search-group">
-                      <div className="vscode-file-item vscode-tree-search-group-header">
-                        <span className="icon" aria-hidden="true">
-                          📄
-                        </span>
-                        <span className="name">{group.fileName}</span>
-                        <span className="size">{group.directory || 'root'}</span>
-                      </div>
-                      <div className="vscode-tree-search-group-list">
-                        {group.matches.map((match) => (
-                          <button
-                            key={match.key}
-                            type="button"
-                            className="vscode-file-item vscode-tree-search-row"
-                            onClick={() => onSearchResultSelect?.(match)}
-                            title={`${match.file}:${match.line}`}
-                          >
-                            <span className="icon vscode-tree-search-row-line" aria-hidden="true">
-                              L{match.line}
-                            </span>
-                            <span className="name vscode-tree-search-row-preview">
-                              {match.preview}
-                            </span>
-                            <span className="size">:{match.column}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  ))
-                )}
+        ) : showSearch ? (
+          <div className="vscode-tree-search-results">
+            {!normalizedSearchQuery ? (
+              <div className="vscode-tree-search-empty">Type to search files.</div>
+            ) : isSearchIndexLoading || isSearchLoading ? (
+              <div className="vscode-tree-search-empty">
+                <div style={{ marginTop: '8px' }}>
+                  {isSearchIndexLoading
+                    ? `${clampedSearchIndexProgress.toFixed(1)}% loaded`
+                    : `Searching ${searchScopeFileCount ?? 'all'} file${
+                        (searchScopeFileCount ?? 0) === 1 ? '' : 's'
+                      }${searchScopeLabel ? ` in ${searchScopeLabel}` : ''}...`}
+                </div>
               </div>
+            ) : searchError ? (
+              <div className="vscode-tree-search-empty">{searchError}</div>
+            ) : searchResults.length === 0 ? (
+              <div className="vscode-tree-search-empty">No matches found.</div>
+            ) : (
+              groupedSearchResults.map((group) => (
+                <section key={group.file} className="vscode-tree-search-group">
+                  <div className="vscode-file-item vscode-tree-search-group-header">
+                    <span className="icon" aria-hidden="true">
+                      📄
+                    </span>
+                    <span className="name">{group.fileName}</span>
+                    <span className="size">{group.directory || 'root'}</span>
+                  </div>
+                  <div className="vscode-tree-search-group-list">
+                    {group.matches.map((match) => (
+                      <button
+                        key={match.key}
+                        type="button"
+                        className="vscode-file-item vscode-tree-search-row"
+                        onClick={() => onSearchResultSelect?.(match)}
+                        title={`${match.file}:${match.line}`}
+                      >
+                        <span className="icon vscode-tree-search-row-line" aria-hidden="true">
+                          L{match.line}
+                        </span>
+                        <span className="name vscode-tree-search-row-preview">{match.preview}</span>
+                        <span className="size">:{match.column}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))
             )}
-            {sortFileNodes(rootNodes).map((node) => (
-              <FileTreeItem
-                key={node.path}
-                node={node}
-                level={0}
-                onFileSelect={onFileSelect}
-                selectedFile={selectedFile}
-                listDirectory={listDirectory}
-                onDirectoryExpand={onDirectoryExpand}
-                expandedPaths={expandedPaths}
-                onToggleExpand={handleToggleExpand}
-              />
-            ))}
-          </>
+          </div>
+        ) : (
+          sortFileNodes(rootNodes).map((node) => (
+            <FileTreeItem
+              key={node.path}
+              node={node}
+              level={0}
+              onFileSelect={onFileSelect}
+              selectedFile={selectedFile}
+              listDirectory={listDirectory}
+              onDirectoryExpand={onDirectoryExpand}
+              expandedPaths={expandedPaths}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))
         )}
       </div>
     </div>

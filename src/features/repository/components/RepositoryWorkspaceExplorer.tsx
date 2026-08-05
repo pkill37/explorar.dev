@@ -183,6 +183,8 @@ interface RepositoryWorkspaceExplorerProps {
   sourceMode?: CuratedRepoSourceMode;
   onSourceModeChange?: (sourceMode: CuratedRepoSourceMode) => void;
   workspaceTheme: WorkspaceTheme;
+  workspaceSearchQuery?: string;
+  onWorkspaceSearchQueryChange?: (query: string) => void;
 }
 
 export default function RepositoryWorkspaceExplorer({
@@ -195,6 +197,8 @@ export default function RepositoryWorkspaceExplorer({
   sourceMode,
   onSourceModeChange,
   workspaceTheme,
+  workspaceSearchQuery: controlledWorkspaceSearchQuery,
+  onWorkspaceSearchQueryChange,
 }: RepositoryWorkspaceExplorerProps) {
   const router = useRouter();
   const {
@@ -261,7 +265,18 @@ export default function RepositoryWorkspaceExplorer({
   // Tree structure readiness state
   const [isTreeStructureReady, setIsTreeStructureReady] = useState<boolean>(false);
   const [workspaceFilePaths, setWorkspaceFilePaths] = useState<string[]>([]);
-  const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState<string>('');
+  const [localWorkspaceSearchQuery, setLocalWorkspaceSearchQuery] = useState<string>('');
+  const workspaceSearchQuery = controlledWorkspaceSearchQuery ?? localWorkspaceSearchQuery;
+  const setWorkspaceSearchQuery = useCallback(
+    (query: string) => {
+      if (onWorkspaceSearchQueryChange) {
+        onWorkspaceSearchQueryChange(query);
+        return;
+      }
+      setLocalWorkspaceSearchQuery(query);
+    },
+    [onWorkspaceSearchQueryChange]
+  );
   const [workspaceSearchResults, setWorkspaceSearchResults] = useState<WorkspaceSearchResult[]>([]);
   const [workspaceSearchLoading, setWorkspaceSearchLoading] = useState<boolean>(false);
   const [workspaceSearchError, setWorkspaceSearchError] = useState<string | null>(null);
@@ -768,7 +783,7 @@ export default function RepositoryWorkspaceExplorer({
     );
     const savedSearchQuery = loadFromLocalStorage(searchKey, '') as string;
     setWorkspaceSearchQuery(savedSearchQuery);
-  }, [isHydrated, repoIdentifier]);
+  }, [isHydrated, repoIdentifier, setWorkspaceSearchQuery]);
 
   useEffect(() => {
     if (isHydrated && repoIdentifier) {

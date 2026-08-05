@@ -83,6 +83,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     return 'dark';
   });
   const [initialFile, setInitialFile] = useState<InitialFileTarget | null>(null);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [isGuideSidebarOpen, setIsGuideSidebarOpen] = useState(() => {
     try {
       if (typeof window === 'undefined') return true;
@@ -433,6 +434,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               sourceMode={fileSourceMode}
               onSourceModeChange={handleSourceModeChange}
               workspaceTheme={workspaceTheme}
+              workspaceSearchQuery={sidebarSearchQuery}
+              onWorkspaceSearchQueryChange={setSidebarSearchQuery}
             />
           </div>
 
@@ -462,6 +465,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
                 guideSections={guideSections}
                 isActive={mode === 'entities'}
                 sourceMode={fileSourceMode}
+                searchQuery={sidebarSearchQuery}
+                onSearchQueryChange={setSidebarSearchQuery}
               />
             )}
           </div>
