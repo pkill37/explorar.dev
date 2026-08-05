@@ -22,6 +22,11 @@ npm run deploy   # production deploy: R2 sync of repo corpus
 npm test         # Playwright tests (requires built output)
 ```
 
+Cloudflare Pages builds set `CF_PAGES=1`, so `npm run build` skips the expensive corpus and
+man-page generation phases and exports only the static shell. The shell loads repositories, indexes,
+and manual pages from the configured public R2 origin. Set `EXPLORAR_SKIP_CORPUS_BUILD=0` to force a
+full local corpus build.
+
 Online you can visit **[https://explorar.dev](https://explorar.dev)** for free. Repository source files are loaded on demand from a public bucket-backed origin, with R2 as the default source.
 
 ## Roadmap

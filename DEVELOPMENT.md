@@ -153,6 +153,12 @@ npm run deploy
 1. builds `out/`
 2. syncs the corpus repos to `s3://<bucket>/repos/`
 
+Cloudflare Pages sets `CF_PAGES=1`, which makes `npm run build` skip local corpus and man-page
+generation so the CI job only builds the static shell. That keeps Cloudflare builds under the
+20-minute limit and relies on the public R2 origin configured by `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`.
+Use `EXPLORAR_SKIP_CORPUS_BUILD=0 npm run build` when you intentionally need to regenerate the
+local corpus during a build.
+
 The R2 sync path intentionally relies on `aws s3 sync --size-only` against the Cloudflare R2 S3-compatible endpoint. That keeps changed files flowing while avoiding false-positive reuploads caused by R2 timestamp drift, and still removes stale remote files with `--delete`.
 
 The deploy scripts auto-load, in order:

@@ -38,6 +38,19 @@ function fmtDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+function isTruthyEnv(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+function shouldSkipCorpusBuild(): boolean {
+  if (process.env.EXPLORAR_SKIP_CORPUS_BUILD !== undefined) {
+    return isTruthyEnv('EXPLORAR_SKIP_CORPUS_BUILD');
+  }
+
+  return isTruthyEnv('CF_PAGES');
+}
+
 function readCodeIndexStats(statsPath: string): CodeIndexRunStats | null {
   if (!fs.existsSync(statsPath)) {
     return null;
@@ -130,47 +143,59 @@ async function main(): Promise<void> {
   let codeIndexStats: CodeIndexRunStats | null = null;
   console.log('\n[build] starting 6 phases');
 
-  const corpusState = await inspectCorpusState({
-    only: [],
-    skip: [],
-    depth: 1,
-    list: false,
-    avatarsOnly: false,
-  });
-
-  if (corpusState.missingAvatars.length === 0 && corpusState.staleRepos.length === 0) {
+  if (shouldSkipCorpusBuild()) {
     console.log('\n[1/6] Download curated corpus');
     console.log(
-      `  skipped: ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached`
+      '  skipped: CI shell build uses the prebuilt R2 corpus (set EXPLORAR_SKIP_CORPUS_BUILD=0 to force local corpus generation)'
     );
   } else {
-    console.log('\n[1/6] Download curated corpus');
-    console.log('  refresh required before build:');
-    if (corpusState.staleRepos.length > 0) {
-      console.log(`  - refreshing ${corpusState.staleRepos.length} repo target(s)`);
-    }
-    if (corpusState.missingAvatars.length > 0) {
-      console.log(`  - fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
-    }
-    await runStep(1, 6, {
-      name: 'Download curated corpus',
-      command: 'tsx',
-      args:
-        corpusState.staleRepos.length === 0 && corpusState.missingAvatars.length > 0
-          ? ['scripts/download-repos.ts', '--avatars-only']
-          : ['scripts/download-repos.ts', '--depth=1'],
-      env: {
-        CODE_INDEX_STATS_PATH: codeIndexStatsPath,
-      },
+    const corpusState = await inspectCorpusState({
+      only: [],
+      skip: [],
+      depth: 1,
+      list: false,
+      avatarsOnly: false,
     });
-    codeIndexStats = readCodeIndexStats(codeIndexStatsPath);
+
+    if (corpusState.missingAvatars.length === 0 && corpusState.staleRepos.length === 0) {
+      console.log('\n[1/6] Download curated corpus');
+      console.log(
+        `  skipped: ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached`
+      );
+    } else {
+      console.log('\n[1/6] Download curated corpus');
+      console.log('  refresh required before build:');
+      if (corpusState.staleRepos.length > 0) {
+        console.log(`  - refreshing ${corpusState.staleRepos.length} repo target(s)`);
+      }
+      if (corpusState.missingAvatars.length > 0) {
+        console.log(`  - fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
+      }
+      await runStep(1, 6, {
+        name: 'Download curated corpus',
+        command: 'tsx',
+        args:
+          corpusState.staleRepos.length === 0 && corpusState.missingAvatars.length > 0
+            ? ['scripts/download-repos.ts', '--avatars-only']
+            : ['scripts/download-repos.ts', '--depth=1'],
+        env: {
+          CODE_INDEX_STATS_PATH: codeIndexStatsPath,
+        },
+      });
+      codeIndexStats = readCodeIndexStats(codeIndexStatsPath);
+    }
   }
 
-  await runStep(2, 6, {
-    name: 'Build Linux man pages',
-    command: 'tsx',
-    args: ['scripts/build-man-pages.ts'],
-  });
+  if (shouldSkipCorpusBuild()) {
+    console.log('\n[2/6] Build Linux man pages');
+    console.log('  skipped: CI shell build fetches manual pages from the R2 corpus');
+  } else {
+    await runStep(2, 6, {
+      name: 'Build Linux man pages',
+      command: 'tsx',
+      args: ['scripts/build-man-pages.ts'],
+    });
+  }
 
   await runConcurrentGroup(3, 6, 'Guide validation', [
     {
