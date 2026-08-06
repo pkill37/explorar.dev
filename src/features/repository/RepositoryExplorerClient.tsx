@@ -393,20 +393,6 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
               </button>
             );
           })}
-          <button
-            type="button"
-            className="vscode-activity-theme-toggle"
-            onClick={() => setWorkspaceTheme((theme) => (theme === 'light' ? 'dark' : 'light'))}
-            title={workspaceTheme === 'light' ? 'Use dark theme' : 'Use light theme'}
-            aria-label={workspaceTheme === 'light' ? 'Use dark theme' : 'Use light theme'}
-            aria-pressed={workspaceTheme === 'light'}
-            style={{
-              marginTop: 'auto',
-              marginBottom: 48,
-            }}
-          >
-            <span aria-hidden="true">{workspaceTheme === 'light' ? '☾' : '☀'}</span>
-          </button>
         </div>
 
         {/* ── Main content area ── */}
@@ -581,6 +567,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
         sourceMode={showDevSourceMode ? fileSourceMode : undefined}
         canUseR2Source={isR2SourceConfigured}
         onSourceModeChange={showDevSourceMode ? handleSourceModeChange : undefined}
+        workspaceTheme={workspaceTheme}
+        onWorkspaceThemeChange={setWorkspaceTheme}
       />
     </main>
   );

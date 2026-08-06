@@ -48,6 +48,14 @@ interface FileTreeItemProps {
   onToggleExpand: (path: string, isExpanded: boolean) => void;
 }
 
+function isSearchPlaceholderMatch(match: WorkspaceSearchResult): boolean {
+  return (
+    match.line === 1 &&
+    match.column === 1 &&
+    (match.preview === 'Source match' || match.preview === 'Documentation match')
+  );
+}
+
 const FileTreeItem: React.FC<FileTreeItemProps> = ({
   node,
   level,
@@ -178,7 +186,6 @@ const FileTree: React.FC<FileTreeProps> = ({
   onFileSelect,
   selectedFile,
   listDirectory,
-  titleLabel,
   onDirectoryExpand,
   expandDirectoryRequest,
   searchQuery = '',
@@ -229,6 +236,27 @@ const FileTree: React.FC<FileTreeProps> = ({
       : searchError
         ? 'error'
         : 'ready';
+  const searchMeta =
+    showSearch && normalizedSearchQuery && !isSearchIndexLoading ? (
+      <div className="vscode-tree-search-meta">
+        {isSearchLoading ? (
+          <span>
+            Searching {searchScopeFileCount ?? 'all'} file
+            {(searchScopeFileCount ?? 0) === 1 ? '' : 's'}
+            {searchScopeLabel ? ` in ${searchScopeLabel}` : ''}…
+          </span>
+        ) : searchError ? (
+          <span>{searchError}</span>
+        ) : (
+          <span>
+            {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
+            {searchHasMore ? ' (showing first 200)' : ''}
+          </span>
+        )}
+      </div>
+    ) : null;
+  const shouldShowHeader =
+    (showSearch && !!onSearchQueryChange) || shouldShowSearchIndexIndicator || !!searchMeta;
 
   const groupedSearchResults = useMemo(() => {
     const groups = new Map<
@@ -520,11 +548,18 @@ const FileTree: React.FC<FileTreeProps> = ({
       }
 
       if (targetElement) {
-        // Scroll the element into view with smooth behavior
-        targetElement.scrollIntoView({
+        const treeContainer = treeContainerRef.current;
+        const containerRect = treeContainer.getBoundingClientRect();
+        const targetRect = targetElement.getBoundingClientRect();
+        const centeredTop =
+          treeContainer.scrollTop +
+          targetRect.top -
+          containerRect.top -
+          (containerRect.height - targetRect.height) / 2;
+
+        treeContainer.scrollTo({
+          top: Math.max(0, centeredTop),
           behavior: 'smooth',
-          block: 'center',
-          inline: 'nearest',
         });
         return true; // Element found and scrolled
       }
@@ -558,9 +593,8 @@ const FileTree: React.FC<FileTreeProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
-      {titleLabel && (
+      {shouldShowHeader && (
         <SidebarSearchHeader
-          titleLabel={titleLabel || 'Explorer'}
           query={searchQuery}
           onQueryChange={onSearchQueryChange ?? (() => undefined)}
           placeholder="Search all files"
@@ -576,26 +610,7 @@ const FileTree: React.FC<FileTreeProps> = ({
           statusProgress={isSearchIndexReady ? 100 : clampedSearchIndexProgress}
           statusLabel={searchIndexStatusLabel || 'Loading repository index'}
           statusBadgeLabel={searchIndexBadgeLabel}
-          meta={
-            showSearch && normalizedSearchQuery && !isSearchIndexLoading ? (
-              <div className="vscode-tree-search-meta">
-                {isSearchLoading ? (
-                  <span>
-                    Searching {searchScopeFileCount ?? 'all'} file
-                    {(searchScopeFileCount ?? 0) === 1 ? '' : 's'}
-                    {searchScopeLabel ? ` in ${searchScopeLabel}` : ''}…
-                  </span>
-                ) : searchError ? (
-                  <span>{searchError}</span>
-                ) : (
-                  <span>
-                    {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
-                    {searchHasMore ? ' (showing first 200)' : ''}
-                  </span>
-                )}
-              </div>
-            ) : null
-          }
+          meta={searchMeta}
         />
       )}
       <div
@@ -635,34 +650,57 @@ const FileTree: React.FC<FileTreeProps> = ({
             ) : searchResults.length === 0 ? (
               <div className="vscode-tree-search-empty">No matches found.</div>
             ) : (
-              groupedSearchResults.map((group) => (
-                <section key={group.file} className="vscode-tree-search-group">
-                  <div className="vscode-file-item vscode-tree-search-group-header">
-                    <span className="icon" aria-hidden="true">
-                      📄
-                    </span>
-                    <span className="name">{group.fileName}</span>
-                    <span className="size">{group.directory || 'root'}</span>
-                  </div>
-                  <div className="vscode-tree-search-group-list">
-                    {group.matches.map((match) => (
-                      <button
-                        key={match.key}
-                        type="button"
-                        className="vscode-file-item vscode-tree-search-row"
-                        onClick={() => onSearchResultSelect?.(match)}
-                        title={`${match.file}:${match.line}`}
-                      >
-                        <span className="icon vscode-tree-search-row-line" aria-hidden="true">
-                          L{match.line}
-                        </span>
-                        <span className="name vscode-tree-search-row-preview">{match.preview}</span>
-                        <span className="size">:{match.column}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))
+              groupedSearchResults.map((group) => {
+                const placeholderMatch = group.matches.find(isSearchPlaceholderMatch);
+                const visibleMatches = group.matches.filter(
+                  (match) => !isSearchPlaceholderMatch(match)
+                );
+                const primaryMatch = visibleMatches[0] ?? placeholderMatch ?? group.matches[0];
+                const matchTypeLabel = placeholderMatch
+                  ? placeholderMatch.preview.replace(' match', '').toLowerCase()
+                  : null;
+
+                return (
+                  <section key={group.file} className="vscode-tree-search-group">
+                    <button
+                      type="button"
+                      className="vscode-file-item vscode-tree-search-group-header"
+                      onClick={() => onSearchResultSelect?.(primaryMatch)}
+                      title={`${primaryMatch.file}:${primaryMatch.line}`}
+                    >
+                      <span className="icon" aria-hidden="true">
+                        📄
+                      </span>
+                      <span className="name">{group.fileName}</span>
+                      <span className="size">
+                        {group.directory || 'root'}
+                        {matchTypeLabel ? ` · ${matchTypeLabel}` : ''}
+                      </span>
+                    </button>
+                    {visibleMatches.length > 0 && (
+                      <div className="vscode-tree-search-group-list">
+                        {visibleMatches.map((match) => (
+                          <button
+                            key={match.key}
+                            type="button"
+                            className="vscode-file-item vscode-tree-search-row"
+                            onClick={() => onSearchResultSelect?.(match)}
+                            title={`${match.file}:${match.line}`}
+                          >
+                            <span className="icon vscode-tree-search-row-line" aria-hidden="true">
+                              L{match.line}
+                            </span>
+                            <span className="name vscode-tree-search-row-preview">
+                              {match.preview}
+                            </span>
+                            <span className="size">:{match.column}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                );
+              })
             )}
           </div>
         ) : (

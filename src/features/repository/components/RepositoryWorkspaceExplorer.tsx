@@ -1470,17 +1470,22 @@ export default function RepositoryWorkspaceExplorer({
     // Defer to avoid synchronous setState-in-effect warning.
     // Open header first so the primary (.c) ends up as the active tab.
     setTimeout(() => {
-      for (let i = 0; i < paths.length - 1; i++) openFileInTab(paths[i]);
-      if (typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)) {
-        openFileInTab(paths[paths.length - 1]);
-      } else {
-        openFileInTab(
-          repoInitialFile.path,
-          repoInitialFile.searchPattern,
-          repoInitialFile.scrollToLine,
-          repoInitialFile.searchScope
-        );
-      }
+      void (async () => {
+        for (let i = 0; i < paths.length - 1; i++) {
+          await openFileInTab(paths[i]);
+        }
+
+        if (typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)) {
+          await openFileInTab(paths[paths.length - 1]);
+        } else {
+          await openFileInTab(
+            repoInitialFile.path,
+            repoInitialFile.searchPattern,
+            repoInitialFile.scrollToLine,
+            repoInitialFile.searchScope
+          );
+        }
+      })();
     }, 0);
   }, [initialFile, isTreeStructureReady, openFileInTab, openManPageInTab]);
 

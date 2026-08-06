@@ -14,7 +14,11 @@ type ScreenshotState =
   | { status: 'ready'; dataUrl: string; error?: undefined }
   | { status: 'error'; dataUrl?: undefined; error: string };
 
-export default function BugReportWidget() {
+interface BugReportWidgetProps {
+  variant?: 'floating' | 'sidebar' | 'statusbar';
+}
+
+export default function BugReportWidget({ variant = 'floating' }: BugReportWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [screenshot, setScreenshot] = useState<ScreenshotState>({ status: 'idle' });
@@ -56,6 +60,13 @@ export default function BugReportWidget() {
     screenshotIncluded: screenshot.status === 'ready',
   });
 
+  const openReport = () => {
+    setCopyStatus('');
+    setConsoleText(formatConsoleLogsForIssue(getConsoleLogs()));
+    setScreenshot({ status: 'loading' });
+    setIsOpen(true);
+  };
+
   const copyScreenshot = useCallback(async () => {
     if (screenshot.status !== 'ready') {
       return;
@@ -80,15 +91,18 @@ export default function BugReportWidget() {
       <button
         type="button"
         data-no-screenshot
-        onClick={() => {
-          setCopyStatus('');
-          setConsoleText(formatConsoleLogsForIssue(getConsoleLogs()));
-          setScreenshot({ status: 'loading' });
-          setIsOpen(true);
-        }}
-        className="fixed right-4 bottom-4 z-40 rounded-md border border-gray-700 bg-gray-950/95 px-3 py-2 text-xs font-medium text-gray-100 shadow-lg transition-colors hover:border-gray-500 hover:bg-gray-900 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+        onClick={openReport}
+        title="❤️ Report a bug"
+        aria-label="Report a bug"
+        className={
+          variant === 'sidebar'
+            ? 'flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--vscode-border)] bg-[var(--vscode-bg-tertiary)] text-sm font-semibold text-[var(--vscode-text-secondary)] transition-colors hover:border-[var(--vscode-text-accent)] hover:bg-[var(--vscode-bg-hover)] hover:text-[var(--vscode-text-primary)] focus:ring-2 focus:ring-blue-400 focus:outline-none'
+            : variant === 'statusbar'
+              ? 'cursor-statusbar-item cursor-statusbar-button'
+              : 'fixed right-4 bottom-4 z-40 rounded-md border border-gray-700 bg-gray-950/95 px-3 py-2 text-xs font-medium text-gray-100 shadow-lg transition-colors hover:border-gray-500 hover:bg-gray-900 focus:ring-2 focus:ring-blue-400 focus:outline-none'
+        }
       >
-        Report a bug
+        {variant === 'sidebar' ? '❤️' : '❤️ Report a bug'}
       </button>
 
       {isOpen && (

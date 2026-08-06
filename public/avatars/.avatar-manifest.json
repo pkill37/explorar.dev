@@ -1,10 +1,18 @@
 {
-  "createdAt": "2026-08-04T21:52:04.485Z",
-  "buildSignature": "{\"avatarBuildSignatureVersion\":1,\"targets\":[{\"file\":\"apple-oss-distributions.png\",\"url\":\"https://github.com/apple-oss-distributions.png?size=256\"},{\"file\":\"gnu.png\",\"url\":\"https://commons.wikimedia.org/wiki/Special:Redirect/file/Heckert_GNU_white.svg?width=256\"},{\"file\":\"littlekernel.png\",\"url\":\"https://github.com/littlekernel.png?size=256\"},{\"file\":\"llvm-dragon.png\",\"url\":\"https://llvm.org/img/DragonMedium.png\"},{\"file\":\"python.png\",\"url\":\"https://github.com/python.png?size=256\"},{\"file\":\"reactos.png\",\"url\":\"https://github.com/reactos.png?size=256\"},{\"file\":\"seL4.png\",\"url\":\"https://github.com/seL4.png?size=256\"},{\"file\":\"tux.png\",\"url\":\"https://commons.wikimedia.org/wiki/Special:Redirect/file/Tux.svg?width=256\"},{\"file\":\"windows-server-2003.svg\",\"url\":\"local:windows-server-2003.svg\",\"version\":\"1\"}]}",
+  "createdAt": "2026-08-06T19:51:54.894Z",
+  "buildSignature": "{\"avatarBuildSignatureVersion\":1,\"targets\":[{\"file\":\"apple-oss-distributions.png\",\"url\":\"https://github.com/apple-oss-distributions.png?size=256\"},{\"file\":\"freebsd.png\",\"url\":\"https://github.com/freebsd.png?size=256\"},{\"file\":\"ghostbsd.png\",\"url\":\"https://github.com/ghostbsd.png?size=256\"},{\"file\":\"gnu.png\",\"url\":\"https://commons.wikimedia.org/wiki/Special:Redirect/file/Heckert_GNU_white.svg?width=256\"},{\"file\":\"littlekernel.png\",\"url\":\"https://github.com/littlekernel.png?size=256\"},{\"file\":\"llvm-dragon.png\",\"url\":\"https://llvm.org/img/DragonMedium.png\"},{\"file\":\"nextbsd-redux.png\",\"url\":\"https://github.com/nextbsd-redux.png?size=256\"},{\"file\":\"python.png\",\"url\":\"https://github.com/python.png?size=256\"},{\"file\":\"reactos.png\",\"url\":\"https://github.com/reactos.png?size=256\"},{\"file\":\"seL4.png\",\"url\":\"https://github.com/seL4.png?size=256\"},{\"file\":\"tux.png\",\"url\":\"https://commons.wikimedia.org/wiki/Special:Redirect/file/Tux.svg?width=256\"},{\"file\":\"windows-server-2003.svg\",\"url\":\"local:windows-server-2003.svg\",\"version\":\"1\"}]}",
   "avatars": [
     {
       "file": "apple-oss-distributions.png",
       "url": "https://github.com/apple-oss-distributions.png?size=256"
+    },
+    {
+      "file": "freebsd.png",
+      "url": "https://github.com/freebsd.png?size=256"
+    },
+    {
+      "file": "ghostbsd.png",
+      "url": "https://github.com/ghostbsd.png?size=256"
     },
     {
       "file": "gnu.png",
@@ -17,6 +25,10 @@
     {
       "file": "llvm-dragon.png",
       "url": "https://llvm.org/img/DragonMedium.png"
+    },
+    {
+      "file": "nextbsd-redux.png",
+      "url": "https://github.com/nextbsd-redux.png?size=256"
     },
     {
       "file": "python.png",
