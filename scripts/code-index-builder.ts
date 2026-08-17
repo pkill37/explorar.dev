@@ -693,8 +693,7 @@ function collectGuidePaths(
   };
 
   const recommendations = sectionMeta.fileRecommendations as
-    | Record<string, Array<{ path?: unknown }> | undefined>
-    | undefined;
+    Record<string, Array<{ path?: unknown }> | undefined> | undefined;
   for (const list of Object.values(recommendations ?? {})) {
     for (const item of list ?? []) {
       push(item.path);
@@ -1238,8 +1237,7 @@ export function buildCodeIndex(
         }
 
         const conceptRow = insertConcept.get(link.conceptName, link.conceptKind) as
-          | { Id: number }
-          | undefined;
+          { Id: number } | undefined;
         const conceptId = Number(conceptRow?.Id ?? 0);
         if (!conceptId) {
           continue;

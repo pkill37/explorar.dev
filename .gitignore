@@ -51,6 +51,7 @@ next-env.d.ts
 /public/repos
 /public/man-pages
 /public/monaco-editor
+/public/sqljs
 
 # Cloudflare Workers / Wrangler
 api/.wrangler/

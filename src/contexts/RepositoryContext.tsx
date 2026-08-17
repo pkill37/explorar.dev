@@ -272,7 +272,9 @@ export function RepositoryProvider({ children }: RepositoryProviderProps) {
 
   // Initialize setup status on mount
   useEffect(() => {
-    checkSetupStatus();
+    queueMicrotask(() => {
+      void checkSetupStatus();
+    });
   }, [checkSetupStatus]);
 
   const contextValue: RepositoryContextValue = {

@@ -56,6 +56,37 @@ function isSearchPlaceholderMatch(match: WorkspaceSearchResult): boolean {
   );
 }
 
+function markLoadedDirectories(nodes: FileNode[]): FileNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    isLoaded: node.type === 'directory' ? true : node.isLoaded,
+    children: node.children ? markLoadedDirectories(node.children) : node.children,
+  }));
+}
+
+function updateDirectoryChildren(
+  nodes: FileNode[],
+  targetPath: string,
+  children: FileNode[]
+): FileNode[] {
+  return nodes.map((node) => {
+    if (node.path === targetPath && node.type === 'directory') {
+      return {
+        ...node,
+        children,
+        isLoaded: true,
+      };
+    }
+
+    return {
+      ...node,
+      children: node.children
+        ? updateDirectoryChildren(node.children, targetPath, children)
+        : node.children,
+    };
+  });
+}
+
 const FileTreeItem: React.FC<FileTreeItemProps> = ({
   node,
   level,
@@ -69,13 +100,12 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   // Use centralized expandedPaths state instead of local state
   const normalizedPath = node.path.replace(/\/+$/, '');
   const isExpanded = expandedPaths.has(normalizedPath);
-  const [children, setChildren] = useState<FileNode[]>(node.children || []);
+  const initialChildren = node.children || [];
+  const [loadedChildren, setLoadedChildren] = useState<FileNode[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setChildren(node.children || []);
-  }, [node.children]);
+  const children = loadedChildren ?? initialChildren;
+  const isLoaded = node.isLoaded || loadedChildren !== null;
 
   const handleToggle = async () => {
     if (node.type === 'file') {
@@ -88,15 +118,13 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
     const newExpandedState = !isExpanded;
 
     // Load directory contents if not already loaded
-    if (newExpandedState && !node.isLoaded) {
+    if (newExpandedState && !isLoaded) {
       setIsLoading(true);
       try {
         const childNodes = listDirectory
           ? await listDirectory(node.path)
           : await buildFileTree(node.path);
-        setChildren(childNodes);
-        node.children = childNodes;
-        node.isLoaded = true;
+        setLoadedChildren(childNodes);
         if (onDirectoryExpand) {
           onDirectoryExpand(node.path);
         }
@@ -111,7 +139,6 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
 
     // Update centralized expansion state
     onToggleExpand(normalizedPath, newExpandedState);
-    node.isExpanded = newExpandedState;
   };
 
   const handleIconClick = (e: React.MouseEvent) => {
@@ -302,18 +329,6 @@ const FileTree: React.FC<FileTreeProps> = ({
     });
   }, []);
 
-  // Helper function to mark all directories as loaded
-  const markDirectoriesAsLoaded = useCallback((nodes: FileNode[]): void => {
-    for (const node of nodes) {
-      if (node.type === 'directory') {
-        node.isLoaded = true; // We have the complete structure
-      }
-      if (node.children) {
-        markDirectoriesAsLoaded(node.children);
-      }
-    }
-  }, []);
-
   // Helper function to find node in tree by path
   const findNodeInTree = useCallback((tree: FileNode[], path: string): FileNode | null => {
     if (!path) return null;
@@ -382,9 +397,9 @@ const FileTree: React.FC<FileTreeProps> = ({
 
             if (storedTree && storedTree.length > 0) {
               // Mark all directories as loaded since we have the complete structure
-              markDirectoriesAsLoaded(storedTree);
-              setCompleteTree(storedTree);
-              setRootNodes(storedTree);
+              const loadedTree = markLoadedDirectories(storedTree);
+              setCompleteTree(loadedTree);
+              setRootNodes(loadedTree);
               return; // Successfully loaded complete tree
             }
           }
@@ -397,13 +412,15 @@ const FileTree: React.FC<FileTreeProps> = ({
         // Set completeTree so subsequent directory expansions use in-memory data
         // instead of re-fetching the manifest on every click.
         const nodes = listDirectory ? await listDirectory('') : await buildFileTree('');
-        setRootNodes(nodes);
         const hasPopulatedDirs = nodes.some(
           (n) => n.type === 'directory' && n.children !== undefined
         );
         if (hasPopulatedDirs) {
-          markDirectoriesAsLoaded(nodes);
-          setCompleteTree(nodes);
+          const loadedNodes = markLoadedDirectories(nodes);
+          setRootNodes(loadedNodes);
+          setCompleteTree(loadedNodes);
+        } else {
+          setRootNodes(nodes);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file tree');
@@ -414,7 +431,7 @@ const FileTree: React.FC<FileTreeProps> = ({
     };
 
     loadTreeStructure();
-  }, [listDirectory, markDirectoriesAsLoaded]);
+  }, [listDirectory]);
 
   useEffect(() => {
     const expandPath = async (path: string) => {
@@ -437,11 +454,8 @@ const FileTree: React.FC<FileTreeProps> = ({
             break;
           }
 
-          // Mark as loaded and expanded (no async calls needed!)
-          node.isLoaded = true;
           if (!expandedPaths.has(normalizedCurrentPath)) {
             pathsToExpand.add(normalizedCurrentPath);
-            node.isExpanded = true;
             didChange = true;
           }
         }
@@ -461,23 +475,22 @@ const FileTree: React.FC<FileTreeProps> = ({
               const childNodes = listDirectory
                 ? await listDirectory(node.path)
                 : await buildFileTree(node.path);
-              node.children = childNodes;
-              node.isLoaded = true;
+              setRootNodes((prev) => updateDirectoryChildren(prev, node.path, childNodes));
               didChange = true;
+              currentNodes = childNodes;
             } catch (err) {
               console.error('Failed to auto-expand directory:', err);
               break;
             }
+          } else {
+            currentNodes = node.children || [];
           }
 
           // Add to expanded paths if not already expanded
           if (!expandedPaths.has(normalizedCurrentPath)) {
             pathsToExpand.add(normalizedCurrentPath);
-            node.isExpanded = true;
             didChange = true;
           }
-
-          currentNodes = node.children || [];
         }
       }
 
@@ -490,9 +503,6 @@ const FileTree: React.FC<FileTreeProps> = ({
             return newSet;
           });
         }
-
-        // Update root nodes to trigger re-render
-        setRootNodes((prev) => [...prev]);
       }
     };
 

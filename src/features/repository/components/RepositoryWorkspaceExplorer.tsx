@@ -322,8 +322,10 @@ export default function RepositoryWorkspaceExplorer({
 
     nextSourceMode = normalizeCuratedRepoSourceMode(nextSourceMode);
 
-    setActiveFileSourceMode(nextSourceMode);
-    setCurrentCorpusSourceMode(nextSourceMode);
+    queueMicrotask(() => {
+      setActiveFileSourceMode(nextSourceMode);
+      setCurrentCorpusSourceMode(nextSourceMode);
+    });
   }, [setActiveFileSourceMode]);
 
   // Check if mobile on mount and resize
@@ -451,7 +453,9 @@ export default function RepositoryWorkspaceExplorer({
     if (layoutMode !== 'search') {
       workspaceSearchIndexRequestIdRef.current += 1;
       workspaceSearchLoadKeyRef.current = null;
-      setWorkspaceSearchLoading(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(false);
+      });
       return;
     }
 
@@ -768,11 +772,13 @@ export default function RepositoryWorkspaceExplorer({
   useEffect(() => {
     if (!isHydrated || !repoIdentifier) {
       if (!repoIdentifier) {
-        setWorkspaceSearchQuery('');
-        setWorkspaceSearchResults([]);
-        setWorkspaceSearchLoading(false);
-        setWorkspaceSearchError(null);
-        setWorkspaceSearchHasMore(false);
+        queueMicrotask(() => {
+          setWorkspaceSearchQuery('');
+          setWorkspaceSearchResults([]);
+          setWorkspaceSearchLoading(false);
+          setWorkspaceSearchError(null);
+          setWorkspaceSearchHasMore(false);
+        });
       }
       return;
     }
@@ -782,7 +788,9 @@ export default function RepositoryWorkspaceExplorer({
       repoIdentifier
     );
     const savedSearchQuery = loadFromLocalStorage(searchKey, '') as string;
-    setWorkspaceSearchQuery(savedSearchQuery);
+    queueMicrotask(() => {
+      setWorkspaceSearchQuery(savedSearchQuery);
+    });
   }, [isHydrated, repoIdentifier, setWorkspaceSearchQuery]);
 
   useEffect(() => {
@@ -1140,6 +1148,7 @@ export default function RepositoryWorkspaceExplorer({
     const guideId = projectConfig.guides[0]?.id;
     if (guideId) {
       try {
+        // eslint-disable-next-line react-hooks/refs -- guide callbacks are invoked from user actions, not during render.
         return loadGuideFromMarkdown(guideId, guideOpenFileInTab, openManPageInTab);
       } catch (error) {
         console.error(`Failed to load guide ${guideId}:`, error);
@@ -1200,7 +1209,9 @@ export default function RepositoryWorkspaceExplorer({
     const searchIsActive = layoutMode === 'search';
     if (!searchIsActive) {
       workspaceSearchResultsRequestIdRef.current += 1;
-      setWorkspaceSearchLoading(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(false);
+      });
       return;
     }
 
@@ -1208,34 +1219,42 @@ export default function RepositoryWorkspaceExplorer({
     const requestId = ++workspaceSearchResultsRequestIdRef.current;
 
     if (!normalizedQuery) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(false);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(false);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (workspaceSearchIndexError) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(false);
-      setWorkspaceSearchError(workspaceSearchIndexError);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(false);
+        setWorkspaceSearchError(workspaceSearchIndexError);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (workspaceSearchIndexLoading) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(true);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(true);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (!workspaceSearchIndex) {
-      setWorkspaceSearchLoading(true);
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(true);
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return () => undefined;
     }
 
