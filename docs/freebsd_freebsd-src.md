@@ -18,6 +18,8 @@ defaultOpenIds:
 
 FreeBSD is best read as a whole operating system whose kernel lives under `sys/` but is built, configured, installed, and documented from the same source tree as userland. This guide follows the kernel-facing paths first, then connects them back to release and build structure.
 
+Use the chapters as a set of reading drills. For each subsystem, first identify the public contract, then the build-time selection mechanism, then the runtime path that exercises it. FreeBSD rewards that order because many important decisions are not hidden in one central file; they are distributed across config files, headers, `SYSINIT` records, and subsystem implementations.
+
 ---
 id: ch1
 title: Chapter 1 — The Kernel Tree
@@ -43,6 +45,10 @@ fileRecommendations:
 The FreeBSD kernel is concentrated in `sys/`, but the tree is not a standalone library. Kernel configuration, boot loaders, release scripts, and userland tools live beside it. That shape matters: FreeBSD ships as a base system, so kernel interfaces and userland consumers evolve together.
 
 Start with `sys/README.md` and then read the configuration files. `sys/conf/files` tells you which compilation units belong to the kernel, while `sys/conf/options` records tunables that conditionally expose behavior across subsystems. A platform config such as `sys/amd64/conf/GENERIC` shows how those pieces become a bootable kernel.
+
+Read `sys/conf/files` as a database, not as a makefile. Each row answers three questions: what file is produced or compiled, which option or device selects it, and whether special generation rules apply before compilation. Then open `sys/conf/options` and notice the opposite mapping: option names become generated option headers that C files include. The practical exercise is to pick one option in `sys/amd64/conf/GENERIC`, find its declaration in `sys/conf/options`, and then search for the generated header or option name in `sys/`.
+
+The main lesson is that a FreeBSD kernel is a configured product. The same source tree can yield a debugging kernel, a minimal appliance kernel, or the stock GENERIC kernel depending on this configuration layer.
 
 ---
 id: ch2
@@ -70,6 +76,10 @@ FreeBSD boot begins outside `sys/`, in the loader code under `stand/`. The loade
 
 `SYSINIT` is the central contract. Subsystems register initialization functions with ordering constraints, and `sys/kern/init_main.c` drives the transition from early kernel state to process creation. This makes the boot path extensible without forcing every subsystem into a hand-written call chain.
 
+When reading `sys/sys/kernel.h`, focus on the numeric order of `SI_SUB_*` stages. Drivers, VFS, protocol domains, root mounting, system calls, and kernel threads all have named positions. Then move to `sys/kern/init_main.c` and find the `SYSINIT` entries for `proc0`, root mounting, and creation of the first user process. This turns boot from a vague timeline into a concrete sorted list.
+
+Keep the loader in the picture. `stand/man/loader.8` explains the environment and module metadata available before the kernel starts; `sys/kern/kern_linker.c` explains how kernel modules fit after startup. The pedagogical trap is to look only for an architecture-specific `main()` and miss the table-driven initialization contract.
+
 ---
 id: ch3
 title: Chapter 3 — Processes, Threads, And Scheduling
@@ -95,6 +105,10 @@ fileRecommendations:
 FreeBSD separates process identity from runnable execution. `struct proc` holds process-level state such as credentials, signal disposition, and relationships. `struct thread` is the schedulable unit. Reading `sys/sys/proc.h` first gives you the vocabulary used by fork, exec, sleep, wakeup, and scheduler code.
 
 The ULE scheduler in `sys/kern/sched_ule.c` is the default scheduling implementation for common configurations. It turns thread state into CPU placement decisions, balancing responsiveness, affinity, interactivity, and multiprocessor load.
+
+A good reading pass starts with data ownership. In `sys/sys/proc.h`, separate fields that belong to the process from fields that belong to each thread. Then trace one lifecycle: `fork()` allocates and links process state in `sys/kern/kern_fork.c`, exit tears down relationships in `sys/kern/kern_exit.c`, and `sys/kern/kern_proc.c` exposes lookup and reporting paths used by the rest of the kernel.
+
+Only after that should you read scheduler policy. In `sys/kern/sched_ule.c`, ask which operations are policy decisions and which are bookkeeping needed to maintain run queues, CPU affinity, and load balancing. That distinction keeps the scheduler from looking like one mass of special cases.
 
 ---
 id: ch4
@@ -122,6 +136,10 @@ The VM and VFS subsystems are where FreeBSD's kernel becomes a resource manager.
 
 Read the fault path and vnode path together. A memory-mapped file crosses both systems: VM resolves address faults, while VFS supplies file-backed objects and coherency rules. The boundary is technical, but the runtime behavior is shared.
 
+For VM, trace a fault as a question about ownership: which map contains the address, which object backs it, and which page can satisfy it. `sys/vm/vm_map.c` gives the address-space structure; `sys/vm/vm_fault.c` shows the slow path where the kernel has to resolve missing or protected pages.
+
+For VFS, start from the object model. `sys/sys/vnode.h` defines the common handle, while `sys/kern/vfs_subr.c` manages vnode lifetime, mount references, and shared helper paths. `sys/kern/vfs_syscalls.c` is the user-facing pressure test: open, mount, stat, rename, and friends must all reduce to common vnode and mount operations.
+
 ---
 id: ch5
 title: Chapter 5 — Networking And Drivers
@@ -147,3 +165,7 @@ fileRecommendations:
 FreeBSD's driver model is built around newbus. Buses enumerate children, drivers probe and attach, and devices expose methods through shared kernel interfaces. `sys/kern/subr_bus.c` is the generic machinery; bus families such as PCI specialize the discovery and resource allocation path.
 
 Networking follows the same kernel style: common interfaces, protocol-specific state machines, and subsystem initialization glue. The interface layer in `sys/net/if.c` is the useful starting point because every protocol and driver eventually meets it.
+
+Read newbus from the center outward. `sys/kern/subr_bus.c` owns generic device state and probe/attach sequencing; `sys/sys/bus.h` exposes the method vocabulary drivers implement; `sys/dev/pci/pci.c` is one concrete bus that discovers children and allocates resources. This gives you a reusable pattern for every other bus family.
+
+For networking, pair `sys/net/if.c` with `sys/netinet/tcp_subr.c`. The interface layer answers "what is a network device to the kernel?" while the TCP file answers "how does one protocol register state, timers, and control paths?" The useful comparison is that both subsystems use shared registration and initialization machinery rather than a single global owner.
