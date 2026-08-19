@@ -81,6 +81,11 @@ export type CodeIndexBuildStats = {
   truncatedFileCount: number;
 };
 
+export type CodeIndexBuildLogger = {
+  log: (message: string) => void;
+  warn: (message: string) => void;
+};
+
 const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
@@ -905,7 +910,8 @@ function flattenSymbols(content: string, filePath: string): IndexedSymbol[] {
 export function buildCodeIndex(
   repoDir: string,
   tree: FileTreeNode[],
-  buildSignature: string
+  buildSignature: string,
+  logger: CodeIndexBuildLogger = console
 ): CodeIndexBuildStats {
   const startedAt = Date.now();
   const dbPath = path.join(repoDir, CODE_INDEX_FILE_NAME);
@@ -1127,10 +1133,10 @@ export function buildCodeIndex(
       }
 
       if (processed % 500 === 0) {
-        console.log(`   Code index progress: ${processed}/${filePaths.length} files`);
+        logger.log(`   Code index progress: ${processed}/${filePaths.length} files`);
       }
     } catch (error) {
-      console.warn(
+      logger.warn(
         `   Skipping code index entry for ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
@@ -1290,7 +1296,7 @@ export function buildCodeIndex(
   db.close();
 
   const sizeNote = truncatedFiles > 0 ? `, truncated ${truncatedFiles} large files` : '';
-  console.log(
+  logger.log(
     `   Code index: ${dbPath} (${processed} files, ${totalSymbols} symbols, ${totalEdges} edges${sizeNote})`
   );
   return {

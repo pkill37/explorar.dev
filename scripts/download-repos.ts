@@ -8,9 +8,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
-import { buildCodeIndex, type CodeIndexBuildStats } from './code-index-builder';
+import {
+  buildCodeIndex,
+  type CodeIndexBuildLogger,
+  type CodeIndexBuildStats,
+} from './code-index-builder';
 import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
-import { CORPUS_REPOS_DIR, PUBLIC_AVATARS_DIR } from './static-asset-paths';
+import { CORPUS_REPOS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
 
 type ScriptOptions = {
@@ -18,26 +22,11 @@ type ScriptOptions = {
   skip: string[]; // entries like "owner/repo"
   depth: number;
   list: boolean;
-  avatarsOnly: boolean;
 };
 
 export type CorpusState = {
-  missingAvatars: string[];
   staleRepos: string[];
-  totalAvatars: number;
   totalRepos: number;
-};
-
-type AvatarTarget = {
-  file: string;
-  url: string;
-  version?: string;
-};
-
-type AvatarManifest = {
-  createdAt?: string;
-  buildSignature?: string;
-  avatars?: AvatarTarget[];
 };
 
 type RepoCodeIndexStats = CodeIndexBuildStats & {
@@ -56,14 +45,16 @@ type CodeIndexRunStats = {
   repos: RepoCodeIndexStats[];
 };
 
+type BuildLogger = CodeIndexBuildLogger & {
+  error: (message: string) => void;
+  flush: () => void;
+};
+
 const REPOS_DIR = CORPUS_REPOS_DIR;
 
 // Max simultaneous git clones — GitHub allows a few concurrent connections.
 const DOWNLOAD_CONCURRENCY = 3;
-const AVATAR_DOWNLOAD_CONCURRENCY = 4;
 const DEFAULT_CODE_INDEX_CONCURRENCY = 1;
-const AVATAR_MANIFEST_PATH = path.join(PUBLIC_AVATARS_DIR, '.avatar-manifest.json');
-const AVATAR_BUILD_SIGNATURE_VERSION = 1;
 const DEFAULT_GIT_RETRY_ATTEMPTS = 3;
 const DEFAULT_GIT_RETRY_BASE_DELAY_MS = 2_000;
 
@@ -119,18 +110,12 @@ function parseArgs(argv: string[]): ScriptOptions {
   const skip: string[] = [];
   let depth = 1;
   let list = false;
-  let avatarsOnly = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] ?? '';
 
     if (arg === '--list') {
       list = true;
-      continue;
-    }
-
-    if (arg === '--avatars-only') {
-      avatarsOnly = true;
       continue;
     }
 
@@ -157,7 +142,7 @@ function parseArgs(argv: string[]): ScriptOptions {
     }
   }
 
-  return { only, skip, depth, list, avatarsOnly };
+  return { only, skip, depth, list };
 }
 
 function parseRepoSelector(selector: string): { key: string; branchOverride?: string } {
@@ -299,7 +284,8 @@ async function runWithRetries<T>(
   label: string,
   operation: () => Promise<T>,
   attempts: number,
-  baseDelayMs: number
+  baseDelayMs: number,
+  logger: Pick<BuildLogger, 'warn'> = console
 ): Promise<T> {
   let lastError: unknown;
 
@@ -314,7 +300,7 @@ async function runWithRetries<T>(
 
       const delayMs = baseDelayMs * 2 ** (attempt - 1);
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(
+      logger.warn(
         `   ${label} failed on attempt ${attempt}/${attempts}: ${message}. Retrying in ${(
           delayMs / 1000
         ).toFixed(delayMs >= 10_000 ? 0 : 1)}s...`
@@ -361,11 +347,12 @@ async function acquireCodeIndexSlot(): Promise<() => void> {
 async function buildCodeIndexWithLimit(
   repoDir: string,
   tree: FileNode[],
-  buildSignature: string
+  buildSignature: string,
+  logger: CodeIndexBuildLogger
 ): Promise<CodeIndexBuildStats> {
   const release = await acquireCodeIndexSlot();
   try {
-    return buildCodeIndex(repoDir, tree, buildSignature);
+    return buildCodeIndex(repoDir, tree, buildSignature, logger);
   } finally {
     release();
   }
@@ -382,59 +369,6 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
     child.on('error', () => resolve(null));
     child.on('close', (code) => resolve(code === 0 ? output.trim() || null : null));
   });
-}
-
-function getAvatarTargets(repos: CuratedRepoConfig[] = CURATED_REPOS): AvatarTarget[] {
-  const avatarTargets = new Map<string, AvatarTarget>();
-  for (const repo of repos) {
-    const file = repo.avatarFile ?? `${repo.owner}.png`;
-    if (!avatarTargets.has(file)) {
-      avatarTargets.set(file, {
-        file,
-        url: repo.buildAvatarUrl ?? `https://github.com/${repo.owner}.png?size=256`,
-        version: repo.avatarVersion,
-      });
-    }
-  }
-
-  return [...avatarTargets.values()].sort((a, b) => a.file.localeCompare(b.file));
-}
-
-function getAvatarBuildSignature(targets: AvatarTarget[]): string {
-  return JSON.stringify({
-    avatarBuildSignatureVersion: AVATAR_BUILD_SIGNATURE_VERSION,
-    targets: targets.map((target) => ({
-      file: target.file,
-      url: target.url,
-      version: target.version,
-    })),
-  });
-}
-
-function isLocalAvatarTarget(target: AvatarTarget): boolean {
-  return target.url.startsWith('local:');
-}
-
-function readAvatarManifest(): AvatarManifest | null {
-  if (!fs.existsSync(AVATAR_MANIFEST_PATH)) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(fs.readFileSync(AVATAR_MANIFEST_PATH, 'utf-8')) as AvatarManifest;
-  } catch {
-    return null;
-  }
-}
-
-function writeAvatarManifest(targets: AvatarTarget[], buildSignature: string): void {
-  fs.mkdirSync(AVATARS_DIR, { recursive: true });
-  const manifest: AvatarManifest = {
-    createdAt: new Date().toISOString(),
-    buildSignature,
-    avatars: targets,
-  };
-  fs.writeFileSync(AVATAR_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 /**
@@ -473,23 +407,6 @@ async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): P
 
 export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
   const repos = selectRepos(opts);
-  const avatarTargets = getAvatarTargets(repos);
-  const avatarManifest = readAvatarManifest();
-  const avatarBuildSignature = getAvatarBuildSignature(avatarTargets);
-  const avatarsAreCurrent = avatarManifest?.buildSignature === avatarBuildSignature;
-  const missingAvatars = new Set<string>();
-
-  for (const target of avatarTargets) {
-    const destPath = path.join(AVATARS_DIR, target.file);
-    if (!fs.existsSync(destPath)) {
-      missingAvatars.add(target.file);
-      continue;
-    }
-
-    if (!avatarsAreCurrent) {
-      missingAvatars.add(target.file);
-    }
-  }
 
   const staleRepos: string[] = [];
   for (const repo of repos) {
@@ -501,9 +418,7 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
   }
 
   return {
-    missingAvatars: [...missingAvatars],
     staleRepos,
-    totalAvatars: avatarTargets.length,
     totalRepos: repos.length,
   };
 }
@@ -549,7 +464,8 @@ function pruneStaleBranchDownloads(repos: CuratedRepoConfig[]): void {
 async function gitCloneShallow(
   config: CuratedRepoConfig,
   repoDir: string,
-  depth: number
+  depth: number,
+  logger: Pick<BuildLogger, 'warn'>
 ): Promise<string | null> {
   const { owner, repo, revision } = config;
   const parentDir = path.dirname(repoDir);
@@ -631,9 +547,46 @@ async function gitCloneShallow(
     `git clone ${owner}/${repo}@${revision}`,
     cloneOnce,
     retryAttempts,
-    retryBaseDelayMs
+    retryBaseDelayMs,
+    logger
   );
 }
+
+function createRepoLogger(): BuildLogger {
+  const lines: string[] = [];
+
+  return {
+    log(message: string) {
+      lines.push(message);
+    },
+    warn(message: string) {
+      lines.push(message);
+    },
+    error(message: string) {
+      lines.push(message);
+    },
+    flush() {
+      if (lines.length === 0) {
+        return;
+      }
+      console.log(lines.join('\n'));
+      lines.length = 0;
+    },
+  };
+}
+
+const immediateLogger: BuildLogger = {
+  log(message: string) {
+    console.log(message);
+  },
+  warn(message: string) {
+    console.warn(message);
+  },
+  error(message: string) {
+    console.error(message);
+  },
+  flush() {},
+};
 
 // Full in-memory node (name + path for convenience during build)
 interface FileNode {
@@ -728,7 +681,12 @@ function toManifestNode(node: FileNode): ManifestNode {
 /**
  * Write manifest with the current build signature.
  */
-function createManifest(repoDir: string, tree: FileNode[], buildSignature: string): void {
+function createManifest(
+  repoDir: string,
+  tree: FileNode[],
+  buildSignature: string,
+  logger: Pick<BuildLogger, 'log'>
+): void {
   const manifestPath = path.join(repoDir, 'repo-manifest.json');
   const manifest: Record<string, unknown> = {
     tree: tree.map(toManifestNode),
@@ -737,7 +695,7 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
   };
 
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  console.log(`   Manifest: ${manifestPath}`);
+  logger.log(`   Manifest: ${manifestPath}`);
 }
 
 /**
@@ -745,39 +703,40 @@ function createManifest(repoDir: string, tree: FileNode[], buildSignature: strin
  */
 async function downloadRepo(
   config: CuratedRepoConfig,
-  depth: number = 1
+  depth: number = 1,
+  logger: BuildLogger = immediateLogger
 ): Promise<RepoCodeIndexStats | null> {
   const { owner, repo, revision } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, revision);
-  console.log(`\nRepo ${owner}/${repo}@${revision}`);
+  logger.log(`\nRepo ${owner}/${repo}@${revision}`);
 
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
   if (await shouldSkipDownload(repoDir, config)) {
-    console.log(`skip: ${owner}/${repo}@${revision} pinned build matches`);
+    logger.log(`skip: ${owner}/${repo}@${revision} pinned build matches`);
     return null;
   }
 
   try {
     await runCommand('git', ['--version']);
 
-    console.log(`   Cloning to: ${repoDir}`);
-    const sha = await gitCloneShallow(config, repoDir, depth);
-    console.log(`   Clone complete${sha ? ` (${sha.slice(0, 8)})` : ''}`);
+    logger.log(`   Cloning to: ${repoDir}`);
+    const sha = await gitCloneShallow(config, repoDir, depth, logger);
+    logger.log(`   Clone complete${sha ? ` (${sha.slice(0, 8)})` : ''}`);
 
     const { removed } = pruneNonTextFiles(repoDir);
-    if (removed > 0) console.log(`   Pruned ${removed} binary files`);
+    if (removed > 0) logger.log(`   Pruned ${removed} binary files`);
 
-    console.log(`   Building file tree...`);
+    logger.log(`   Building file tree...`);
     const tree = buildFileTree(repoDir);
     const buildSignature = getCorpusBuildSignature(config, tree);
-    createManifest(repoDir, tree, buildSignature);
-    const codeIndexStats = await buildCodeIndexWithLimit(repoDir, tree, buildSignature);
-    console.log(`   Tree: ${tree.length} root entries`);
+    createManifest(repoDir, tree, buildSignature, logger);
+    const codeIndexStats = await buildCodeIndexWithLimit(repoDir, tree, buildSignature, logger);
+    logger.log(`   Tree: ${tree.length} root entries`);
 
-    console.log(`ready: ${owner}/${repo}@${revision}`);
+    logger.log(`ready: ${owner}/${repo}@${revision}`);
     return {
       ...codeIndexStats,
       owner,
@@ -788,66 +747,10 @@ async function downloadRepo(
     if (fs.existsSync(repoDir)) {
       fs.rmSync(repoDir, { recursive: true, force: true });
     }
-    console.error(`ERROR ${owner}/${repo}@${revision}:`, error);
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    logger.error(`ERROR ${owner}/${repo}@${revision}: ${message}`);
     throw error;
   }
-}
-
-const AVATARS_DIR = PUBLIC_AVATARS_DIR;
-
-async function downloadAvatar(url: string, destPath: string): Promise<void> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'explorar.dev-build/1.0 (https://github.com/pkill37/explorar.dev)' },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(destPath, buf);
-}
-
-async function downloadAllAvatars(): Promise<void> {
-  fs.mkdirSync(AVATARS_DIR, { recursive: true });
-  const avatarManifest = readAvatarManifest();
-  const uniqueTargets = getAvatarTargets();
-  const avatarBuildSignature = getAvatarBuildSignature(uniqueTargets);
-  const avatarsAreCurrent = avatarManifest?.buildSignature === avatarBuildSignature;
-  const uniqueAvatarCount = uniqueTargets.length;
-  let processed = 0;
-  console.log(`   Preparing ${uniqueAvatarCount} unique avatar targets`);
-
-  const tasks = uniqueTargets.map(({ file, url }) => async () => {
-    const destPath = path.join(AVATARS_DIR, file);
-    const target = { file, url };
-    const isFresh = fs.existsSync(destPath) && avatarsAreCurrent;
-
-    if (isFresh) {
-      processed++;
-      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar cached: ${file}`);
-      return;
-    }
-
-    if (isLocalAvatarTarget(target)) {
-      processed++;
-      if (fs.existsSync(destPath)) {
-        console.log(`   [${processed}/${uniqueAvatarCount}] Avatar local: ${file}`);
-      } else {
-        console.warn(`   [${processed}/${uniqueAvatarCount}] Avatar local missing: ${file}`);
-      }
-      return;
-    }
-
-    try {
-      await downloadAvatar(url, destPath);
-      processed++;
-      console.log(`   [${processed}/${uniqueAvatarCount}] Avatar refreshed: ${file}`);
-    } catch (err) {
-      processed++;
-      console.warn(`   [${processed}/${uniqueAvatarCount}] Avatar failed (${file}): ${err}`);
-    }
-  });
-
-  await runWithConcurrency(tasks, AVATAR_DOWNLOAD_CONCURRENCY);
-  writeAvatarManifest(uniqueTargets, avatarBuildSignature);
-  console.log(`   Avatar pass complete: ${processed}/${uniqueAvatarCount}`);
 }
 
 /**
@@ -873,20 +776,6 @@ async function main() {
     return;
   }
 
-  await runPhase(
-    '🖼️ Avatar fetch',
-    async () => {
-      console.log('\nDownloading owner avatars...');
-      await downloadAllAvatars();
-    },
-    `${CURATED_REPOS.length} curated repos`
-  );
-
-  if (opts.avatarsOnly) {
-    console.log('\nRepository download process complete.');
-    return;
-  }
-
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
@@ -908,15 +797,17 @@ async function main() {
 
   let completedRepos = 0;
   const tasks = finalRepos.map((repo) => async () => {
+    const logger = createRepoLogger();
     try {
-      console.log(`\n   Starting ${repo.owner}/${repo.repo}@${repo.revision}`);
-      const stats = await downloadRepo(repo, opts.depth);
+      logger.log(`\nStarting ${repo.owner}/${repo.repo}@${repo.revision}`);
+      const stats = await downloadRepo(repo, opts.depth, logger);
       if (stats) {
         codeIndexStats.push(stats);
       }
     } catch {
-      // Error already logged inside downloadRepo; continue with remaining repos.
+      // Error already logged inside the repo transcript; continue with remaining repos.
     } finally {
+      logger.flush();
       completedRepos++;
       console.log(`   Progress: ${completedRepos}/${finalRepos.length} repos processed`);
     }
