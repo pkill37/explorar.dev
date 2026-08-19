@@ -322,8 +322,10 @@ export default function RepositoryWorkspaceExplorer({
 
     nextSourceMode = normalizeCuratedRepoSourceMode(nextSourceMode);
 
-    setActiveFileSourceMode(nextSourceMode);
-    setCurrentCorpusSourceMode(nextSourceMode);
+    queueMicrotask(() => {
+      setActiveFileSourceMode(nextSourceMode);
+      setCurrentCorpusSourceMode(nextSourceMode);
+    });
   }, [setActiveFileSourceMode]);
 
   // Check if mobile on mount and resize
@@ -451,7 +453,9 @@ export default function RepositoryWorkspaceExplorer({
     if (layoutMode !== 'search') {
       workspaceSearchIndexRequestIdRef.current += 1;
       workspaceSearchLoadKeyRef.current = null;
-      setWorkspaceSearchLoading(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(false);
+      });
       return;
     }
 
@@ -768,11 +772,13 @@ export default function RepositoryWorkspaceExplorer({
   useEffect(() => {
     if (!isHydrated || !repoIdentifier) {
       if (!repoIdentifier) {
-        setWorkspaceSearchQuery('');
-        setWorkspaceSearchResults([]);
-        setWorkspaceSearchLoading(false);
-        setWorkspaceSearchError(null);
-        setWorkspaceSearchHasMore(false);
+        queueMicrotask(() => {
+          setWorkspaceSearchQuery('');
+          setWorkspaceSearchResults([]);
+          setWorkspaceSearchLoading(false);
+          setWorkspaceSearchError(null);
+          setWorkspaceSearchHasMore(false);
+        });
       }
       return;
     }
@@ -782,7 +788,9 @@ export default function RepositoryWorkspaceExplorer({
       repoIdentifier
     );
     const savedSearchQuery = loadFromLocalStorage(searchKey, '') as string;
-    setWorkspaceSearchQuery(savedSearchQuery);
+    queueMicrotask(() => {
+      setWorkspaceSearchQuery(savedSearchQuery);
+    });
   }, [isHydrated, repoIdentifier, setWorkspaceSearchQuery]);
 
   useEffect(() => {
@@ -1140,6 +1148,7 @@ export default function RepositoryWorkspaceExplorer({
     const guideId = projectConfig.guides[0]?.id;
     if (guideId) {
       try {
+        // eslint-disable-next-line react-hooks/refs -- guide callbacks are invoked from user actions, not during render.
         return loadGuideFromMarkdown(guideId, guideOpenFileInTab, openManPageInTab);
       } catch (error) {
         console.error(`Failed to load guide ${guideId}:`, error);
@@ -1200,7 +1209,9 @@ export default function RepositoryWorkspaceExplorer({
     const searchIsActive = layoutMode === 'search';
     if (!searchIsActive) {
       workspaceSearchResultsRequestIdRef.current += 1;
-      setWorkspaceSearchLoading(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(false);
+      });
       return;
     }
 
@@ -1208,34 +1219,42 @@ export default function RepositoryWorkspaceExplorer({
     const requestId = ++workspaceSearchResultsRequestIdRef.current;
 
     if (!normalizedQuery) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(false);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(false);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (workspaceSearchIndexError) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(false);
-      setWorkspaceSearchError(workspaceSearchIndexError);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(false);
+        setWorkspaceSearchError(workspaceSearchIndexError);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (workspaceSearchIndexLoading) {
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchLoading(true);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchLoading(true);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return;
     }
 
     if (!workspaceSearchIndex) {
-      setWorkspaceSearchLoading(true);
-      setWorkspaceSearchResults([]);
-      setWorkspaceSearchError(null);
-      setWorkspaceSearchHasMore(false);
+      queueMicrotask(() => {
+        setWorkspaceSearchLoading(true);
+        setWorkspaceSearchResults([]);
+        setWorkspaceSearchError(null);
+        setWorkspaceSearchHasMore(false);
+      });
       return () => undefined;
     }
 
@@ -1470,17 +1489,22 @@ export default function RepositoryWorkspaceExplorer({
     // Defer to avoid synchronous setState-in-effect warning.
     // Open header first so the primary (.c) ends up as the active tab.
     setTimeout(() => {
-      for (let i = 0; i < paths.length - 1; i++) openFileInTab(paths[i]);
-      if (typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)) {
-        openFileInTab(paths[paths.length - 1]);
-      } else {
-        openFileInTab(
-          repoInitialFile.path,
-          repoInitialFile.searchPattern,
-          repoInitialFile.scrollToLine,
-          repoInitialFile.searchScope
-        );
-      }
+      void (async () => {
+        for (let i = 0; i < paths.length - 1; i++) {
+          await openFileInTab(paths[i]);
+        }
+
+        if (typeof repoInitialFile === 'string' || Array.isArray(repoInitialFile)) {
+          await openFileInTab(paths[paths.length - 1]);
+        } else {
+          await openFileInTab(
+            repoInitialFile.path,
+            repoInitialFile.searchPattern,
+            repoInitialFile.scrollToLine,
+            repoInitialFile.searchScope
+          );
+        }
+      })();
     }, 0);
   }, [initialFile, isTreeStructureReady, openFileInTab, openManPageInTab]);
 

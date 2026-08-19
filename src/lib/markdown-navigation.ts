@@ -13,8 +13,7 @@ export interface RepoNavigationTarget {
 }
 
 export type MarkdownNavigationTarget =
-  | ({ kind: 'repo-file' } & RepoNavigationTarget)
-  | ManPageTarget;
+  ({ kind: 'repo-file' } & RepoNavigationTarget) | ManPageTarget;
 
 interface ParseRepoNavigationTargetOptions {
   linkText?: string;

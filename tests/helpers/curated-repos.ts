@@ -15,6 +15,21 @@ export const CURATED_TEST_REPOS = [
     slug: 'xnu-kernel',
   },
   {
+    owner: 'freebsd',
+    repo: 'freebsd-src',
+    slug: 'freebsd-kernel',
+  },
+  {
+    owner: 'ghostbsd',
+    repo: 'ghostbsd-src',
+    slug: 'ghostbsd-kernel',
+  },
+  {
+    owner: 'nextbsd-redux',
+    repo: 'nextbsd-kernel',
+    slug: 'nextbsd-kernel',
+  },
+  {
     owner: 'torvalds',
     repo: 'linux',
     slug: 'linux-kernel',

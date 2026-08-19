@@ -154,30 +154,21 @@ async function main(): Promise<void> {
       skip: [],
       depth: 1,
       list: false,
-      avatarsOnly: false,
     });
 
-    if (corpusState.missingAvatars.length === 0 && corpusState.staleRepos.length === 0) {
+    if (corpusState.staleRepos.length === 0) {
       console.log('\n[1/6] Download curated corpus');
-      console.log(
-        `  skipped: ${corpusState.totalRepos} repos and ${corpusState.totalAvatars} avatars already cached`
-      );
+      console.log(`  skipped: ${corpusState.totalRepos} repos already cached`);
     } else {
       console.log('\n[1/6] Download curated corpus');
       console.log('  refresh required before build:');
       if (corpusState.staleRepos.length > 0) {
         console.log(`  - refreshing ${corpusState.staleRepos.length} repo target(s)`);
       }
-      if (corpusState.missingAvatars.length > 0) {
-        console.log(`  - fetching ${corpusState.missingAvatars.length} missing avatar(s)`);
-      }
       await runStep(1, 6, {
         name: 'Download curated corpus',
         command: 'tsx',
-        args:
-          corpusState.staleRepos.length === 0 && corpusState.missingAvatars.length > 0
-            ? ['scripts/download-repos.ts', '--avatars-only']
-            : ['scripts/download-repos.ts', '--depth=1'],
+        args: ['scripts/download-repos.ts', '--depth=1'],
         env: {
           CODE_INDEX_STATS_PATH: codeIndexStatsPath,
         },
@@ -213,7 +204,7 @@ async function main(): Promise<void> {
   await runStep(4, 6, {
     name: 'Prepare shell-only public assets',
     command: 'tsx',
-    args: ['scripts/prepare-shell-build.ts'],
+    args: ['scripts/prepare-public-assets.ts', '--shell'],
   });
 
   await runStep(5, 6, {

@@ -160,31 +160,6 @@
   min-height: 0;
 }
 
-.vscode-activity-theme-toggle {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--vscode-text-accent);
-  border-radius: 8px;
-  background: var(--vscode-bg-selected);
-  color: var(--vscode-text-primary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: monospace;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.vscode-activity-theme-toggle:hover {
-  background: var(--vscode-bg-hover);
-}
-
-.vscode-activity-theme-toggle:focus-visible {
-  outline: 1px solid var(--vscode-text-accent);
-  outline-offset: 2px;
-}
-
 /* File Tree */
 .vscode-file-tree {
   padding: 4px 0;
@@ -412,6 +387,9 @@
 }
 
 .vscode-tree-search-group-header {
+  width: 100%;
+  border: 0;
+  background: transparent;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -421,7 +399,12 @@
   font-size: 12px;
   line-height: 20px;
   color: var(--vscode-text-primary);
-  cursor: default;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vscode-tree-search-group-header:hover {
+  background: var(--vscode-bg-hover);
 }
 
 .vscode-tree-search-group-header .name {
@@ -538,17 +521,22 @@
 
 /* Tab Bar */
 .vscode-tab-bar {
+  --vscode-tab-bar-height: 36px;
+
   background: var(--vscode-bg-secondary);
   border-bottom: 1px solid var(--vscode-border);
   display: flex;
   overflow: hidden;
-  height: 35px;
+  height: var(--vscode-tab-bar-height);
+  flex: 0 0 var(--vscode-tab-bar-height);
+  min-width: 0;
+  width: 100%;
 }
 
 .vscode-tab-bar-action {
   width: 28px;
   min-width: 28px;
-  height: 100%;
+  height: calc(var(--vscode-tab-bar-height) - 1px);
   border: none;
   border-right: 1px solid var(--vscode-border);
   background: var(--vscode-bg-secondary);
@@ -578,49 +566,64 @@
   overflow-y: hidden;
   flex: 1;
   min-width: 0;
+  height: calc(var(--vscode-tab-bar-height) - 1px);
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
 }
 
-.vscode-tab {
+.vscode-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.vscode-tab-strip > .vscode-tab {
   display: flex;
   align-items: center;
   padding: 0 12px;
   background: var(--vscode-bg-secondary);
   border-right: 1px solid var(--vscode-border);
+  border-bottom: 0;
   cursor: pointer;
   color: var(--vscode-text-secondary);
   font-size: 13px;
   min-width: 120px;
   max-width: 200px;
+  height: 100%;
+  min-height: 0;
+  flex: 0 0 auto;
   position: relative;
 }
 
-.vscode-tab:hover {
+.vscode-tab-strip > .vscode-tab:hover {
   background: var(--vscode-bg-hover);
   color: var(--vscode-text-primary);
 }
 
-.vscode-tab.active {
+.vscode-tab-strip > .vscode-tab.active {
   background: var(--vscode-bg-primary);
   color: var(--vscode-text-primary);
-  border-bottom: 1px solid var(--vscode-bg-primary);
-  margin-bottom: -1px;
+  box-shadow: inset 0 -1px 0 var(--vscode-bg-primary);
 }
 
-.vscode-tab .icon {
+.vscode-tab-strip > .vscode-tab .icon {
   width: 16px;
   height: 16px;
   margin-right: 6px;
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
 }
 
-.vscode-tab .name {
+.vscode-tab-strip > .vscode-tab .name {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vscode-tab .close {
+.vscode-tab-strip > .vscode-tab .close {
   width: 16px;
   height: 16px;
   margin-left: 6px;
@@ -631,13 +634,14 @@
   opacity: 0;
   transition: opacity 0.15s ease;
   font-size: 12px;
+  flex: 0 0 16px;
 }
 
-.vscode-tab:hover .close {
+.vscode-tab-strip > .vscode-tab:hover .close {
   opacity: 1;
 }
 
-.vscode-tab .close:hover {
+.vscode-tab-strip > .vscode-tab .close:hover {
   background: var(--vscode-bg-hover);
 }
 
@@ -1086,7 +1090,7 @@
     width: 150px;
   }
 
-  .vscode-tab {
+  .vscode-tab-strip > .vscode-tab {
     padding: 0.4rem 0.6rem;
     font-size: 11px;
   }
@@ -1130,30 +1134,6 @@
     flex: 1;
     min-width: 120px;
   }
-}
-
-/* Panel tabs styling */
-.vscode-tab {
-  background: none;
-  border: none;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  color: var(--vscode-text-secondary);
-  border-bottom: 2px solid transparent;
-  transition:
-    color 0.2s,
-    border-color 0.2s;
-  font-size: 13px;
-  font-family: inherit;
-}
-
-.vscode-tab:hover {
-  color: var(--vscode-text-primary);
-}
-
-.vscode-tab.active {
-  color: var(--vscode-text-primary);
-  border-bottom-color: var(--vscode-text-accent);
 }
 
 /* Resize handles */
@@ -1263,15 +1243,31 @@
   padding: 2px 6px;
   border-radius: 3px;
   cursor: default;
-  transition: background 0.15s ease;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    outline-color 0.15s ease;
 }
 
 .cursor-statusbar-item:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.cursor-statusbar-link,
+.cursor-statusbar-source,
+.cursor-statusbar-button {
+  cursor: pointer;
+}
+
+.cursor-statusbar-link:focus-visible,
+.cursor-statusbar-source:focus-within,
+.cursor-statusbar-button:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.75);
+  outline-offset: -1px;
+}
+
 .cursor-statusbar-source {
-  cursor: default;
   gap: 5px;
 }
 
@@ -1286,6 +1282,7 @@
   padding: 0 14px 0 0;
   outline: none;
   opacity: 0.92;
+  cursor: pointer;
 }
 
 .cursor-statusbar-source select:hover,
@@ -1303,6 +1300,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  line-height: inherit;
 }
 
 .cursor-statusbar-button.is-active {

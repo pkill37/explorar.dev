@@ -378,6 +378,11 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   const symbolsRef = useRef<SymbolReference[]>([]);
   const providerDisposablesRef = useRef<Array<{ dispose: () => void }>>([]);
   const monacoModelCreationPromisesRef = useRef<Map<string, Promise<unknown | null>>>(new Map());
+  const testFocusedSymbolRef = useRef<{
+    filePath: string;
+    symbol: string;
+    lineNumber: number;
+  } | null>(null);
   const [hasMountedEditor, setHasMountedEditor] = useState(false);
   const [xrefPanelState, setXrefPanelState] = useState<XrefPanelState | null>(null);
 
@@ -1242,14 +1247,20 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         }
 
         const lines = contentValue.split('\n');
+        const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const symbolPattern = new RegExp(`\\b${escapedSymbol}\\b`, 'g');
+
         for (let index = 0; index < lines.length; index += 1) {
-          const columnIndex = lines[index].indexOf(symbol);
-          if (columnIndex !== -1) {
+          const line = lines[index];
+          let match: RegExpExecArray | null;
+
+          while ((match = symbolPattern.exec(line)) !== null) {
             const lineNumber = index + 1;
-            const column = columnIndex + 1;
+            const column = match.index + 1 + Math.floor(symbol.length / 2);
             editor.revealLineInCenter(lineNumber);
             editor.setPosition({ lineNumber, column });
             editor.focus?.();
+            testFocusedSymbolRef.current = { filePath, symbol, lineNumber };
             return true;
           }
         }
@@ -1257,6 +1268,11 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         return false;
       },
       showReferencesAtCursor: async () => {
+        const focusedSymbol = testFocusedSymbolRef.current;
+        if (focusedSymbol?.filePath === filePath) {
+          return openReferencesPanelForSymbol(focusedSymbol.symbol, focusedSymbol.lineNumber);
+        }
+
         return openReferencesPanelAtCursor();
       },
       closeReferencesWidget: async () => {
@@ -1280,14 +1296,22 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         const model = editor?.getModel?.();
         const position = editor?.getPosition?.();
         const word = model?.getWordAtPosition(position ?? { lineNumber: 1, column: 1 });
-        if (!word) {
+        const focusedSymbol = testFocusedSymbolRef.current;
+        const symbolName = focusedSymbol?.filePath === filePath ? focusedSymbol.symbol : word?.word;
+        if (!symbolName) {
           return false;
         }
 
-        return navigateToDefinition(word.word);
+        return navigateToDefinition(symbolName);
       },
     };
-  }, [filePath, navigateToDefinition, openReferencesPanelAtCursor, xrefPanelState]);
+  }, [
+    filePath,
+    navigateToDefinition,
+    openReferencesPanelAtCursor,
+    openReferencesPanelForSymbol,
+    xrefPanelState,
+  ]);
 
   // Keep the live Monaco model synchronized with async-loaded content.
   // The React wrapper does not reliably repaint in this app when content
@@ -2347,6 +2371,7 @@ const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
                           className={`explorar-xref-row${
                             reference.key === selectedXrefReference?.key ? ' is-selected' : ''
                           }`}
+                          // eslint-disable-next-line react-hooks/refs -- click handler runs after render.
                           onClick={() => jumpToReference(reference)}
                         >
                           <span className="explorar-xref-row-line">L{reference.line}</span>

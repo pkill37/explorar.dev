@@ -50,7 +50,9 @@ next-env.d.ts
 /avatars
 /public/repos
 /public/man-pages
+/public/public-stage-manifest.json
 /public/monaco-editor
+/public/sqljs
 
 # Cloudflare Workers / Wrangler
 api/.wrangler/

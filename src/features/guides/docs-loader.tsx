@@ -12,6 +12,9 @@ import llvmProjectMd from '../../../docs/llvm_project.md?raw';
 import bminorGlibcMd from '../../../docs/bminor_glibc.md?raw';
 import appleXnuMd from '../../../docs/apple-oss-distributions_xnu.md?raw';
 import seL4SeL4Md from '../../../docs/seL4_seL4.md?raw';
+import freebsdSrcMd from '../../../docs/freebsd_freebsd-src.md?raw';
+import ghostbsdSrcMd from '../../../docs/ghostbsd_ghostbsd-src.md?raw';
+import nextbsdKernelMd from '../../../docs/nextbsd-redux_nextbsd-kernel.md?raw';
 
 /**
  * Guide metadata extracted from frontmatter
@@ -48,6 +51,9 @@ const DOCS_MARKDOWN: Record<string, string> = {
   'bminor_glibc.md': bminorGlibcMd,
   'apple-oss-distributions_xnu.md': appleXnuMd,
   'seL4_seL4.md': seL4SeL4Md,
+  'freebsd_freebsd-src.md': freebsdSrcMd,
+  'ghostbsd_ghostbsd-src.md': ghostbsdSrcMd,
+  'nextbsd-redux_nextbsd-kernel.md': nextbsdKernelMd,
 };
 
 /**

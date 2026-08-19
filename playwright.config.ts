@@ -46,7 +46,8 @@ export default defineConfig({
   ...(shouldStartWebServer()
     ? {
         webServer: {
-          command: 'NEXT_OUTPUT_EXPORT=false next dev --turbopack --port 8000',
+          command:
+            'tsx scripts/prepare-public-assets.ts --sqljs && NEXT_OUTPUT_EXPORT=false next dev --turbopack --port 8000',
           url: 'http://localhost:8000',
           reuseExistingServer: !process.env.CI,
           timeout: 120000,

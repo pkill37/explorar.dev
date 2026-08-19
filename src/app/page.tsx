@@ -31,6 +31,21 @@ const COMMUNITY_BADGES = [
   },
 ] as const;
 
+const INDEX_REPO_SLUG_ORDER = [
+  'linux-kernel',
+  'xnu-kernel',
+  'windows-server-2003',
+  'freebsd-kernel',
+  'ghostbsd-kernel',
+  'nextbsd-kernel',
+  'little-kernel',
+  'sel4-microkernel',
+  'reactos',
+  'cpython',
+  'gnu-c-library',
+  'llvm-project',
+] as const;
+
 function formatDisplayRef(ref: string): string {
   if (!/^[0-9a-f]{7,40}$/i.test(ref)) {
     return ref;
@@ -67,6 +82,13 @@ function CommunityPanel() {
 
 export default function Home() {
   const router = useRouter();
+  const indexedRepos = [...CURATED_REPOS].sort((a, b) => {
+    const aIndex = INDEX_REPO_SLUG_ORDER.indexOf(a.slug as (typeof INDEX_REPO_SLUG_ORDER)[number]);
+    const bIndex = INDEX_REPO_SLUG_ORDER.indexOf(b.slug as (typeof INDEX_REPO_SLUG_ORDER)[number]);
+    const normalizedAIndex = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const normalizedBIndex = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+    return normalizedAIndex - normalizedBIndex;
+  });
 
   // Get selected branch for a repo (defaults to first trusted branch)
   const getSelectedBranch = (repo: CuratedRepoConfig): string => {
@@ -116,7 +138,7 @@ export default function Home() {
 
           {/* Repo grid */}
           <div className="mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {CURATED_REPOS.map((repo) => {
+            {indexedRepos.map((repo) => {
               const selectedBranch = getSelectedBranch(repo);
               const selectedBranchLabel = selectedBranch ? formatDisplayRef(selectedBranch) : '';
               const avatarUrl = `/avatars/${repo.avatarFile ?? `${repo.owner}.png`}`;

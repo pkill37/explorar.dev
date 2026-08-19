@@ -20,6 +20,29 @@ const TabBar: React.FC<TabBarProps> = ({
   onCloseAllTabs,
   onMarkdownPreviewToggle,
 }) => {
+  const activeTabElementRef = React.useRef<HTMLDivElement | null>(null);
+  const tabStripRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollActiveTabIntoView = React.useCallback(() => {
+    const activeTabElement = activeTabElementRef.current;
+    const tabStripElement = tabStripRef.current;
+    if (!activeTabElement || !tabStripElement) {
+      return;
+    }
+
+    const tabRect = activeTabElement.getBoundingClientRect();
+    const stripRect = tabStripElement.getBoundingClientRect();
+
+    if (tabRect.left < stripRect.left) {
+      tabStripElement.scrollLeft -= stripRect.left - tabRect.left;
+      return;
+    }
+
+    if (tabRect.right > stripRect.right) {
+      tabStripElement.scrollLeft += tabRect.right - stripRect.right;
+    }
+  }, []);
+
   const getFileIcon = (tab: EditorTab): string => {
     if (tab.kind === 'man-page') {
       return '📚';
@@ -81,6 +104,31 @@ const TabBar: React.FC<TabBarProps> = ({
   const isMarkdownTab = !!activeTab && /\.(md|rst)$/i.test(activeTab.path);
   const isPreviewMode = activeTab?.viewMode === 'preview';
 
+  React.useLayoutEffect(() => {
+    let frameId: number | null = null;
+
+    scrollActiveTabIntoView();
+    frameId = window.requestAnimationFrame(scrollActiveTabIntoView);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [activeTabId, tabs.length, scrollActiveTabIntoView]);
+
+  React.useEffect(() => {
+    const tabStripElement = tabStripRef.current;
+    if (!tabStripElement || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(scrollActiveTabIntoView);
+    resizeObserver.observe(tabStripElement);
+
+    return () => resizeObserver.disconnect();
+  }, [scrollActiveTabIntoView]);
+
   return (
     <div className="vscode-tab-bar">
       <button
@@ -93,11 +141,16 @@ const TabBar: React.FC<TabBarProps> = ({
       >
         ×
       </button>
-      <div className="vscode-tab-strip">
+      <div className="vscode-tab-strip" ref={tabStripRef}>
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`vscode-tab ${tab.isActive ? 'active' : ''}`}
+            ref={(element) => {
+              if (tab.id === activeTabId) {
+                activeTabElementRef.current = element;
+              }
+            }}
+            className={`vscode-tab ${tab.id === activeTabId ? 'active' : ''}`}
             onClick={(e) => handleTabClick(tab, e)}
             onMouseDown={(e) => handleTabMiddleClick(tab, e)}
             title={tab.path}

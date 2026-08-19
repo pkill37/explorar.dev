@@ -834,6 +834,7 @@ export function EntityView({
 
   // Per-key entity cache — key is chapterId or '__all__'
   const cacheRef = useRef<Map<string, ScoredEntity[]>>(new Map());
+  const [cachedEntityKeys, setCachedEntityKeys] = useState<ReadonlySet<string>>(() => new Set());
 
   const [scored, setScored] = useState<ScoredEntity[]>([]);
   const [loading, setLoading] = useState(false);
@@ -943,8 +944,10 @@ export function EntityView({
 
   useEffect(() => {
     if (!isActive) {
-      setScored([]);
-      setLoading(false);
+      queueMicrotask(() => {
+        setScored([]);
+        setLoading(false);
+      });
       return;
     }
 
@@ -1002,6 +1005,11 @@ export function EntityView({
         scoredEntityCount: result.length,
       });
       cacheRef.current.set(currentKey, result);
+      setCachedEntityKeys((prev) => {
+        const next = new Set(prev);
+        next.add(currentKey);
+        return next;
+      });
       setScored(result);
       setLoading(false);
     }
@@ -1024,7 +1032,7 @@ export function EntityView({
     });
   }, [owner, repo, activeChapterId, loading, scored.length, folderGroups.length]);
 
-  const isEntityCacheReady = cacheRef.current.has(currentKey);
+  const isEntityCacheReady = cachedEntityKeys.has(currentKey);
   const content = loading ? (
     <div
       style={{

@@ -1,7 +1,9 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
+const BUG_REPORT_ROUTE = '/linux-kernel';
+
 async function openBugReportDialog(page: Page): Promise<Locator> {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto(BUG_REPORT_ROUTE, { waitUntil: 'domcontentloaded' });
   const reportButton = page.getByRole('button', { name: 'Report a bug' });
   await expect(reportButton).toBeVisible();
   await page.waitForFunction(() => window.__explorarBugReportConsoleCaptureReady === true);
@@ -29,7 +31,7 @@ test.describe('Static bug reporting', () => {
   test('opens a GitHub issue with diagnostics, console logs, and screenshot preview', async ({
     page,
   }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto(BUG_REPORT_ROUTE, { waitUntil: 'domcontentloaded' });
     const reportButton = page.getByRole('button', { name: 'Report a bug' });
     await expect(reportButton).toBeVisible();
     await page.waitForFunction(() => window.__explorarBugReportConsoleCaptureReady === true);
@@ -68,14 +70,14 @@ test.describe('Static bug reporting', () => {
       .getAttribute('href');
 
     expect(issueHref).toContain('https://github.com/pkill37/explorar.dev/issues/new');
-    expect(issueHref).toContain('Bug+report%3A+%2F');
+    expect(issueHref).toContain('Bug+report%3A+%2Flinux-kernel');
     expect(issueHref).toContain('The+repository+cards+did+not+respond');
     expect(issueHref).toContain('bug+report+test+warning');
     expect(issueHref).toContain('bug+report+test+error');
   });
 
   test('strips query strings and hashes from the diagnostic URL', async ({ page }) => {
-    await page.goto('/?access_token=secret-token#private-fragment', {
+    await page.goto(`${BUG_REPORT_ROUTE}?access_token=secret-token#private-fragment`, {
       waitUntil: 'domcontentloaded',
     });
     const reportButton = page.getByRole('button', { name: 'Report a bug' });
@@ -85,7 +87,7 @@ test.describe('Static bug reporting', () => {
 
     const issue = await readGeneratedIssue(page);
 
-    expect(issue.body).toContain('- URL: http://localhost:8000/');
+    expect(issue.body).toContain('- URL: http://localhost:8000/linux-kernel');
     expect(issue.body).not.toContain('access_token=secret-token');
     expect(issue.body).not.toContain('private-fragment');
   });
@@ -127,7 +129,7 @@ test.describe('Static bug reporting', () => {
     const issue = await readGeneratedIssue(page);
 
     expect(issue.href).toContain('https://github.com/pkill37/explorar.dev/issues/new');
-    expect(issue.title).toBe('Bug report: /');
+    expect(issue.title).toBe('Bug report: /linux-kernel/');
     expect(issue.labels).toBe('bug,user-report');
     expect(issue.body).toContain('## What happened?');
     expect(issue.body).toContain('## Screenshot');
