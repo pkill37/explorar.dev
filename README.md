@@ -16,11 +16,15 @@ npm run dev      # starts at localhost:3000
 ```
 
 ```
+npm run guides:validate # validate markdown guides and repo references
 npm run lint     # tsc + eslint + prettier + markdownlint + depcheck
 npm run build    # static export to out/ for a static host
 npm run deploy   # production deploy: R2 sync of repo corpus
 npm test         # Playwright tests (requires built output)
 ```
+
+Guide contributions are markdown-centered: edit or add files in `docs/`, start new guides from
+`docs/_template.md`, and see `CONTRIBUTING.md` for the full workflow.
 
 Cloudflare Pages builds set `CF_PAGES=1`, so `npm run build` skips the expensive corpus and
 man-page generation phases and exports only the static shell. The shell loads repositories, indexes,

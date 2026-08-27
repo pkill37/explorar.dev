@@ -10,10 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
-
-const DOCS_DIR = path.join(process.cwd(), 'docs');
-// Files without a repo config (shared references, not guide files)
-const SKIP_FILES = new Set(['common.md']);
+import { DOCS_DIR, listGuideMarkdownFiles } from './guide-docs';
 
 export interface SectionMeta {
   id?: string;
@@ -194,7 +191,7 @@ export function validateGuideMarkdown(raw: string): GuideValidationResult {
 export function main(): number {
   let errors = 0;
 
-  const files = fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith('.md') && !SKIP_FILES.has(f));
+  const files = listGuideMarkdownFiles();
 
   for (const file of files) {
     const filepath = path.join(DOCS_DIR, file);

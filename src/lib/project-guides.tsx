@@ -27,6 +27,10 @@ export interface GuideSection {
   title: string;
   body: React.ReactNode;
   narrativePaths?: string[];
+  difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  learningGoals?: string[];
+  questions?: Array<{ prompt: string; answer: string }>;
+  trace?: FileRecommendation[];
   fileRecommendations?: {
     readingOrder?: FileRecommendation[];
     docs?: FileRecommendation[];
@@ -371,9 +375,9 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                 }}
               >
                 <li>
-                  Create a markdown guide in the <code>docs/</code> folder following our format (see{' '}
+                  Create a markdown guide in the <code>docs/</code> folder from the{' '}
                   <a
-                    href={`${explorarRepoUrl}/blob/main/docs/python_cpython.md`}
+                    href={`${explorarRepoUrl}/blob/main/docs/_template.md`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -381,13 +385,16 @@ export function createGenericGuide(owner: string, repo: string): GuideSection[] 
                       textDecoration: 'none',
                     }}
                   >
-                    example
+                    template
                   </a>
                   )
                 </li>
                 <li>
                   Add YAML frontmatter with curatedRepoId, owner, repo, revision, guideId, name, and
                   description
+                </li>
+                <li>
+                  Run <code>npm run guides:validate</code> before opening a pull request
                 </li>
                 <li>
                   Submit a pull request to{' '}

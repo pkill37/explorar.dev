@@ -29,9 +29,7 @@ import path from 'path';
 import matter from 'gray-matter';
 import { getCuratedRepo } from '../src/lib/curated-repos';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
-
-const DOCS_DIR = path.join(process.cwd(), 'docs');
-const SKIP_FILES = new Set(['common.md']);
+import { DOCS_DIR, listGuideMarkdownFiles } from './guide-docs';
 
 // File extensions that indicate a source/doc file path (vs a generic identifier).
 // Note: .s covers both lowercase and uppercase (.S) since hasKnownExt lowercases first.
@@ -479,10 +477,7 @@ export function main(): number {
   let skipped = 0;
   let checked = 0;
 
-  const files = fs
-    .readdirSync(DOCS_DIR)
-    .filter((f) => f.endsWith('.md') && !SKIP_FILES.has(f))
-    .sort();
+  const files = listGuideMarkdownFiles();
 
   for (const file of files) {
     const raw = fs.readFileSync(path.join(DOCS_DIR, file), 'utf-8');

@@ -12,6 +12,8 @@ import {
   stripNavigationSuffix,
   stripFencedBlocks,
 } from '../scripts/check-guide-refs';
+import { DOCS_DIR, isGuideMarkdownFile, listGuideMarkdownFiles } from '../scripts/guide-docs';
+import { generateGuideRegistrySource } from '../scripts/generate-guide-registry';
 import { CORPUS_REPOS_DIR } from '../scripts/static-asset-paths';
 import {
   parseSectionIds,
@@ -199,14 +201,10 @@ More prose.
   });
 
   test('all markdown guides satisfy the guide format validator', () => {
-    const docsDir = path.join(process.cwd(), 'docs');
-    const docFiles = fs
-      .readdirSync(docsDir)
-      .filter((file) => file.endsWith('.md') && file !== 'common.md')
-      .sort();
+    const docFiles = listGuideMarkdownFiles();
 
     for (const fileName of docFiles) {
-      const raw = fs.readFileSync(path.join(docsDir, fileName), 'utf8');
+      const raw = fs.readFileSync(path.join(DOCS_DIR, fileName), 'utf8');
       const result = validateGuideMarkdown(raw);
 
       expect(result.errors, `${fileName} guide format errors`).toEqual([]);
@@ -215,14 +213,10 @@ More prose.
   });
 
   test('all markdown guide frontmatter matches curated repository config', () => {
-    const docsDir = path.join(process.cwd(), 'docs');
-    const docFiles = fs
-      .readdirSync(docsDir)
-      .filter((file) => file.endsWith('.md') && file !== 'common.md')
-      .sort();
+    const docFiles = listGuideMarkdownFiles();
 
     for (const fileName of docFiles) {
-      const raw = fs.readFileSync(path.join(docsDir, fileName), 'utf8');
+      const raw = fs.readFileSync(path.join(DOCS_DIR, fileName), 'utf8');
       const { data } = matter(raw);
       const owner = String(data.owner ?? '');
       const repo = String(data.repo ?? '');
@@ -460,15 +454,11 @@ The markdown link [missing_entry.S](./missing_entry.S) should also be checked.
   });
 
   test('all inline prose file references resolve to corpus files', () => {
-    const docsDir = path.join(process.cwd(), 'docs');
-    const docFiles = fs
-      .readdirSync(docsDir)
-      .filter((file) => file.endsWith('.md') && file !== 'common.md')
-      .sort();
+    const docFiles = listGuideMarkdownFiles();
     let checkedDocs = 0;
 
     for (const fileName of docFiles) {
-      const docPath = path.join(docsDir, fileName);
+      const docPath = path.join(DOCS_DIR, fileName);
       const raw = fs.readFileSync(docPath, 'utf8');
       const { data } = matter(raw);
       const owner = String(data.owner ?? '');
@@ -497,5 +487,16 @@ The markdown link [missing_entry.S](./missing_entry.S) should also be checked.
       checkedDocs,
       'expected at least one guide with a downloaded corpus root'
     ).toBeGreaterThan(0);
+  });
+
+  test('guide registry generation includes guides and excludes docs helpers', () => {
+    const source = generateGuideRegistrySource(
+      ['_template.md', 'common.md', 'python_cpython.md', 'README.md'].filter(isGuideMarkdownFile)
+    );
+
+    expect(source).toContain('../../../docs/python_cpython.md?raw');
+    expect(source).not.toContain('_template.md?raw');
+    expect(source).not.toContain('common.md?raw');
+    expect(source).not.toContain('README.md?raw');
   });
 });

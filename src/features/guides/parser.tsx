@@ -101,12 +101,186 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
 interface SectionFrontmatter {
   id: string;
   title: string;
+  difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  learningGoals?: string[];
+  questions?: Array<{
+    prompt: string;
+    answer: string;
+  }>;
+  trace?: FileRecommendation[];
   fileRecommendations?: {
     readingOrder?: FileRecommendation[];
     docs?: FileRecommendation[];
     source?: FileRecommendation[];
     directories?: FileRecommendation[];
   };
+}
+
+function isDifficulty(value: unknown): value is SectionFrontmatter['difficulty'] {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function normalizeQuestions(value: unknown): Array<{ prompt: string; answer: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      prompt: String(item.prompt ?? '').trim(),
+      answer: String(item.answer ?? '').trim(),
+    }))
+    .filter((item) => item.prompt && item.answer);
+}
+
+function normalizeFileRecommendations(value: unknown): FileRecommendation[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item): FileRecommendation => {
+      const type: FileRecommendation['type'] =
+        item.type === 'docs' || item.type === 'directory' || item.type === 'source'
+          ? item.type
+          : undefined;
+      return {
+        path: String(item.path ?? '').trim(),
+        description: item.description ? String(item.description) : undefined,
+        type,
+      };
+    })
+    .filter((item) => item.path);
+}
+
+function normalizeSectionMeta(meta: SectionFrontmatter): SectionFrontmatter {
+  return {
+    ...meta,
+    difficulty: isDifficulty(meta.difficulty) ? meta.difficulty : undefined,
+    learningGoals: normalizeStringList(meta.learningGoals),
+    questions: normalizeQuestions(meta.questions),
+    trace: normalizeFileRecommendations(meta.trace),
+  };
+}
+
+function renderPedagogyPanel(
+  sectionMeta: SectionFrontmatter,
+  openFileInTab: OpenFileInTab
+): React.ReactNode {
+  const learningGoals = sectionMeta.learningGoals ?? [];
+  const questions = sectionMeta.questions ?? [];
+  const trace = sectionMeta.trace ?? [];
+  const hasPedagogy =
+    Boolean(sectionMeta.difficulty) ||
+    learningGoals.length > 0 ||
+    questions.length > 0 ||
+    trace.length > 0;
+
+  if (!hasPedagogy) return null;
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '11px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: 'var(--vscode-descriptionForeground, #999)',
+    margin: '0 0 6px',
+  };
+
+  return (
+    <aside
+      style={{
+        border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+        borderRadius: '6px',
+        padding: '10px 12px',
+        marginBottom: '12px',
+        background: 'var(--vscode-editor-background, #1e1e1e)',
+      }}
+    >
+      {sectionMeta.difficulty && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+            borderRadius: '999px',
+            padding: '1px 7px',
+            marginBottom: '8px',
+            fontSize: '11px',
+            textTransform: 'capitalize',
+            color: 'var(--vscode-foreground, #d4d4d4)',
+          }}
+        >
+          {sectionMeta.difficulty}
+        </div>
+      )}
+
+      {learningGoals.length > 0 && (
+        <div style={{ marginBottom: trace.length > 0 || questions.length > 0 ? '10px' : 0 }}>
+          <p style={labelStyle}>Learning Goals</p>
+          <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: 1.45 }}>
+            {learningGoals.map((goal) => (
+              <li key={goal}>{goal}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {trace.length > 0 && (
+        <div style={{ marginBottom: questions.length > 0 ? '10px' : 0 }}>
+          <p style={labelStyle}>Trace</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {trace.map((item, index) => (
+              <button
+                key={`${index + 1}-${item.path}`}
+                onClick={() => {
+                  const target = parseRepoNavigationTarget(item.path, undefined, {
+                    title: item.description,
+                  });
+                  if (target) {
+                    openFileInTab(target.path, target.searchPattern, target.scrollToLine);
+                    return;
+                  }
+                  openFileInTab(item.path);
+                }}
+                style={{
+                  textAlign: 'left',
+                  border: 0,
+                  borderRadius: 0,
+                  padding: '3px 0',
+                  background: 'transparent',
+                  color: 'var(--vscode-textLink-foreground, #4a9eff)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+              >
+                {index + 1}. {item.description || item.path}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {questions.length > 0 && (
+        <div>
+          <p style={labelStyle}>Check Yourself</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {questions.map((question) => (
+              <details key={question.prompt}>
+                <summary style={{ cursor: 'pointer', fontSize: '12px', lineHeight: 1.45 }}>
+                  {question.prompt}
+                </summary>
+                <p style={{ margin: '6px 0 0 16px', fontSize: '12px', lineHeight: 1.45 }}>
+                  {question.answer}
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+    </aside>
+  );
 }
 
 function pushUniquePath(target: string[], seen: Set<string>, path: string) {
@@ -267,7 +441,7 @@ export function parseGuideMarkdown(
   const guideSections: GuideSection[] = sections
     .map((section, index): GuideSection | null => {
       // Parse section frontmatter
-      const sectionMeta = parseSectionFrontmatter(section.frontmatter);
+      const sectionMeta = normalizeSectionMeta(parseSectionFrontmatter(section.frontmatter));
 
       // If id/title are missing, the "frontmatter" is likely markdown content
       // (e.g., when --- is used as a horizontal rule, not a YAML delimiter).
@@ -315,6 +489,7 @@ export function parseGuideMarkdown(
       // Build section body with content and file recommendations
       const body: React.ReactNode = (
         <div>
+          {renderPedagogyPanel(sectionMeta, openFileInTab)}
           <div
             data-guide-markdown={sectionMeta.id || `section-${index}`}
             onClick={(e: React.MouseEvent) => {
@@ -415,6 +590,10 @@ export function parseGuideMarkdown(
         title: sectionMeta.title,
         body,
         narrativePaths,
+        difficulty: sectionMeta.difficulty,
+        learningGoals: sectionMeta.learningGoals,
+        questions: sectionMeta.questions,
+        trace: sectionMeta.trace,
         fileRecommendations: sectionMeta.fileRecommendations,
         graph,
       };

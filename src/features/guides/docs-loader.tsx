@@ -1,20 +1,7 @@
 // Auto-discovery system for docs/ markdown guides
 import matter from 'gray-matter';
 import { getCuratedRepo, isCuratedRepo } from '@/lib/curated-repos';
-
-// Import all guide markdown files
-import littlekernelLkMd from '../../../docs/littlekernel_lk.md?raw';
-import mrcxlinuxSrv03rtmAnikaMd from '../../../docs/mrcxlinux_srv03rtm-anika.md?raw';
-import reactosReactosMd from '../../../docs/reactos_reactos.md?raw';
-import pythonCpythonMd from '../../../docs/python_cpython.md?raw';
-import torvaldsLinuxMd from '../../../docs/torvalds_linux.md?raw';
-import llvmProjectMd from '../../../docs/llvm_project.md?raw';
-import bminorGlibcMd from '../../../docs/bminor_glibc.md?raw';
-import appleXnuMd from '../../../docs/apple-oss-distributions_xnu.md?raw';
-import seL4SeL4Md from '../../../docs/seL4_seL4.md?raw';
-import freebsdSrcMd from '../../../docs/freebsd_freebsd-src.md?raw';
-import ghostbsdSrcMd from '../../../docs/ghostbsd_ghostbsd-src.md?raw';
-import nextbsdKernelMd from '../../../docs/nextbsd-redux_nextbsd-kernel.md?raw';
+import { DOCS_MARKDOWN } from './generated-docs';
 
 /**
  * Guide metadata extracted from frontmatter
@@ -37,24 +24,6 @@ export interface GuideDocument {
   metadata: GuideMetadata;
   content: string;
 }
-
-/**
- * Mapping of markdown files
- */
-const DOCS_MARKDOWN: Record<string, string> = {
-  'littlekernel_lk.md': littlekernelLkMd,
-  'mrcxlinux_srv03rtm-anika.md': mrcxlinuxSrv03rtmAnikaMd,
-  'reactos_reactos.md': reactosReactosMd,
-  'python_cpython.md': pythonCpythonMd,
-  'torvalds_linux.md': torvaldsLinuxMd,
-  'llvm_project.md': llvmProjectMd,
-  'bminor_glibc.md': bminorGlibcMd,
-  'apple-oss-distributions_xnu.md': appleXnuMd,
-  'seL4_seL4.md': seL4SeL4Md,
-  'freebsd_freebsd-src.md': freebsdSrcMd,
-  'ghostbsd_ghostbsd-src.md': ghostbsdSrcMd,
-  'nextbsd-redux_nextbsd-kernel.md': nextbsdKernelMd,
-};
 
 /**
  * Parse guide metadata and content from markdown
