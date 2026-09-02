@@ -5,26 +5,30 @@ import appleOssDistributionsXnuMd1 from '../../../docs/apple-oss-distributions_x
 import bminorGlibcMd2 from '../../../docs/bminor_glibc.md?raw';
 import freebsdFreebsdSrcMd3 from '../../../docs/freebsd_freebsd-src.md?raw';
 import ghostbsdGhostbsdSrcMd4 from '../../../docs/ghostbsd_ghostbsd-src.md?raw';
-import littlekernelLkMd5 from '../../../docs/littlekernel_lk.md?raw';
-import llvmProjectMd6 from '../../../docs/llvm_project.md?raw';
-import mrcxlinuxSrv03rtmAnikaMd7 from '../../../docs/mrcxlinux_srv03rtm-anika.md?raw';
-import nextbsdReduxNextbsdKernelMd8 from '../../../docs/nextbsd-redux_nextbsd-kernel.md?raw';
-import pythonCpythonMd9 from '../../../docs/python_cpython.md?raw';
-import reactosReactosMd10 from '../../../docs/reactos_reactos.md?raw';
-import seL4SeL4Md11 from '../../../docs/seL4_seL4.md?raw';
-import torvaldsLinuxMd12 from '../../../docs/torvalds_linux.md?raw';
+import golangGoMd5 from '../../../docs/golang_go.md?raw';
+import littlekernelLkMd6 from '../../../docs/littlekernel_lk.md?raw';
+import llvmProjectMd7 from '../../../docs/llvm_project.md?raw';
+import microsoftTypescriptGoMd8 from '../../../docs/microsoft_typescript-go.md?raw';
+import mrcxlinuxSrv03rtmAnikaMd9 from '../../../docs/mrcxlinux_srv03rtm-anika.md?raw';
+import nextbsdReduxNextbsdKernelMd10 from '../../../docs/nextbsd-redux_nextbsd-kernel.md?raw';
+import pythonCpythonMd11 from '../../../docs/python_cpython.md?raw';
+import reactosReactosMd12 from '../../../docs/reactos_reactos.md?raw';
+import seL4SeL4Md13 from '../../../docs/seL4_seL4.md?raw';
+import torvaldsLinuxMd14 from '../../../docs/torvalds_linux.md?raw';
 
 export const DOCS_MARKDOWN: Record<string, string> = {
   'apple-oss-distributions_xnu.md': appleOssDistributionsXnuMd1,
   'bminor_glibc.md': bminorGlibcMd2,
   'freebsd_freebsd-src.md': freebsdFreebsdSrcMd3,
   'ghostbsd_ghostbsd-src.md': ghostbsdGhostbsdSrcMd4,
-  'littlekernel_lk.md': littlekernelLkMd5,
-  'llvm_project.md': llvmProjectMd6,
-  'mrcxlinux_srv03rtm-anika.md': mrcxlinuxSrv03rtmAnikaMd7,
-  'nextbsd-redux_nextbsd-kernel.md': nextbsdReduxNextbsdKernelMd8,
-  'python_cpython.md': pythonCpythonMd9,
-  'reactos_reactos.md': reactosReactosMd10,
-  'seL4_seL4.md': seL4SeL4Md11,
-  'torvalds_linux.md': torvaldsLinuxMd12,
+  'golang_go.md': golangGoMd5,
+  'littlekernel_lk.md': littlekernelLkMd6,
+  'llvm_project.md': llvmProjectMd7,
+  'microsoft_typescript-go.md': microsoftTypescriptGoMd8,
+  'mrcxlinux_srv03rtm-anika.md': mrcxlinuxSrv03rtmAnikaMd9,
+  'nextbsd-redux_nextbsd-kernel.md': nextbsdReduxNextbsdKernelMd10,
+  'python_cpython.md': pythonCpythonMd11,
+  'reactos_reactos.md': reactosReactosMd12,
+  'seL4_seL4.md': seL4SeL4Md13,
+  'torvalds_linux.md': torvaldsLinuxMd14,
 };

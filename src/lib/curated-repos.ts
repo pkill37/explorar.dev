@@ -314,6 +314,66 @@ export const CURATED_REPOS: CuratedRepoConfig[] = [
     sitemapPriority: 0.9,
   },
   {
+    id: 'go-1.27.0',
+    owner: 'golang',
+    repo: 'go',
+    slug: 'go-language',
+    ref: 'go1.27.0',
+    revision: 'go1.27.0',
+    guideId: 'go-language-guide',
+    displayName: 'Go Language',
+    icon: 'Go',
+    gradient: 'from-cyan-500/10 to-emerald-500/10',
+    category: 'Languages',
+    avatarFile: 'golang.svg',
+    buildAvatarUrl: 'local:golang.svg',
+    description:
+      'Go programming language source code, including the compiler, runtime, go command, and standard library.',
+    seoDescription:
+      'Explore the Go programming language source code. Study the Go compiler, runtime scheduler, garbage collector, go command, modules, and standard library internals.',
+    seoKeywords: [
+      'Go language',
+      'Golang source code',
+      'Go compiler',
+      'Go runtime',
+      'Go garbage collector',
+      'goroutines',
+      'Go modules',
+      'programming language internals',
+    ],
+    sitemapPriority: 0.9,
+  },
+  {
+    id: 'typescript-go-7.0.2',
+    owner: 'microsoft',
+    repo: 'typescript-go',
+    slug: 'typescript-compiler',
+    ref: 'typescript/v7.0.2',
+    revision: '2bd066d87f5bafd315be9f40889d0a60b9e58e0b',
+    guideId: 'typescript-compiler-guide',
+    displayName: 'TypeScript Compiler',
+    icon: 'TS',
+    gradient: 'from-blue-500/10 to-teal-500/10',
+    category: 'Languages',
+    avatarFile: 'typescript.svg',
+    buildAvatarUrl: 'local:typescript.svg',
+    description:
+      'TypeScript 7 native compiler source code, including parsing, binding, type checking, emit, project builds, and language tooling.',
+    seoDescription:
+      'Explore the TypeScript 7 native compiler source code. Study the Go implementation of parsing, binding, type checking, module resolution, emit, project builds, and language service internals.',
+    seoKeywords: [
+      'TypeScript compiler',
+      'TypeScript source code',
+      'TypeScript internals',
+      'typescript-go',
+      'tsgo',
+      'type checker',
+      'language service',
+      'programming language internals',
+    ],
+    sitemapPriority: 0.9,
+  },
+  {
     id: 'glibc-2.39',
     owner: 'bminor',
     repo: 'glibc',
@@ -438,6 +498,31 @@ export function getCuratedRepoRef(owner: string, repo: string): string {
 
 export function getCuratedRepoId(owner: string, repo: string): string {
   return getCuratedRepo(owner, repo)?.id ?? '';
+}
+
+const CURATED_REPO_ACCENTS: Record<string, string> = {
+  'torvalds/linux': '#0ea5e9',
+  'apple-oss-distributions/xnu': '#f97316',
+  'freebsd/freebsd-src': '#ef4444',
+  'ghostbsd/ghostbsd-src': '#14b8a6',
+  'nextbsd-redux/nextbsd-kernel': '#a855f7',
+  'mrcxlinux/srv03rtm-anika': '#2563eb',
+  'littlekernel/lk': '#22c55e',
+  'seL4/seL4': '#eab308',
+  'reactos/reactos': '#06b6d4',
+  'python/cpython': '#f59e0b',
+  'golang/go': '#00add8',
+  'microsoft/typescript-go': '#3178c6',
+  'bminor/glibc': '#dc2626',
+  'llvm/llvm-project': '#8b5cf6',
+};
+
+export function getCuratedRepoAccent(owner: string, repo: string): string {
+  return CURATED_REPO_ACCENTS[toRepoKey(owner, repo)] ?? '#64748b';
+}
+
+export function getCuratedRepoDisplayName(owner: string, repo: string): string {
+  return getCuratedRepo(owner, repo)?.displayName ?? `${owner}/${repo}`;
 }
 
 export function getCuratedRepoPath(owner: string, repo: string): string {

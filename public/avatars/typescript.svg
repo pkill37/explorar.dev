@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TypeScript compiler avatar</title>
+  <desc id="desc">A compact TypeScript compiler mark for repository cards.</desc>
+  <rect width="256" height="256" rx="28" fill="#1b4f8f"/>
+  <rect x="28" y="28" width="200" height="200" rx="18" fill="#3178c6"/>
+  <path d="M54 84h92v25h-32v84H86v-84H54z" fill="#fff"/>
+  <path d="M153 182c8 8 20 12 34 12 23 0 37-12 37-31 0-16-9-25-30-34l-10-4c-10-4-14-7-14-13 0-7 6-11 16-11 10 0 18 3 26 11l14-19c-10-10-23-15-39-15-23 0-38 13-38 33 0 16 10 26 29 34l10 4c10 4 14 7 14 14 0 6-6 10-16 10-12 0-22-4-31-13z" fill="#fff"/>
+</svg>

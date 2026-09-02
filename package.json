@@ -14,7 +14,7 @@
     "guides:refs": "tsx scripts/check-guide-refs.ts",
     "guides:format": "prettier --config prettier.config.mjs --write docs/*.md CONTRIBUTING.md",
     "guides:validate": "npm run guides:generate && npm run lint:markdown && tsx scripts/validate-guides.ts && tsx scripts/check-guide-refs.ts",
-    "predev": "npm run guides:generate && tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=freebsd/freebsd-src --only=ghostbsd/ghostbsd-src --only=nextbsd-redux/nextbsd-kernel --only=reactos/reactos --only=python/cpython --only=torvalds/linux --only=littlekernel/lk --only=mrcxlinux/srv03rtm-anika --depth=1 && tsx scripts/build-man-pages.ts && tsx scripts/prepare-public-assets.ts --dev --sqljs",
+    "predev": "npm run guides:generate && tsx scripts/download-repos.ts --only=apple-oss-distributions/xnu --only=freebsd/freebsd-src --only=ghostbsd/ghostbsd-src --only=nextbsd-redux/nextbsd-kernel --only=reactos/reactos --only=python/cpython --only=golang/go --only=microsoft/typescript-go --only=torvalds/linux --only=littlekernel/lk --only=mrcxlinux/srv03rtm-anika --depth=1 && tsx scripts/build-man-pages.ts && tsx scripts/prepare-public-assets.ts --dev --sqljs",
     "dev": "next dev --turbopack --port 3000",
     "build": "tsx scripts/build.ts",
     "deploy:r2": "tsx scripts/deploy-r2.ts",
