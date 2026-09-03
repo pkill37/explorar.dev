@@ -28,6 +28,7 @@ import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
 import { getCuratedRepo } from '../src/lib/curated-repos';
+import { parseRepoNavigationTarget } from '../src/lib/markdown-navigation';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
 import { DOCS_DIR, listGuideMarkdownFiles } from './guide-docs';
 
@@ -76,6 +77,14 @@ export interface Section {
   directoryRefs: FileRef[];
   /** Raw prose text (everything between the YAML block and the next ---) */
   prose: string;
+}
+
+interface ResolvedGuideRef {
+  repoRoot: string;
+  refPath: string;
+  displayPath: string;
+  missingCorpusLabel?: string;
+  invalidScopedRef?: boolean;
 }
 
 // ─── File-content cache (avoid re-reading the same file) ─────────────────────
@@ -158,6 +167,46 @@ export function refExists(repoRoot: string, refPath: string): boolean {
   return resolveRepoPath(repoRoot, refPath) !== null;
 }
 
+function resolveGuideRef(repoRoot: string, refPath: string): ResolvedGuideRef {
+  const trimmed = refPath.trim();
+  if (!/^repo:/i.test(trimmed)) {
+    return { repoRoot, refPath, displayPath: refPath };
+  }
+
+  const parsed = parseRepoNavigationTarget(trimmed);
+  if (!parsed?.owner || !parsed.repo) {
+    return { repoRoot, refPath, displayPath: refPath, invalidScopedRef: true };
+  }
+
+  const curatedRepo = getCuratedRepo(parsed.owner, parsed.repo);
+  if (!curatedRepo) {
+    return { repoRoot, refPath, displayPath: refPath, invalidScopedRef: true };
+  }
+
+  const targetRoot = path.join(
+    CORPUS_REPOS_DIR,
+    curatedRepo.owner,
+    curatedRepo.repo,
+    curatedRepo.revision
+  );
+
+  return {
+    repoRoot: targetRoot,
+    refPath: parsed.path,
+    displayPath: refPath,
+    missingCorpusLabel: fs.existsSync(targetRoot)
+      ? undefined
+      : `${curatedRepo.owner}/${curatedRepo.repo}@${curatedRepo.revision}`,
+  };
+}
+
+function refExistsForGuide(repoRoot: string, refPath: string): boolean | 'missing-corpus' {
+  const resolved = resolveGuideRef(repoRoot, refPath);
+  if (resolved.invalidScopedRef) return false;
+  if (resolved.missingCorpusLabel) return 'missing-corpus';
+  return refExists(resolved.repoRoot, resolved.refPath);
+}
+
 export function stripNavigationSuffix(refPath: string): string {
   const withoutHash = refPath.split('#')[0] || refPath;
   const lastSlash = withoutHash.lastIndexOf('/');
@@ -195,6 +244,9 @@ function hasKnownExt(p: string): boolean {
 /** True when the string looks like a relative repo path or a bare file reference. */
 function looksLikeRepoPath(s: string): boolean {
   if (!s || s.includes('://') || s.startsWith('#')) return false;
+  if (/^repo:/i.test(s)) {
+    return looksLikeRepoPath(s.slice(s.indexOf(':') + 1));
+  }
   return s.includes('/') || hasKnownExt(s) || s.endsWith('/');
 }
 
@@ -336,7 +388,12 @@ export function checkGuide(
 
     // ── 1. fileRecommendations.readingOrder paths ───────────────────────────
     for (const ref of section.readingOrderRefs) {
-      if (!refExists(repoRoot, ref.refPath)) {
+      const exists = refExistsForGuide(repoRoot, ref.refPath);
+      if (exists === 'missing-corpus') {
+        warnings.push(`${label}: SKIP CROSS-REPO: ${ref.refPath} (target corpus not downloaded)`);
+        continue;
+      }
+      if (!exists) {
         errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.readingOrder)`);
         continue;
       }
@@ -344,18 +401,24 @@ export function checkGuide(
 
     // ── 2. fileRecommendations.source paths ──────────────────────────────────
     for (const ref of section.sourceRefs) {
-      if (!refExists(repoRoot, ref.refPath)) {
+      const resolved = resolveGuideRef(repoRoot, ref.refPath);
+      const exists = refExistsForGuide(repoRoot, ref.refPath);
+      if (exists === 'missing-corpus') {
+        warnings.push(`${label}: SKIP CROSS-REPO: ${ref.refPath} (target corpus not downloaded)`);
+        continue;
+      }
+      if (!exists) {
         errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.source)`);
         continue; // no point checking symbols / line counts in a missing file
       }
 
-      const isFile = hasKnownExt(ref.refPath) && !ref.refPath.endsWith('/');
+      const isFile = hasKnownExt(resolved.refPath) && !resolved.refPath.endsWith('/');
 
       // 6. Symbols in description → search in this exact file
       if (isFile) {
         for (const m of ref.description.matchAll(/\b(\w+)\(\)/g)) {
           const sym = m[1];
-          if (!symbolInFile(repoRoot, ref.refPath, sym)) {
+          if (!symbolInFile(resolved.repoRoot, resolved.refPath, sym)) {
             errors.push(`${section.id}: MISSING SYMBOL: ${sym}() not found in ${ref.refPath}`);
           }
         }
@@ -365,7 +428,7 @@ export function checkGuide(
       if (isFile) {
         for (const m of ref.description.matchAll(LINE_COUNT_RE)) {
           const claimed = parseClaimed(m[1]);
-          const actual = countLines(repoRoot, ref.refPath);
+          const actual = countLines(resolved.repoRoot, resolved.refPath);
           if (actual !== null && claimed > 0) {
             const pct = Math.abs(actual - claimed) / claimed;
             if (pct > 0.3) {
@@ -380,14 +443,24 @@ export function checkGuide(
 
     // ── 3. fileRecommendations.docs paths ────────────────────────────────────
     for (const ref of section.docsRefs) {
-      if (!refExists(repoRoot, ref.refPath)) {
+      const exists = refExistsForGuide(repoRoot, ref.refPath);
+      if (exists === 'missing-corpus') {
+        warnings.push(`${label}: SKIP CROSS-REPO: ${ref.refPath} (target corpus not downloaded)`);
+        continue;
+      }
+      if (!exists) {
         errors.push(`${label}: MISSING FILE: ${ref.refPath} (fileRecommendations.docs)`);
       }
     }
 
     // ── 4. fileRecommendations.directories paths ────────────────────────────
     for (const ref of section.directoryRefs) {
-      if (!refExists(repoRoot, ref.refPath)) {
+      const exists = refExistsForGuide(repoRoot, ref.refPath);
+      if (exists === 'missing-corpus') {
+        warnings.push(`${label}: SKIP CROSS-REPO: ${ref.refPath} (target corpus not downloaded)`);
+        continue;
+      }
+      if (!exists) {
         errors.push(
           `${label}: MISSING DIRECTORY: ${ref.refPath} (fileRecommendations.directories)`
         );
@@ -403,7 +476,14 @@ export function checkGuide(
         const m = line.match(EDGE_RE);
         if (!m) continue;
         for (const edgePath of [m[1], m[2]]) {
-          if (!refExists(repoRoot, edgePath)) {
+          const exists = refExistsForGuide(repoRoot, edgePath);
+          if (exists === 'missing-corpus') {
+            warnings.push(
+              `${section.id}: SKIP CROSS-REPO: ${edgePath} (target corpus not downloaded)`
+            );
+            continue;
+          }
+          if (!exists) {
             errors.push(`${section.id}: MISSING FILE: ${edgePath} (chapter-graph edge)`);
           }
         }
@@ -423,7 +503,14 @@ export function checkGuide(
         if (!looksLikeRepoPath(refPath)) continue;
         if (checkedPaths.has(refPath)) continue;
         checkedPaths.add(refPath);
-        if (!refExists(repoRoot, refPath)) {
+        const exists = refExistsForGuide(repoRoot, refPath);
+        if (exists === 'missing-corpus') {
+          warnings.push(
+            `${section.id}: SKIP CROSS-REPO: ${refPath} (target corpus not downloaded)`
+          );
+          continue;
+        }
+        if (!exists) {
           errors.push(`${section.id}: MISSING FILE: ${refPath} (markdown link)`);
         }
       }
@@ -435,7 +522,12 @@ export function checkGuide(
         if (!looksLikeRepoPath(span)) continue;
         if (checkedPaths.has(span)) continue;
         checkedPaths.add(span);
-        if (!refExists(repoRoot, span)) {
+        const exists = refExistsForGuide(repoRoot, span);
+        if (exists === 'missing-corpus') {
+          warnings.push(`${section.id}: SKIP CROSS-REPO: ${span} (target corpus not downloaded)`);
+          continue;
+        }
+        if (!exists) {
           errors.push(`${section.id}: MISSING FILE: ${span} (inline code)`);
         }
       }
@@ -447,9 +539,17 @@ export function checkGuide(
         const refPath = m[1];
         const claimedStr = m[2];
         if (!refPath || !claimedStr || refPath.includes('://')) continue;
-        if (!hasKnownExt(refPath) || !refExists(repoRoot, refPath)) continue;
+        const resolved = resolveGuideRef(repoRoot, refPath);
+        if (
+          resolved.invalidScopedRef ||
+          resolved.missingCorpusLabel ||
+          !hasKnownExt(resolved.refPath) ||
+          !refExists(resolved.repoRoot, resolved.refPath)
+        ) {
+          continue;
+        }
         const claimed = parseClaimed(claimedStr);
-        const actual = countLines(repoRoot, refPath);
+        const actual = countLines(resolved.repoRoot, resolved.refPath);
         if (actual !== null && claimed > 0) {
           const pct = Math.abs(actual - claimed) / claimed;
           if (pct > 0.3) {

@@ -132,7 +132,7 @@
 
 .sidebar-tab.active {
   color: var(--vscode-text-primary);
-  border-bottom-color: var(--vscode-text-accent);
+  border-bottom-color: var(--repo-accent, var(--vscode-text-accent));
   background: var(--vscode-bg-secondary);
 }
 
@@ -232,7 +232,7 @@
 }
 
 .vscode-tree-search-input:focus {
-  border-color: var(--vscode-text-accent);
+  border-color: var(--repo-accent, var(--vscode-text-accent));
   box-shadow: 0 0 0 1px rgba(86, 156, 214, 0.25);
 }
 
@@ -280,7 +280,7 @@
 .vscode-tree-search-toggle.is-active {
   background: rgba(86, 156, 214, 0.16);
   border-color: rgba(86, 156, 214, 0.55);
-  color: var(--vscode-text-accent);
+  color: var(--repo-accent, var(--vscode-text-accent));
 }
 
 .vscode-tree-search-meta {
@@ -485,7 +485,7 @@
 }
 
 .vscode-file-item.selected {
-  background: var(--vscode-bg-selected);
+  background: var(--repo-selection-bg, var(--vscode-bg-selected));
 }
 
 .vscode-file-item .icon {
@@ -815,7 +815,7 @@
 }
 
 .vscode-guide-content li::marker {
-  color: var(--vscode-text-accent);
+  color: var(--repo-accent, var(--vscode-text-accent));
   font-size: 1.25em;
   font-weight: 700;
 }
@@ -865,7 +865,7 @@
 .guide-completion-badge {
   margin-left: auto;
   padding: 2px 6px;
-  background: var(--vscode-text-accent);
+  background: var(--repo-accent, var(--vscode-text-accent));
   color: white;
   border-radius: 3px;
   font-size: 11px;
@@ -875,7 +875,7 @@
 /* Status Bar */
 .vscode-statusbar {
   height: 22px;
-  background: var(--vscode-text-accent);
+  background: var(--repo-accent, var(--vscode-text-accent));
   color: white;
   display: flex;
   align-items: center;
@@ -928,11 +928,11 @@
 
 .vscode-command-input:focus {
   outline: none;
-  border-color: var(--vscode-text-accent);
+  border-color: var(--repo-accent, var(--vscode-text-accent));
 }
 
 .vscode-command-button {
-  background: var(--vscode-text-accent);
+  background: var(--repo-accent, var(--vscode-text-accent));
   color: white;
   border: none;
   border-radius: 4px;
@@ -966,7 +966,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid var(--vscode-border);
-  border-top: 2px solid var(--vscode-text-accent);
+  border-top: 2px solid var(--repo-accent, var(--vscode-text-accent));
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1144,7 +1144,7 @@
 }
 
 .resize-handle:hover {
-  background-color: var(--vscode-text-accent) !important;
+  background-color: var(--repo-accent, var(--vscode-text-accent)) !important;
   opacity: 0.5;
 }
 
@@ -1206,18 +1206,18 @@
 /* Monaco Editor Highlight Line */
 .highlight-line {
   background: rgba(255, 255, 0, 0.15) !important;
-  border-left: 3px solid var(--vscode-text-accent);
+  border-left: 3px solid var(--repo-accent, var(--vscode-text-accent));
 }
 
 .highlight-line-glyph {
-  background: var(--vscode-text-accent);
+  background: var(--repo-accent, var(--vscode-text-accent));
   width: 3px !important;
 }
 
 /* Status Bar (Bottom) */
 .cursor-statusbar {
   height: 22px;
-  background: var(--vscode-text-accent);
+  background: var(--repo-accent, var(--vscode-text-accent));
   color: white;
   display: flex;
   align-items: center;
@@ -1252,6 +1252,36 @@
 
 .cursor-statusbar-item:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.cursor-statusbar-repo {
+  background: color-mix(in srgb, var(--repo-accent, transparent) 24%, transparent);
+  border-bottom: 2px solid var(--repo-accent, transparent);
+}
+
+.cursor-statusbar-repo:hover {
+  background: color-mix(in srgb, var(--repo-accent, transparent) 38%, transparent);
+}
+
+.cursor-statusbar-link--repo-flash {
+  background: color-mix(in srgb, var(--repo-accent, white) 58%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--repo-accent, white) 85%, white);
+  animation: cursor-statusbar-repo-flash 1.2s ease;
+}
+
+@keyframes cursor-statusbar-repo-flash {
+  0% {
+    background: color-mix(in srgb, var(--repo-accent, white) 20%, transparent);
+    box-shadow: inset 0 0 0 1px transparent;
+  }
+  30% {
+    background: color-mix(in srgb, var(--repo-accent, white) 72%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--repo-accent, white) 95%, white);
+  }
+  100% {
+    background: color-mix(in srgb, var(--repo-accent, white) 24%, transparent);
+    box-shadow: inset 0 0 0 1px transparent;
+  }
 }
 
 .cursor-statusbar-link,
@@ -1430,7 +1460,7 @@
 }
 
 .cursor-command-palette-input:focus {
-  border-color: var(--vscode-text-accent);
+  border-color: var(--repo-accent, var(--vscode-text-accent));
 }
 
 .cursor-command-palette-input::placeholder {
@@ -1574,7 +1604,7 @@
 
 .right-panel-tab.active {
   color: var(--vscode-text-primary);
-  border-bottom-color: var(--vscode-text-accent);
+  border-bottom-color: var(--repo-accent, var(--vscode-text-accent));
   background: var(--vscode-bg-tertiary);
 }
 

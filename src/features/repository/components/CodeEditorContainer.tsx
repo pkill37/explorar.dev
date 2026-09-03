@@ -15,7 +15,8 @@ interface CodeEditorContainerProps {
     path: string,
     searchPattern?: string,
     scrollToLine?: number,
-    searchScope?: string[]
+    searchScope?: string[],
+    repoTarget?: { owner: string; repo: string }
   ) => void;
   onOpenManPage?: (name: string, section: string) => void;
   fetchFile?: (path: string) => Promise<FileFetchResult>;

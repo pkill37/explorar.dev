@@ -3,11 +3,14 @@ import {
   parseManPageReference,
   type ManPageTarget,
 } from './man-pages';
+import { getCuratedRepoAccent, isCuratedRepo } from './curated-repos';
 
 export { getManualPageLinkAttributes };
 
 export interface RepoNavigationTarget {
   path: string;
+  owner?: string;
+  repo?: string;
   searchPattern?: string;
   scrollToLine?: number;
 }
@@ -184,6 +187,18 @@ export function parseRepoNavigationTarget(
     return null;
   }
 
+  if (/^repo:/i.test(trimmed)) {
+    const scopedValue = trimmed.slice(trimmed.indexOf(':') + 1);
+    const [owner = '', repo = '', ...pathParts] = scopedValue.split('/');
+    const scopedPath = pathParts.join('/');
+    if (!owner || !repo || !scopedPath || !isCuratedRepo(owner, repo)) {
+      return null;
+    }
+
+    const target = parseRepoNavigationTarget(scopedPath, undefined, options);
+    return target ? { ...target, owner, repo } : null;
+  }
+
   const hashIndex = trimmed.indexOf('#');
   const hashSuffix = hashIndex >= 0 ? trimmed.slice(hashIndex + 1) : '';
   const withoutHash = hashIndex >= 0 ? trimmed.slice(0, hashIndex) : trimmed;
@@ -249,6 +264,12 @@ export function parseMarkdownNavigationTarget(
 
 export function getRepoLinkAttributes(target: RepoNavigationTarget): string {
   const attributes = [`data-repo-path="${escapeHtml(target.path)}"`];
+
+  if (target.owner && target.repo) {
+    attributes.push(`data-repo-owner="${escapeHtml(target.owner)}"`);
+    attributes.push(`data-repo-name="${escapeHtml(target.repo)}"`);
+    attributes.push(`style="--repo-accent: ${getCuratedRepoAccent(target.owner, target.repo)}"`);
+  }
 
   if (target.searchPattern) {
     attributes.push(`data-search-pattern="${escapeHtml(target.searchPattern)}"`);

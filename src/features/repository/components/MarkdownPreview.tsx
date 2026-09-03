@@ -18,7 +18,13 @@ interface MarkdownPreviewProps {
   content: string;
   filePath: string;
   isLoading: boolean;
-  onOpenFile?: (path: string, searchPattern?: string, scrollToLine?: number) => void;
+  onOpenFile?: (
+    path: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[],
+    repoTarget?: { owner: string; repo: string }
+  ) => void;
   onOpenManPage?: (name: string, section: string) => void;
 }
 
@@ -36,6 +42,9 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
     renderer.link = (href, title, text) => {
       const safeHref = href?.trim() || '#';
+      // Avoid invalid nested anchors for markdown links around inline-code
+      // navigation links (for example, [`symbol`](path:symbol)).
+      const linkText = text.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1');
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
 
       if (hasUnsafeScheme(safeHref)) {
@@ -43,22 +52,22 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       }
 
       if (safeHref.startsWith('#')) {
-        return `<a href="${escapeHtml(safeHref)}"${titleAttr}>${text}</a>`;
+        return `<a href="${escapeHtml(safeHref)}"${titleAttr}>${linkText}</a>`;
       }
 
       const navigationTarget = parseMarkdownNavigationTarget(safeHref, filePath, {
-        linkText: text,
+        linkText,
         title: title ?? undefined,
       });
       if (navigationTarget?.kind === 'man-page') {
-        return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+        return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
       }
       if (navigationTarget?.kind === 'repo-file') {
-        return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+        return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
       }
 
       const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
-      return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+      return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${linkText}</a>`;
     };
 
     renderer.codespan = (code) => {
@@ -162,9 +171,17 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             const searchPattern = anchor.getAttribute('data-search-pattern') || undefined;
             const scrollToLineAttr = anchor.getAttribute('data-scroll-to-line');
             const scrollToLine = scrollToLineAttr ? parseInt(scrollToLineAttr, 10) : undefined;
+            const repoOwner = anchor.getAttribute('data-repo-owner') || undefined;
+            const repoName = anchor.getAttribute('data-repo-name') || undefined;
 
             event.preventDefault();
-            onOpenFile(repoPath, searchPattern, scrollToLine);
+            onOpenFile(
+              repoPath,
+              searchPattern,
+              scrollToLine,
+              undefined,
+              repoOwner && repoName ? { owner: repoOwner, repo: repoName } : undefined
+            );
           }}
           style={{
             wordBreak: 'break-word',

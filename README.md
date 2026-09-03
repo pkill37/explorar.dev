@@ -8,7 +8,8 @@ Explorar is a Next.js web application with a VS Code-like interface for browsing
 repositories through curated guides, indexed search, cross-references, diagrams, and knowledge
 checks.
 
-Build your own local copy of the Explorar application, which will download all the git tags to your filesystem (get a coffee, this may take some time), and subsequently build the "shell" web application that works entirely offline and instantly.
+Build a local copy of the Explorar application. The setup downloads the required repository data to
+your filesystem and builds a static shell that can run offline.
 
 ```bash
 npm install

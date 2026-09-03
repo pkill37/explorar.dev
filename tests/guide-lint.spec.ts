@@ -20,7 +20,10 @@ import {
   validateChapterGraph,
   validateGuideMarkdown,
 } from '../scripts/validate-guides';
-import { parseMarkdownNavigationTarget } from '../src/lib/markdown-navigation';
+import {
+  parseMarkdownNavigationTarget,
+  parseRepoNavigationTarget,
+} from '../src/lib/markdown-navigation';
 import { resolveCorpusPathFromKnownFiles } from '../src/lib/repo-static';
 
 function makeTempDir(prefix: string): string {
@@ -60,6 +63,24 @@ function normalizeInlineRef(ref: string): string {
   return stripNavigationSuffix(ref);
 }
 
+function resolveInlineRef(repoRoot: string, ref: string): string | null {
+  const target = parseRepoNavigationTarget(ref);
+  if (target?.owner && target.repo) {
+    const curatedRepo = getCuratedRepo(target.owner, target.repo);
+    if (!curatedRepo) return null;
+    const targetRoot = path.join(
+      CORPUS_REPOS_DIR,
+      curatedRepo.owner,
+      curatedRepo.repo,
+      curatedRepo.revision
+    );
+    if (!fs.existsSync(targetRoot)) return target.path;
+    return resolveRepoPath(targetRoot, target.path);
+  }
+
+  return resolveRepoPath(repoRoot, normalizeInlineRef(ref));
+}
+
 test.describe('guide reference linting', () => {
   test('parses explicit and implicit man-page guide links', () => {
     expect(parseMarkdownNavigationTarget('man:futex(2)')).toEqual({
@@ -77,6 +98,62 @@ test.describe('guide reference linting', () => {
       name: 'not_a_real_page',
       section: '2',
     });
+  });
+
+  test('parses curated cross-repo guide links', () => {
+    expect(
+      parseRepoNavigationTarget(
+        'repo:apple-oss-distributions/xnu/osfmk/kern/task.c:task_create_internal'
+      )
+    ).toEqual({
+      path: 'osfmk/kern/task.c',
+      owner: 'apple-oss-distributions',
+      repo: 'xnu',
+      searchPattern: 'task_create_internal',
+    });
+    expect(parseRepoNavigationTarget('repo:not-curated/example/kernel.c')).toBeNull();
+  });
+
+  test('keeps the Linux, glibc, and CPython cross-learning links resolvable', () => {
+    const expectedLinks = {
+      'torvalds_linux.md': [
+        'repo:bminor/glibc/sysdeps/unix/sysv/linux/read.c:__libc_read',
+        'repo:bminor/glibc/csu/libc-start.c:__libc_start_main',
+      ],
+      'bminor_glibc.md': [
+        'repo:bminor/glibc/sysdeps/unix/sysv/linux/read.c:__libc_read',
+        'repo:torvalds/linux/fs/read_write.c:ksys_write',
+        'repo:torvalds/linux/mm/mmap.c:vm_mmap_pgoff',
+      ],
+      'python_cpython.md': [
+        'repo:bminor/glibc/nptl/pthread_create.c:pthread_create',
+        'repo:torvalds/linux/kernel/fork.c:kernel_clone',
+        'repo:bminor/glibc/malloc/malloc.c:__libc_malloc',
+        'repo:torvalds/linux/mm/mmap.c:do_mmap',
+        'repo:bminor/glibc/elf/rtld.c:_dl_start',
+        'repo:torvalds/linux/fs/exec.c:load_elf_binary',
+      ],
+    } as const;
+
+    for (const [guideFile, refs] of Object.entries(expectedLinks)) {
+      const guide = fs.readFileSync(path.join(DOCS_DIR, guideFile), 'utf8');
+      const guideData = matter(guide).data;
+      const guideRoot = path.join(
+        CORPUS_REPOS_DIR,
+        String(guideData.owner),
+        String(guideData.repo),
+        String(guideData.revision)
+      );
+
+      for (const ref of refs) {
+        expect(guide, `${guideFile} is missing ${ref}`).toContain(`](${ref})`);
+        const target = parseRepoNavigationTarget(ref);
+        expect(target).not.toBeNull();
+        expect(target?.owner).toBe(ref.slice('repo:'.length).split('/')[0]);
+        expect(target?.repo).toBe(ref.slice('repo:'.length).split('/')[1]);
+        expect(resolveInlineRef(guideRoot, ref), `unresolved ${ref}`).not.toBeNull();
+      }
+    }
   });
 
   test('validates required guide document frontmatter', () => {
@@ -397,6 +474,18 @@ More prose.
     expect(guide).toContain('arch/arm64/kernel/entry.S');
   });
 
+  test('the Linux guide distinguishes PID 0, PID 1, and kthreadd', () => {
+    const guidePath = path.join(process.cwd(), 'docs/torvalds_linux.md');
+    const guide = fs.readFileSync(guidePath, 'utf8');
+
+    expect(guide).toContain('init_task');
+    expect(guide).toContain('init_struct_pid');
+    expect(guide).toContain('PID 0');
+    expect(guide).toContain('PID 1');
+    expect(guide).toContain('PID 2');
+    expect(guide).toContain('kthreadd');
+  });
+
   test('flags bare file references in guide prose when the corpus does not contain them', () => {
     const repoRoot = makeTempDir('explorar-guide-lint-');
     try {
@@ -477,7 +566,7 @@ The markdown link [missing_entry.S](./missing_entry.S) should also be checked.
       for (const ref of inlineRefs) {
         const normalizedRef = normalizeInlineRef(ref);
         expect(
-          resolveRepoPath(repoRoot, normalizedRef),
+          resolveInlineRef(repoRoot, normalizedRef),
           `unresolved inline prose ref in ${fileName}: ${ref}`
         ).not.toBeNull();
       }

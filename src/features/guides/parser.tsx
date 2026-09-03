@@ -4,6 +4,7 @@ import matter from 'gray-matter';
 import { marked } from 'marked';
 import { GuideSection, FileRecommendation } from '@/lib/project-guides';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
+import { getCuratedRepoAccent } from '@/lib/curated-repos';
 import { debugLog } from '@/lib/browser-debug';
 import {
   decodeHtmlEntities,
@@ -39,7 +40,8 @@ type OpenFileInTab = (
   path: string,
   searchPattern?: string,
   scrollToLine?: number,
-  searchScope?: string[]
+  searchScope?: string[],
+  repoTarget?: { owner: string; repo: string }
 ) => void;
 
 type OpenManPageInTab = (name: string, section: string) => void;
@@ -49,6 +51,10 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
 
   renderer.link = (href, title, text) => {
     const safeHref = href?.trim() || '#';
+    // A markdown link can wrap an inline-code span. Since codespan navigation
+    // also renders an anchor, remove that nested anchor before rendering the
+    // outer link so the resulting HTML contains one accessible link.
+    const linkText = text.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1');
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
 
     if (hasUnsafeScheme(safeHref)) {
@@ -56,20 +62,20 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
     }
 
     const navigationTarget = parseMarkdownNavigationTarget(safeHref, undefined, {
-      linkText: text,
+      linkText: linkText,
       title: title ?? undefined,
     });
 
     if (navigationTarget?.kind === 'man-page') {
-      return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+      return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
     }
 
     if (navigationTarget?.kind === 'repo-file') {
-      return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${text}</a>`;
+      return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
     }
 
     const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
-    return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+    return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${linkText}</a>`;
   };
 
   renderer.codespan = function (code) {
@@ -250,7 +256,7 @@ function renderPedagogyPanel(
                   borderRadius: 0,
                   padding: '3px 0',
                   background: 'transparent',
-                  color: 'var(--vscode-textLink-foreground, #4a9eff)',
+                  color: 'var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff))',
                   cursor: 'pointer',
                   fontSize: '12px',
                 }}
@@ -433,7 +439,11 @@ export function parseGuideMarkdown(
   }
 
   // Extract document-level frontmatter
-  const { content: mainContent } = matter(markdown);
+  const { content: mainContent, data: documentMeta } = matter(markdown);
+  const repoAccent =
+    documentMeta.owner && documentMeta.repo
+      ? getCuratedRepoAccent(String(documentMeta.owner), String(documentMeta.repo))
+      : undefined;
 
   // Split content into sections
   const sections = splitIntoSections(mainContent);
@@ -492,11 +502,16 @@ export function parseGuideMarkdown(
           {renderPedagogyPanel(sectionMeta, openFileInTab)}
           <div
             data-guide-markdown={sectionMeta.id || `section-${index}`}
+            style={
+              repoAccent ? ({ '--repo-accent': repoAccent } as React.CSSProperties) : undefined
+            }
             onClick={(e: React.MouseEvent) => {
               const anchor = (e.target as HTMLElement).closest('a');
               if (!anchor) return;
               const href = anchor.getAttribute('href');
               const repoPath = anchor.getAttribute('data-repo-path');
+              const repoOwner = anchor.getAttribute('data-repo-owner') || undefined;
+              const repoName = anchor.getAttribute('data-repo-name') || undefined;
               const manPageName = anchor.getAttribute('data-man-page-name');
               const manPageSection = anchor.getAttribute('data-man-page-section');
               const searchPattern = anchor.getAttribute('data-search-pattern') || undefined;
@@ -521,9 +536,17 @@ export function parseGuideMarkdown(
                   searchPattern,
                   scrollToLine,
                   symbolScope,
+                  repoOwner,
+                  repoName,
                   href,
                 });
-                openFileInTab(repoPath, searchPattern, scrollToLine, symbolScope);
+                openFileInTab(
+                  repoPath,
+                  searchPattern,
+                  scrollToLine,
+                  symbolScope,
+                  repoOwner && repoName ? { owner: repoOwner, repo: repoName } : undefined
+                );
                 return;
               }
 
@@ -544,7 +567,10 @@ export function parseGuideMarkdown(
                   explicitTarget.path,
                   explicitTarget.searchPattern,
                   explicitTarget.scrollToLine,
-                  symbolScope
+                  symbolScope,
+                  explicitTarget.owner && explicitTarget.repo
+                    ? { owner: explicitTarget.owner, repo: explicitTarget.repo }
+                    : undefined
                 );
                 return;
               }

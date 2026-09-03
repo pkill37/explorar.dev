@@ -17,6 +17,7 @@ import {
   getRepoIdentifier,
 } from '@/lib/github-api';
 import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
+import { getCuratedRepoPath } from '@/lib/curated-repos';
 import { loadGuideFromMarkdown } from '@/features/guides/guide-loader';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { findSymbolsInFile } from '@/lib/cross-reference';
@@ -993,8 +994,17 @@ export default function RepositoryWorkspaceExplorer({
       filePath: string,
       searchPattern?: string,
       scrollToLine?: number,
-      searchScope?: string[]
+      searchScope?: string[],
+      repoTarget?: { owner: string; repo: string }
     ) => {
+      if (repoTarget && (repoTarget.owner !== owner || repoTarget.repo !== repo)) {
+        const params = new URLSearchParams({ file: filePath });
+        if (searchPattern) params.set('search', searchPattern);
+        if (typeof scrollToLine === 'number') params.set('line', String(scrollToLine));
+        router.push(`${getCuratedRepoPath(repoTarget.owner, repoTarget.repo)}?${params}`);
+        return;
+      }
+
       const resolvedWorkspacePath = resolveWorkspaceFilePath(filePath, workspaceFilePaths);
       if (!resolvedWorkspacePath && !filePath.includes('/') && !filePath.endsWith('/')) {
         debugLog('[explorar:open-file] unresolved-bare-path', {
@@ -1090,7 +1100,7 @@ export default function RepositoryWorkspaceExplorer({
       setTabs((prev) => [...prev.map((t) => ({ ...t, isActive: false })), newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, resolveSymbolNavigationLine, workspaceFilePaths]
+    [owner, repo, router, tabs, resolveSymbolNavigationLine, workspaceFilePaths]
   );
 
   const openManPageInTab = useCallback(
@@ -1127,8 +1137,14 @@ export default function RepositoryWorkspaceExplorer({
   );
 
   const guideOpenFileInTab = useCallback(
-    (filePath: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
-      openFileInTab(filePath, searchPattern, scrollToLine, searchScope);
+    (
+      filePath: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      searchScope?: string[],
+      repoTarget?: { owner: string; repo: string }
+    ) => {
+      openFileInTab(filePath, searchPattern, scrollToLine, searchScope, repoTarget);
     },
     [openFileInTab]
   );
@@ -1615,7 +1631,9 @@ export default function RepositoryWorkspaceExplorer({
               style={{
                 width: '4px',
                 backgroundColor:
-                  isResizing === 'sidebar' ? 'var(--vscode-text-accent)' : 'transparent',
+                  isResizing === 'sidebar'
+                    ? 'var(--repo-accent, var(--vscode-text-accent))'
+                    : 'transparent',
                 cursor: 'col-resize',
                 borderRight: '1px solid var(--vscode-border)',
               }}
@@ -1679,7 +1697,9 @@ export default function RepositoryWorkspaceExplorer({
             style={{
               width: '4px',
               backgroundColor:
-                isResizing === 'rightPanel' ? 'var(--vscode-text-accent)' : 'transparent',
+                isResizing === 'rightPanel'
+                  ? 'var(--repo-accent, var(--vscode-text-accent))'
+                  : 'transparent',
               cursor: 'col-resize',
               borderLeft: '1px solid var(--vscode-border)',
             }}
@@ -1783,7 +1803,7 @@ export default function RepositoryWorkspaceExplorer({
               border: 'none',
               color:
                 mobileView === 'explorer'
-                  ? 'var(--vscode-text-accent)'
+                  ? 'var(--repo-accent, var(--vscode-text-accent))'
                   : 'var(--vscode-text-secondary)',
               cursor: 'pointer',
               padding: '8px',
@@ -1808,7 +1828,7 @@ export default function RepositoryWorkspaceExplorer({
               border: 'none',
               color:
                 mobileView === 'editor'
-                  ? 'var(--vscode-text-accent)'
+                  ? 'var(--repo-accent, var(--vscode-text-accent))'
                   : 'var(--vscode-text-secondary)',
               cursor: 'pointer',
               padding: '8px',
@@ -1833,7 +1853,7 @@ export default function RepositoryWorkspaceExplorer({
               border: 'none',
               color:
                 mobileView === 'guide'
-                  ? 'var(--vscode-text-accent)'
+                  ? 'var(--repo-accent, var(--vscode-text-accent))'
                   : 'var(--vscode-text-secondary)',
               cursor: 'pointer',
               padding: '8px',

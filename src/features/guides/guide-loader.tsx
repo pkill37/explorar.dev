@@ -17,7 +17,8 @@ export function loadGuideFromMarkdown(
     path: string,
     searchPattern?: string,
     scrollToLine?: number,
-    searchScope?: string[]
+    searchScope?: string[],
+    repoTarget?: { owner: string; repo: string }
   ) => void,
   openManPageInTab?: (name: string, section: string) => void
 ): GuideSection[] {

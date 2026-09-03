@@ -70,7 +70,7 @@ Key files: [Include/object.h](Include/object.h) defines `PyObject`, and [Objects
 
 ### The Global Interpreter Lock (GIL): Concurrency in CPython
 
-The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple native threads from executing Python bytecodes at once. While this simplifies memory management and makes CPython thread-safe, it also means that CPU-bound Python code cannot fully utilize multiple cores. Understanding the GIL reveals the trade-offs in CPython's design and why it exists despite its limitations.
+The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple native threads from executing Python bytecodes at once. While this simplifies memory management and makes CPython thread-safe, it also means that CPU-bound Python code cannot fully utilize multiple cores. Understanding the GIL reveals the trade-offs in CPython's design and why it exists despite its limitations. For the lower layers, compare glibc's [`pthread_create`](repo:bminor/glibc/nptl/pthread_create.c:pthread_create) with Linux's [`kernel_clone`](repo:torvalds/linux/kernel/fork.c:kernel_clone): a Python thread ultimately depends on both the POSIX user-space API and a kernel task.
 
 See [Doc/c-api/init.rst](Doc/c-api/init.rst) for interpreter initialization and the GIL lifecycle.
 
@@ -211,7 +211,7 @@ See [Doc/c-api/typeobj.rst](Doc/c-api/typeobj.rst) for the full type object slot
 
 ### Reference Counting: Automatic Memory Management
 
-CPython uses reference counting as its primary memory management mechanism. Every object maintains a count of how many references point to it. When this count reaches zero, the object is immediately deallocated. This provides deterministic memory management but requires careful handling to avoid premature deallocation or leaks.
+CPython uses reference counting as its primary memory management mechanism. Every object maintains a count of how many references point to it. When this count reaches zero, the object is immediately deallocated. This provides deterministic memory management but requires careful handling to avoid premature deallocation or leaks. The memory below CPython's object layer is a useful cross-reference: glibc's [`__libc_malloc`](repo:bminor/glibc/malloc/malloc.c:__libc_malloc) manages user-space heap storage, while Linux's [`do_mmap`](repo:torvalds/linux/mm/mmap.c:do_mmap) creates the virtual-memory areas that back larger mappings.
 
 The macros `Py_INCREF` and `Py_DECREF` in [Objects/object.c](Objects/object.c) and [Include/object.h](Include/object.h) implement reference counting.
 
@@ -405,6 +405,8 @@ Python's import system is responsible for finding, loading, and initializing mod
 Key files:
 - [Python/import.c](Python/import.c) — Import system implementation
 - [Lib/importlib/](Lib/importlib/) — Import library (Python implementation)
+
+Importing an extension or shared library also crosses repository boundaries: glibc's [`_dl_start`](repo:bminor/glibc/elf/rtld.c:_dl_start) begins dynamic-linker startup, and Linux's [`load_elf_binary`](repo:torvalds/linux/fs/exec.c:load_elf_binary) maps executable segments before control reaches user space.
 
 ### Module Objects: Namespaces as Objects
 

@@ -191,7 +191,7 @@ const TabBar: React.FC<TabBarProps> = ({
             alignSelf: 'center',
             border: '1px solid var(--vscode-border)',
             background: isPreviewMode
-              ? 'var(--vscode-text-accent, #0078d4)'
+              ? 'var(--repo-accent, var(--vscode-text-accent, #0078d4))'
               : 'var(--vscode-editor-background, #1e1e1e)',
             color: isPreviewMode
               ? 'var(--vscode-button-foreground, #fff)'

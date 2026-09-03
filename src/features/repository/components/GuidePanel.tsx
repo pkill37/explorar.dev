@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import BugReportWidget from '@/components/BugReportWidget';
 
 interface Section {
   id: string;
@@ -21,6 +22,12 @@ interface GuidePanelProps {
   onSidebarToggle?: () => void;
   sidebarToggleLabel?: string;
   sidebarToggleIcon?: React.ReactNode;
+}
+
+interface SelectionTooltipState {
+  text: string;
+  x: number;
+  y: number;
 }
 
 // Extract a display number from chapter id: "ch1" → 1, "chapter-3-foo" → 3, else null
@@ -107,6 +114,37 @@ export default function GuidePanel({
   );
 
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [selectionTooltip, setSelectionTooltip] = useState<SelectionTooltipState | null>(null);
+
+  const handleBodyMouseUp = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
+    // Let the browser finish updating the selection before reading it.
+    const body = event.currentTarget;
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      if (
+        !selection ||
+        selection.isCollapsed ||
+        !selection.toString().trim() ||
+        selection.rangeCount === 0
+      ) {
+        setSelectionTooltip(null);
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      if (!body.contains(range.commonAncestorContainer)) {
+        setSelectionTooltip(null);
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      setSelectionTooltip({
+        text: selection.toString().trim(),
+        x: Math.min(Math.max(rect.left + rect.width / 2, 72), window.innerWidth - 72),
+        y: Math.max(rect.top - 8, 8),
+      });
+    }, 0);
+  }, []);
 
   const handleShare = (platform: string) => {
     const shareText = `Explore source code with interactive learning on Explorar.dev! 🚀`;
@@ -198,7 +236,7 @@ export default function GuidePanel({
                 style={{
                   height: '100%',
                   width: `${activeIndex >= 0 ? ((activeIndex + 1) / total) * 100 : 0}%`,
-                  background: 'var(--vscode-text-accent, #0078d4)',
+                  background: 'var(--repo-accent, var(--vscode-text-accent, #0078d4))',
                   borderRadius: 1,
                   transition: 'width 0.3s ease',
                 }}
@@ -231,7 +269,8 @@ export default function GuidePanel({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
+                e.currentTarget.style.borderColor =
+                  'var(--repo-accent, var(--vscode-text-accent, #0078d4))';
                 e.currentTarget.style.color = 'var(--vscode-text-primary)';
               }}
               onMouseLeave={(e) => {
@@ -261,7 +300,8 @@ export default function GuidePanel({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
+                e.currentTarget.style.borderColor =
+                  'var(--repo-accent, var(--vscode-text-accent, #0078d4))';
                 e.currentTarget.style.color = 'var(--vscode-text-primary)';
               }}
               onMouseLeave={(e) => {
@@ -331,6 +371,7 @@ export default function GuidePanel({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        onMouseDown={() => setSelectionTooltip(null)}
         style={{
           flex: '1 1 0%',
           overflowY: 'auto',
@@ -342,7 +383,7 @@ export default function GuidePanel({
         {currentSections.map((s, idx) => {
           const isActive = s.id === currentActiveId;
           const num = chapterNumber(s.id) ?? idx + 1;
-          const ACCENT = 'var(--vscode-text-accent, #0078d4)';
+          const ACCENT = 'var(--repo-accent, var(--vscode-text-accent, #0078d4))';
 
           return (
             <div
@@ -444,7 +485,10 @@ export default function GuidePanel({
               {/* Chapter body */}
               {isActive && (
                 <div
+                  onMouseUp={handleBodyMouseUp}
+                  onKeyUp={handleBodyMouseUp}
                   style={{
+                    position: 'relative',
                     background: 'var(--vscode-bg-secondary)',
                     borderTop: `1px solid ${ACCENT}22`,
                     padding: '10px 10px 12px',
@@ -460,6 +504,42 @@ export default function GuidePanel({
           );
         })}
       </div>
+      {selectionTooltip && (
+        <div
+          role="toolbar"
+          aria-label="Selected text actions"
+          style={{
+            position: 'fixed',
+            left: selectionTooltip.x,
+            top: selectionTooltip.y,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 1100,
+            padding: 3,
+            border: '1px solid var(--vscode-border)',
+            borderRadius: 4,
+            background: 'var(--vscode-bg-tertiary)',
+            boxShadow: '0 3px 10px rgba(0,0,0,0.35)',
+          }}
+        >
+          <BugReportWidget
+            initialDescription={`I found an issue in the guide with this selected text:\n\n> ${selectionTooltip.text.replaceAll('\n', '\n> ')}`}
+            trigger={
+              <span
+                style={{
+                  display: 'block',
+                  padding: '3px 6px',
+                  color: 'var(--vscode-text-secondary)',
+                  fontSize: 10,
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                🐛 Report bug
+              </span>
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }

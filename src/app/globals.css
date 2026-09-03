@@ -235,7 +235,7 @@ body {
 }
 
 .monaco-editor .codelens-decoration a {
-  color: var(--vscode-textLink-foreground, #4a9eff);
+  color: var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff));
   text-decoration: none;
 }
 
@@ -326,7 +326,11 @@ body {
   height: 22px;
   padding: 0 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 24%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff)) 24%,
+    transparent
+  );
   font-size: 11px;
 }
 
@@ -411,8 +415,16 @@ body {
 
 .explorar-xref-row:hover,
 .explorar-xref-row.is-selected {
-  border-color: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 55%, transparent);
-  background: color-mix(in srgb, var(--vscode-textLink-foreground, #4a9eff) 14%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff)) 55%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff)) 14%,
+    transparent
+  );
 }
 
 .explorar-xref-row-line {
@@ -472,7 +484,40 @@ body {
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) a {
-  color: var(--vscode-textLink-foreground, #4a9eff);
+  color: var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff));
+  text-decoration: none;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a[data-repo-path],
+:where([data-markdown-preview], [data-guide-markdown]) a[data-man-page-name],
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link {
+  --xref-accent: var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff));
+  display: inline;
+  border: 1px solid color-mix(in srgb, var(--xref-accent) 34%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--xref-accent) 10%, transparent);
+  color: var(--xref-accent);
+  text-decoration: none;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a[data-man-page-name] {
+  --xref-accent: var(--repo-accent, #0ea5e9);
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a[data-repo-path] {
+  --xref-accent: var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff));
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a[data-repo-path]:hover,
+:where([data-markdown-preview], [data-guide-markdown]) a[data-man-page-name]:hover,
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link:hover {
+  border-color: color-mix(in srgb, var(--xref-accent) 58%, transparent);
+  background: color-mix(in srgb, var(--xref-accent) 17%, transparent);
   text-decoration: none;
 }
 
@@ -533,7 +578,7 @@ body {
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) blockquote {
-  border-left: 3px solid var(--vscode-textLink-foreground, #4a9eff);
+  border-left: 3px solid var(--repo-accent, var(--vscode-textLink-foreground, #4a9eff));
   padding-left: 1em;
   color: var(--vscode-descriptionForeground, #9da5b4);
 }
@@ -557,18 +602,23 @@ body {
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link {
-  text-decoration: none;
+  --inline-code-link-accent: var(--xref-accent, var(--vscode-textLink-foreground, #7db7ff));
+  padding: 0.08em 0.34em;
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link code {
-  color: var(--vscode-textLink-foreground, #7db7ff);
-  border-color: rgba(74, 158, 255, 0.28);
-  background: linear-gradient(180deg, rgba(74, 158, 255, 0.12), rgba(74, 158, 255, 0.06));
+  color: var(--inline-code-link-accent);
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link:hover code {
-  border-color: rgba(74, 158, 255, 0.48);
-  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.1));
+  background: transparent;
+}
+
+:where([data-markdown-preview], [data-guide-markdown]) a.inline-code-link[data-repo-owner] {
+  --inline-code-link-accent: var(--repo-accent, var(--vscode-textLink-foreground, #7db7ff));
 }
 
 :where([data-markdown-preview], [data-guide-markdown]) pre {
@@ -664,5 +714,5 @@ body {
 }
 
 .manual-page-preview a {
-  color: var(--vscode-text-accent, #4ea1ff);
+  color: var(--repo-accent, var(--vscode-text-accent, #4ea1ff));
 }

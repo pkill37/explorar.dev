@@ -26,6 +26,33 @@ test.describe('Quality Checks', () => {
     expect(accessibilityScanResults.violations).toEqual([]);
   });
 
+  test('guide links and status bar share repository accents', async ({ page }) => {
+    await page.goto('/cpython', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('[data-guide-markdown]').first()).toBeVisible({ timeout: 30000 });
+
+    const localLink = page.locator('[data-guide-markdown] a[data-repo-path]').first();
+    await expect(localLink).toBeVisible();
+    await expect
+      .poll(() => localLink.evaluate((element) => getComputedStyle(element).color))
+      .toBe('rgb(245, 158, 11)');
+
+    const glibcLink = page.locator(
+      '[data-guide-markdown] a[data-repo-owner="bminor"][data-repo-name="glibc"]'
+    );
+    await expect(glibcLink.first()).toBeVisible();
+    await expect
+      .poll(() => glibcLink.first().evaluate((element) => getComputedStyle(element).color))
+      .toBe('rgb(220, 38, 38)');
+
+    await expect
+      .poll(() =>
+        page
+          .locator('.cursor-statusbar')
+          .evaluate((element) => getComputedStyle(element).backgroundColor)
+      )
+      .toBe('rgb(245, 158, 11)');
+  });
+
   test('all internal links are valid', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const links = page.locator('a[href^="/"]');

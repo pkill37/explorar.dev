@@ -81,6 +81,8 @@ Kernel: sys_write() in fs/read_write.c
 Hardware: Terminal output
 ```
 
+The last two steps cross into the kernel: glibc's [`read` wrapper](repo:bminor/glibc/sysdeps/unix/sysv/linux/read.c:__libc_read) prepares the user-space call, while Linux's [`ksys_write`](repo:torvalds/linux/fs/read_write.c:ksys_write) handles the corresponding kernel-side write path. Following both links makes the system-call boundary concrete instead of treating libc as a black box.
+
 ### Key Concepts Deep Dive
 
 **1. System Call Wrappers**
@@ -253,6 +255,8 @@ fileRecommendations:
 ---
 
 glibc's malloc is one of the most sophisticated memory allocators in existence. Understanding it reveals fundamental concepts in systems programming: memory organization, performance optimization, thread safety, and fragmentation management.
+
+Large allocations eventually meet the kernel's virtual-memory machinery. Compare glibc's [`__libc_malloc`](malloc/malloc.c:__libc_malloc) with Linux's [`vm_mmap_pgoff`](repo:torvalds/linux/mm/mmap.c:vm_mmap_pgoff) to follow that handoff from a user-space allocator to a process mapping.
 
 ### malloc Philosophy: Balancing Speed, Space, and Safety
 

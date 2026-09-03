@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { notFound } from 'next/navigation';
+import { useState, useCallback, useMemo, useRef, useEffect, type CSSProperties } from 'react';
+import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import RepositoryWorkspaceExplorer from './components/RepositoryWorkspaceExplorer';
 import { EntityView } from './components/EntityView';
 import GuidePanel from './components/GuidePanel';
@@ -11,6 +11,7 @@ import { getProjectConfig, createGenericGuide } from '@/lib/project-guides';
 import { loadGuideFromMarkdown } from '@/features/guides/guide-loader';
 import { debugLog } from '@/lib/browser-debug';
 import { useRepository } from '@/contexts/RepositoryContext';
+import { getCuratedRepoAccent, getCuratedRepoPath } from '@/lib/curated-repos';
 import {
   getDefaultCuratedRepoSourceMode,
   hasConfiguredR2BucketBaseUrl,
@@ -64,6 +65,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   const projectConfig = getProjectConfig(owner, repo);
   if (!projectConfig) notFound();
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
   const { currentBranch } = useRepository();
   const [isMounted, setIsMounted] = useState(false);
   const [mode, setMode] = useState<'editor' | 'search' | 'entities'>('editor');
@@ -99,14 +103,57 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   // Keep EntityView mounted once first activated to preserve per-chapter cache
   const [entitiesMounted, setEntitiesMounted] = useState(false);
 
+  const navigateToRepoTarget = useCallback(
+    (
+      fileId: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      repoTarget?: { owner: string; repo: string }
+    ) => {
+      if (repoTarget && (repoTarget.owner !== owner || repoTarget.repo !== repo)) {
+        const params = new URLSearchParams({ file: fileId });
+        if (searchPattern) params.set('search', searchPattern);
+        if (typeof scrollToLine === 'number') params.set('line', String(scrollToLine));
+        try {
+          sessionStorage.setItem(
+            'explorar:repo-switch-flash',
+            JSON.stringify({
+              from: `${owner}/${repo}`,
+              to: `${repoTarget.owner}/${repoTarget.repo}`,
+              ts: Date.now(),
+            })
+          );
+        } catch {
+          // Ignore storage failures; the navigation itself still succeeds.
+        }
+        router.push(`${getCuratedRepoPath(repoTarget.owner, repoTarget.repo)}?${params}`);
+        return true;
+      }
+
+      return false;
+    },
+    [owner, repo, router]
+  );
+
   const handleEnterFile = useCallback(
-    (fileId: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
+    (
+      fileId: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      searchScope?: string[],
+      repoTarget?: { owner: string; repo: string }
+    ) => {
       debugLog('[explorar:open-file] guide-request', {
         fileId,
         searchPattern,
         scrollToLine,
         searchScope,
+        repoTarget,
       });
+      if (navigateToRepoTarget(fileId, searchPattern, scrollToLine, repoTarget)) {
+        return;
+      }
+
       // Paired nodes encode both paths as "primary|||header"
       const paths = fileId.includes('|||') ? fileId.split('|||') : null;
       const navigationNonce = createNavigationNonce();
@@ -121,7 +168,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
       );
       setMode('editor');
     },
-    []
+    [navigateToRepoTarget]
   );
 
   const handleEnterManPage = useCallback((name: string, section: string) => {
@@ -135,13 +182,24 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
   }, []);
 
   const handleOpenFileInCurrentMode = useCallback(
-    (fileId: string, searchPattern?: string, scrollToLine?: number, searchScope?: string[]) => {
+    (
+      fileId: string,
+      searchPattern?: string,
+      scrollToLine?: number,
+      searchScope?: string[],
+      repoTarget?: { owner: string; repo: string }
+    ) => {
       debugLog('[explorar:open-file] context-request', {
         fileId,
         searchPattern,
         scrollToLine,
         searchScope,
+        repoTarget,
       });
+      if (navigateToRepoTarget(fileId, searchPattern, scrollToLine, repoTarget)) {
+        return;
+      }
+
       const paths = fileId.includes('|||') ? fileId.split('|||') : null;
       const navigationNonce = createNavigationNonce();
       setInitialFile(
@@ -154,8 +212,29 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
         }
       );
     },
-    []
+    [navigateToRepoTarget]
   );
+
+  useEffect(() => {
+    const filePath = searchParams.get('file')?.trim();
+    if (!filePath) {
+      return;
+    }
+
+    const lineValue = searchParams.get('line');
+    const parsedLine = lineValue ? parseInt(lineValue, 10) : Number.NaN;
+    const timeoutId = window.setTimeout(() => {
+      setInitialFile({
+        path: filePath,
+        searchPattern: searchParams.get('search') || undefined,
+        scrollToLine: Number.isFinite(parsedLine) ? parsedLine : undefined,
+        navigationNonce: createNavigationNonce(),
+      });
+      setMode('editor');
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [queryString, searchParams]);
 
   // ── Guide sections ──────────────────────────────────────────────────────────
   // loadGuideFromMarkdown is synchronous (all guide docs are bundled at build time),
@@ -179,6 +258,7 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     [projectConfig, guideSections]
   );
   const repoLabel = `${owner}/${repo}`;
+  const repoAccent = getCuratedRepoAccent(owner, repo);
   const statusBranch = currentBranch || projectConfig.defaultRevision;
   const showDevSourceMode = isLocalFilesystemCorpusAvailable();
   const isR2SourceConfigured = hasConfiguredR2BucketBaseUrl();
@@ -299,15 +379,20 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
     <main
       className={`vscode-theme-${workspaceTheme}`}
       suppressHydrationWarning
-      style={{
-        width: '100vw',
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        background: 'var(--vscode-bg-primary)',
-        color: 'var(--vscode-text-primary)',
-      }}
+      style={
+        {
+          width: '100vw',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          background: 'var(--vscode-bg-primary)',
+          color: 'var(--vscode-text-primary)',
+          '--repo-accent': repoAccent,
+          '--repo-selection-bg':
+            'color-mix(in srgb, var(--repo-accent, var(--vscode-text-accent)) 24%, var(--vscode-bg-primary))',
+        } as CSSProperties
+      }
     >
       <h1
         suppressHydrationWarning
@@ -375,9 +460,11 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
                   borderRadius: 8,
                   border: '1px solid',
                   borderColor: isActive
-                    ? 'var(--vscode-text-accent, #0078d4)'
+                    ? 'var(--repo-accent, var(--vscode-text-accent, #0078d4))'
                     : 'var(--vscode-border)',
-                  background: isActive ? 'var(--vscode-bg-selected)' : 'var(--vscode-bg-tertiary)',
+                  background: isActive
+                    ? 'var(--repo-selection-bg, var(--vscode-bg-selected))'
+                    : 'var(--vscode-bg-tertiary)',
                   color: isActive ? 'var(--vscode-text-primary)' : 'var(--vscode-text-secondary)',
                   cursor: 'pointer',
                   display: 'flex',
@@ -386,7 +473,9 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
                   fontFamily: 'monospace',
                   fontSize: tab.id === 'editor' ? 15 : 21,
                   fontWeight: 700,
-                  boxShadow: isActive ? '0 0 0 1px rgba(0,120,212,0.25)' : 'none',
+                  boxShadow: isActive
+                    ? '0 0 0 1px color-mix(in srgb, var(--repo-accent, #0078d4) 25%, transparent)'
+                    : 'none',
                 }}
               >
                 {tab.label}
@@ -546,7 +635,8 @@ export default function RepositoryExplorerClient({ owner, repo }: RepositoryExpl
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                  e.currentTarget.style.borderColor = 'var(--vscode-text-accent, #0078d4)';
+                  e.currentTarget.style.borderColor =
+                    'var(--repo-accent, var(--vscode-text-accent, #0078d4))';
                   e.currentTarget.style.color = 'var(--vscode-text-primary)';
                 }}
                 onMouseLeave={(e) => {

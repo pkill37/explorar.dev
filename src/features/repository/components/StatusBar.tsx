@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import BugReportWidget from '@/components/BugReportWidget';
+import { getCuratedRepoAccent } from '@/lib/curated-repos';
 import type { CuratedRepoSourceMode } from '@/lib/repo-static';
 
 type WorkspaceTheme = 'dark' | 'light';
@@ -40,9 +41,12 @@ const StatusBar: React.FC<StatusBarProps> = ({
   workspaceTheme,
   onWorkspaceThemeChange,
 }) => {
+  const [repoSwitchFlash, setRepoSwitchFlash] = useState(false);
   const branchLabel = branch ? formatDisplayBranch(branch) : null;
   const githubRepoUrl = repoLabel ? `https://github.com/${repoLabel}` : null;
   const githubTreeUrl = repoLabel && branch ? buildGitHubTreeUrl(repoLabel, branch) : null;
+  const [repoOwner, repoName] = repoLabel?.split('/') ?? [];
+  const repoAccent = repoOwner && repoName ? getCuratedRepoAccent(repoOwner, repoName) : undefined;
   const sourceLabel =
     sourceMode === 'local-filesystem'
       ? 'Local staged corpus'
@@ -50,13 +54,56 @@ const StatusBar: React.FC<StatusBarProps> = ({
         ? 'R2'
         : null;
 
+  useEffect(() => {
+    if (!repoLabel || typeof window === 'undefined') {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      try {
+        const stored = sessionStorage.getItem('explorar:repo-switch-flash');
+        if (!stored) {
+          setRepoSwitchFlash(false);
+          return;
+        }
+
+        const parsed = JSON.parse(stored) as { to?: string; ts?: number };
+        setRepoSwitchFlash(parsed.to === repoLabel);
+      } catch {
+        setRepoSwitchFlash(false);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [repoLabel]);
+
+  useEffect(() => {
+    if (!repoLabel || typeof window === 'undefined' || !repoSwitchFlash) {
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem('explorar:repo-switch-flash');
+    } catch {
+      // Ignore storage failures; the visual cue is still time-boxed below.
+    }
+
+    const timeoutId = window.setTimeout(() => setRepoSwitchFlash(false), 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, [repoLabel, repoSwitchFlash]);
+
   return (
-    <div className="cursor-statusbar">
+    <div
+      className="cursor-statusbar"
+      style={repoAccent ? ({ '--repo-accent': repoAccent } as React.CSSProperties) : undefined}
+    >
       <div className="cursor-statusbar-left">
         {repoLabel && (
           <>
             <a
-              className="cursor-statusbar-item cursor-statusbar-link"
+              className={`cursor-statusbar-item cursor-statusbar-link${
+                repoSwitchFlash ? ' cursor-statusbar-link--repo-flash' : ''
+              } cursor-statusbar-repo`}
               href={githubRepoUrl ?? undefined}
               target="_blank"
               rel="noopener noreferrer"

@@ -2,6 +2,7 @@
 import React from 'react';
 import { getCuratedGuideByRepo } from '@/features/guides/docs-loader';
 import { parseRepoNavigationTarget } from '@/lib/markdown-navigation';
+import { getCuratedRepoAccent, getCuratedRepoDisplayName } from '@/lib/curated-repos';
 
 export interface FileRecommendation {
   path: string;
@@ -69,7 +70,13 @@ export function createFileRecommendationsComponent(
   docs: FileRecommendation[] = [],
   source: FileRecommendation[] = [],
   directories: FileRecommendation[] = [],
-  onFileClick: (path: string, searchPattern?: string, scrollToLine?: number) => void
+  onFileClick: (
+    path: string,
+    searchPattern?: string,
+    scrollToLine?: number,
+    searchScope?: string[],
+    repoTarget?: { owner: string; repo: string }
+  ) => void
 ) {
   const normalizeDirectoryPath = (path: string) => (path.endsWith('/') ? path : `${path}/`);
   const orderedItems: RecommendationItem[] =
@@ -108,7 +115,17 @@ export function createFileRecommendationsComponent(
   const getItemPath = (file: FileRecommendation) =>
     file.type === 'directory' ? normalizeDirectoryPath(file.path) : file.path;
 
+  const getItemTarget = (file: FileRecommendation) =>
+    parseRepoNavigationTarget(getItemPath(file), undefined, {
+      title: file.description,
+    });
+
   const getItemBadge = (file: FileRecommendation) => {
+    const target = getItemTarget(file);
+    if (target?.owner && target.repo) {
+      return getCuratedRepoDisplayName(target.owner, target.repo);
+    }
+
     switch (file.type) {
       case 'docs':
         return 'DOC';
@@ -117,6 +134,13 @@ export function createFileRecommendationsComponent(
       default:
         return 'FILE';
     }
+  };
+
+  const getItemAccent = (file: FileRecommendation) => {
+    const target = getItemTarget(file);
+    return target?.owner && target.repo
+      ? getCuratedRepoAccent(target.owner, target.repo)
+      : undefined;
   };
 
   return (
@@ -170,11 +194,17 @@ export function createFileRecommendationsComponent(
                   <button
                     key={`${group.type}-${index + 1}-${file.path}`}
                     onClick={() => {
-                      const target = parseRepoNavigationTarget(getItemPath(file), undefined, {
-                        title: file.description,
-                      });
+                      const target = getItemTarget(file);
                       if (target) {
-                        onFileClick(target.path, target.searchPattern, target.scrollToLine);
+                        onFileClick(
+                          target.path,
+                          target.searchPattern,
+                          target.scrollToLine,
+                          undefined,
+                          target.owner && target.repo
+                            ? { owner: target.owner, repo: target.repo }
+                            : undefined
+                        );
                         return;
                       }
                       onFileClick(getItemPath(file));
@@ -232,8 +262,11 @@ export function createFileRecommendationsComponent(
                           <span
                             style={{
                               fontSize: '10px',
-                              color: 'var(--vscode-descriptionForeground, #999)',
-                              border: '1px solid var(--vscode-panel-border, #3e3e3e)',
+                              color:
+                                getItemAccent(file) ?? 'var(--vscode-descriptionForeground, #999)',
+                              border: `1px solid ${
+                                getItemAccent(file) ?? 'var(--vscode-panel-border, #3e3e3e)'
+                              }`,
                               borderRadius: '999px',
                               padding: '0 5px',
                               textTransform: 'uppercase',
