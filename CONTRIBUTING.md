@@ -109,3 +109,7 @@ tsx scripts/download-repos.ts --only=torvalds/linux --depth=1
 
 Use `tsx scripts/download-repos.ts --list` to see available curated repositories. Restart the
 development server after changing environment variables.
+
+Repository downloads and code indexing run as separate bounded-concurrency phases. Defaults are
+selected from the available CPU count, and can be overridden for benchmarking or constrained
+machines with `REPO_DOWNLOAD_CONCURRENCY` and `CODE_INDEX_CONCURRENCY`.

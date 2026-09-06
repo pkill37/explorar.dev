@@ -5,14 +5,11 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
-import {
-  buildCodeIndex,
-  type CodeIndexBuildLogger,
-  type CodeIndexBuildStats,
-} from './code-index-builder';
+import { type CodeIndexBuildLogger, type CodeIndexBuildStats } from './code-index-builder';
 import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
 import { runPhase } from './tqdm';
@@ -51,10 +48,15 @@ type BuildLogger = CodeIndexBuildLogger & {
 };
 
 const REPOS_DIR = CORPUS_REPOS_DIR;
+const TSX_COMMAND = fs.existsSync(path.join(process.cwd(), 'node_modules', '.bin', 'tsx'))
+  ? path.join(process.cwd(), 'node_modules', '.bin', 'tsx')
+  : 'tsx';
 
-// Max simultaneous git clones — GitHub allows a few concurrent connections.
-const DOWNLOAD_CONCURRENCY = 3;
-const DEFAULT_CODE_INDEX_CONCURRENCY = 1;
+const DEFAULT_DOWNLOAD_CONCURRENCY = Math.min(
+  8,
+  Math.max(4, Math.floor(os.availableParallelism() * 0.75))
+);
+const DEFAULT_CODE_INDEX_CONCURRENCY = Math.min(4, Math.max(1, os.availableParallelism() - 1));
 const DEFAULT_GIT_RETRY_ATTEMPTS = 3;
 const DEFAULT_GIT_RETRY_BASE_DELAY_MS = 2_000;
 
@@ -193,7 +195,7 @@ async function runCommand(
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'ignore', 'pipe'],
       env: {
         ...process.env,
         ...extraEnv,
@@ -241,6 +243,10 @@ function getGitRetryBaseDelayMs(): number {
 
 function getCodeIndexConcurrency(): number {
   return readPositiveIntEnv('CODE_INDEX_CONCURRENCY', DEFAULT_CODE_INDEX_CONCURRENCY);
+}
+
+function getDownloadConcurrency(): number {
+  return readPositiveIntEnv('REPO_DOWNLOAD_CONCURRENCY', DEFAULT_DOWNLOAD_CONCURRENCY);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -326,35 +332,23 @@ async function runWithConcurrency(tasks: (() => Promise<void>)[], limit: number)
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
-let activeCodeIndexBuilds = 0;
-const pendingCodeIndexBuilds: Array<() => void> = [];
-
-async function acquireCodeIndexSlot(): Promise<() => void> {
-  const limit = getCodeIndexConcurrency();
-  if (activeCodeIndexBuilds >= limit) {
-    await new Promise<void>((resolve) => {
-      pendingCodeIndexBuilds.push(resolve);
-    });
-  }
-
-  activeCodeIndexBuilds++;
-  return () => {
-    activeCodeIndexBuilds--;
-    pendingCodeIndexBuilds.shift()?.();
-  };
-}
-
-async function buildCodeIndexWithLimit(
+async function buildCodeIndexInWorker(
   repoDir: string,
-  tree: FileNode[],
-  buildSignature: string,
-  logger: CodeIndexBuildLogger
+  logger: Pick<BuildLogger, 'log' | 'warn'>
 ): Promise<CodeIndexBuildStats> {
-  const release = await acquireCodeIndexSlot();
+  const statsPath = path.join(
+    os.tmpdir(),
+    `explorar-code-index-${process.pid}-${path.basename(path.dirname(repoDir))}-${path.basename(repoDir)}.json`
+  );
   try {
-    return buildCodeIndex(repoDir, tree, buildSignature, logger);
+    await runCommand(TSX_COMMAND, ['scripts/code-index-worker.ts', repoDir, statsPath]);
+    return JSON.parse(fs.readFileSync(statsPath, 'utf8')) as CodeIndexBuildStats;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`   Code index worker failed: ${message}`);
+    throw error;
   } finally {
-    release();
+    if (fs.existsSync(statsPath)) fs.rmSync(statsPath, { force: true });
   }
 }
 
@@ -701,11 +695,16 @@ function createManifest(
 /**
  * Download and extract a repository
  */
-async function downloadRepo(
+type PreparedRepo = {
+  config: CuratedRepoConfig;
+  repoDir: string;
+};
+
+async function prepareRepo(
   config: CuratedRepoConfig,
   depth: number = 1,
   logger: BuildLogger = immediateLogger
-): Promise<RepoCodeIndexStats | null> {
+): Promise<PreparedRepo | null> {
   const { owner, repo, revision } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, revision);
   logger.log(`\nRepo ${owner}/${repo}@${revision}`);
@@ -733,16 +732,10 @@ async function downloadRepo(
     const tree = buildFileTree(repoDir);
     const buildSignature = getCorpusBuildSignature(config, tree);
     createManifest(repoDir, tree, buildSignature, logger);
-    const codeIndexStats = await buildCodeIndexWithLimit(repoDir, tree, buildSignature, logger);
     logger.log(`   Tree: ${tree.length} root entries`);
 
     logger.log(`ready: ${owner}/${repo}@${revision}`);
-    return {
-      ...codeIndexStats,
-      owner,
-      repo,
-      revision,
-    };
+    return { config, repoDir };
   } catch (error) {
     if (fs.existsSync(repoDir)) {
       fs.rmSync(repoDir, { recursive: true, force: true });
@@ -751,6 +744,36 @@ async function downloadRepo(
     logger.error(`ERROR ${owner}/${repo}@${revision}: ${message}`);
     throw error;
   }
+}
+
+async function indexPreparedRepo(
+  prepared: PreparedRepo,
+  logger: BuildLogger = immediateLogger
+): Promise<RepoCodeIndexStats> {
+  const { config, repoDir } = prepared;
+  try {
+    const codeIndexStats = await buildCodeIndexInWorker(repoDir, logger);
+    return {
+      ...codeIndexStats,
+      owner: config.owner,
+      repo: config.repo,
+      revision: config.revision,
+    };
+  } catch (error) {
+    if (fs.existsSync(repoDir)) {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    }
+    throw error;
+  }
+}
+
+async function downloadRepo(
+  config: CuratedRepoConfig,
+  depth: number = 1,
+  logger: BuildLogger = immediateLogger
+): Promise<RepoCodeIndexStats | null> {
+  const prepared = await prepareRepo(config, depth, logger);
+  return prepared ? indexPreparedRepo(prepared, logger) : null;
 }
 
 /**
@@ -762,8 +785,9 @@ async function main() {
   console.log('Repository download process starting...');
   console.log(`Target directory: ${REPOS_DIR}`);
   console.log(`Clone mode: --filter=blob:none --single-branch --depth ${opts.depth}`);
-  console.log(`Clone concurrency: ${DOWNLOAD_CONCURRENCY}`);
+  console.log(`Download concurrency: ${getDownloadConcurrency()}`);
   console.log(`Code index concurrency: ${getCodeIndexConcurrency()}`);
+  console.log(`CPU parallelism: ${os.availableParallelism()}`);
   console.log(
     `Retry policy: ${getGitRetryAttempts()} attempt(s) with exponential backoff from ${getGitRetryBaseDelayMs()}ms`
   );
@@ -796,29 +820,53 @@ async function main() {
   }
 
   let completedRepos = 0;
-  const tasks = finalRepos.map((repo) => async () => {
+  const preparedRepos: PreparedRepo[] = [];
+  const downloadTasks = finalRepos.map((repo) => async () => {
     const logger = createRepoLogger();
     try {
       logger.log(`\nStarting ${repo.owner}/${repo.repo}@${repo.revision}`);
-      const stats = await downloadRepo(repo, opts.depth, logger);
-      if (stats) {
-        codeIndexStats.push(stats);
+      const prepared = await prepareRepo(repo, opts.depth, logger);
+      if (prepared) {
+        preparedRepos.push(prepared);
       }
     } catch {
       // Error already logged inside the repo transcript; continue with remaining repos.
     } finally {
       logger.flush();
       completedRepos++;
-      console.log(`   Progress: ${completedRepos}/${finalRepos.length} repos processed`);
+      console.log(`   Download progress: ${completedRepos}/${finalRepos.length} repos processed`);
     }
   });
 
   await runPhase(
     '📦 Curated repo sync',
     async () => {
-      await runWithConcurrency(tasks, DOWNLOAD_CONCURRENCY);
+      await runWithConcurrency(downloadTasks, getDownloadConcurrency());
     },
-    `${finalRepos.length} repos @ concurrency ${DOWNLOAD_CONCURRENCY}`
+    `${finalRepos.length} repos @ download concurrency ${getDownloadConcurrency()}`
+  );
+
+  let indexedRepos = 0;
+  const indexTasks = preparedRepos.map((prepared) => async () => {
+    const logger = createRepoLogger();
+    try {
+      const stats = await indexPreparedRepo(prepared, logger);
+      codeIndexStats.push(stats);
+    } catch {
+      // Error is already captured in the repository transcript.
+    } finally {
+      logger.flush();
+      indexedRepos++;
+      console.log(`   Index progress: ${indexedRepos}/${preparedRepos.length} repos processed`);
+    }
+  });
+
+  await runPhase(
+    '⚙️ Build code indexes',
+    async () => {
+      await runWithConcurrency(indexTasks, getCodeIndexConcurrency());
+    },
+    `${preparedRepos.length} repos @ index concurrency ${getCodeIndexConcurrency()}`
   );
 
   const summary = summarizeCodeIndexStats(codeIndexStats);

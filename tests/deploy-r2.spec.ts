@@ -9,6 +9,9 @@ import {
   buildRepoManifestKey,
   buildRepoRequiredArtifactKeys,
   buildRepoSyncArgs,
+  buildBulkCorpusSyncArgs,
+  buildCanonicalDeploymentPayload,
+  computeDeploymentSignature,
   buildManPagesBucketPrefix,
   buildManPagesManifestKey,
   buildManPagesSyncArgs,
@@ -64,6 +67,49 @@ test.describe('R2 deploy', () => {
       '--size-only',
     ]);
     expect(args).not.toContain('--delete');
+  });
+
+  test('builds one non-destructive bulk corpus sync', () => {
+    expect(buildBulkCorpusSyncArgs('/tmp/repos', 'explorar-repos')).toEqual([
+      's3',
+      'sync',
+      '/tmp/repos/',
+      's3://explorar-repos/repos/',
+      '--no-progress',
+      '--size-only',
+    ]);
+  });
+
+  test('canonical deployment signatures are order-independent but content-sensitive', () => {
+    const repoA = {
+      id: 'a',
+      owner: 'owner-a',
+      repo: 'repo-a',
+      revision: 'one',
+      buildSignature: 'build-a',
+    };
+    const repoB = {
+      id: 'b',
+      owner: 'owner-b',
+      repo: 'repo-b',
+      revision: 'two',
+      buildSignature: 'build-b',
+    };
+    const payload = buildCanonicalDeploymentPayload([repoA, repoB], 'man-a');
+    expect(computeDeploymentSignature(payload)).toBe(
+      computeDeploymentSignature(buildCanonicalDeploymentPayload([repoB, repoA], 'man-a'))
+    );
+    expect(
+      computeDeploymentSignature(
+        buildCanonicalDeploymentPayload([{ ...repoA, revision: 'changed' }, repoB], 'man-a')
+      )
+    ).not.toBe(computeDeploymentSignature(payload));
+    expect(
+      computeDeploymentSignature(buildCanonicalDeploymentPayload([repoA, repoB], 'man-b'))
+    ).not.toBe(computeDeploymentSignature(payload));
+    expect(
+      computeDeploymentSignature(buildCanonicalDeploymentPayload([repoA, repoB], 'man-a', 2))
+    ).not.toBe(computeDeploymentSignature(payload));
   });
 
   test('corpus build signatures change when the generated tree changes', () => {
