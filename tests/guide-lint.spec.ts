@@ -21,6 +21,7 @@ import {
   validateGuideMarkdown,
 } from '../scripts/validate-guides';
 import {
+  getExternalRepoIconHtml,
   parseMarkdownNavigationTarget,
   parseRepoNavigationTarget,
 } from '../src/lib/markdown-navigation';
@@ -112,6 +113,18 @@ test.describe('guide reference linting', () => {
       searchPattern: 'task_create_internal',
     });
     expect(parseRepoNavigationTarget('repo:not-curated/example/kernel.c')).toBeNull();
+  });
+
+  test('marks only cross-repository references with an external-link icon', () => {
+    const localTarget = parseRepoNavigationTarget('kernel/sched/core.c');
+    const externalTarget = parseRepoNavigationTarget(
+      'repo:apple-oss-distributions/xnu/osfmk/kern/task.c'
+    );
+
+    expect(localTarget).not.toBeNull();
+    expect(externalTarget).not.toBeNull();
+    expect(getExternalRepoIconHtml(localTarget!)).toBe('');
+    expect(getExternalRepoIconHtml(externalTarget!)).toContain('external-repo-reference-icon');
   });
 
   test('keeps the Linux, glibc, and CPython cross-learning links resolvable', () => {

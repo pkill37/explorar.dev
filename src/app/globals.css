@@ -621,6 +621,20 @@ body {
   --inline-code-link-accent: var(--repo-accent, var(--vscode-textLink-foreground, #7db7ff));
 }
 
+:where([data-markdown-preview], [data-guide-markdown]) .external-repo-reference-icon {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 0.28em;
+  vertical-align: -0.08em;
+  pointer-events: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
 :where([data-markdown-preview], [data-guide-markdown]) pre {
   overflow-x: auto;
   background: rgba(0, 0, 0, 0.18);

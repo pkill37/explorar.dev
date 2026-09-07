@@ -9,6 +9,7 @@ import { debugLog } from '@/lib/browser-debug';
 import {
   decodeHtmlEntities,
   escapeHtml,
+  getExternalRepoIconHtml,
   getManualPageLinkAttributes,
   getRepoLinkAttributes,
   hasUnsafeScheme,
@@ -71,7 +72,7 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
     }
 
     if (navigationTarget?.kind === 'repo-file') {
-      return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
+      return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${getExternalRepoIconHtml(navigationTarget)}${linkText}</a>`;
     }
 
     const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
@@ -97,7 +98,7 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
       return codeHtml;
     }
 
-    return `<a href="#" class="inline-code-link" ${getRepoLinkAttributes(repoTarget)}>${codeHtml}</a>`;
+    return `<a href="#" class="inline-code-link" ${getRepoLinkAttributes(repoTarget)}>${getExternalRepoIconHtml(repoTarget)}${codeHtml}</a>`;
   };
 
   return renderer;

@@ -281,3 +281,16 @@ export function getRepoLinkAttributes(target: RepoNavigationTarget): string {
 
   return attributes.join(' ');
 }
+
+/** Cross-repository references carry an explicit owner/repository target. */
+export function isExternalRepoReference(target: RepoNavigationTarget): boolean {
+  return Boolean(target.owner && target.repo);
+}
+
+export function getExternalRepoIconHtml(target: RepoNavigationTarget): string {
+  if (!isExternalRepoReference(target)) {
+    return '';
+  }
+
+  return `<svg class="external-repo-reference-icon" aria-hidden="true" viewBox="0 0 16 16" focusable="false"><path d="M9.5 2H14v4.5M13.5 2.5 8 8m2-6H4.5A1.5 1.5 0 0 0 3 3.5v8A1.5 1.5 0 0 0 4.5 13h8a1.5 1.5 0 0 0 1.5-1.5V8" /></svg>`;
+}

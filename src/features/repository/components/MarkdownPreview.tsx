@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import {
   decodeHtmlEntities,
   escapeHtml,
+  getExternalRepoIconHtml,
   getManualPageLinkAttributes,
   getRepoLinkAttributes,
   hasUnsafeScheme,
@@ -63,7 +64,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         return `<a href="#" ${getManualPageLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
       }
       if (navigationTarget?.kind === 'repo-file') {
-        return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${linkText}</a>`;
+        return `<a href="#" ${getRepoLinkAttributes(navigationTarget)}${titleAttr}>${getExternalRepoIconHtml(navigationTarget)}${linkText}</a>`;
       }
 
       const targetAttr = isExternalHref(safeHref) ? ' target="_blank" rel="noreferrer"' : '';
@@ -83,7 +84,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         return codeHtml;
       }
 
-      return `<a href="#" class="inline-code-link" ${getRepoLinkAttributes(repoTarget)}>${codeHtml}</a>`;
+      return `<a href="#" class="inline-code-link" ${getRepoLinkAttributes(repoTarget)}>${getExternalRepoIconHtml(repoTarget)}${codeHtml}</a>`;
     };
 
     renderer.image = (href, title, text) => {
