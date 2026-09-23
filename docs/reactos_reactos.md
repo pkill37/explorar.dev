@@ -16,7 +16,7 @@ defaultOpenIds:
 
 # ReactOS In The Mind
 
-> This is not a guide to reproducing Windows. It is a guide to reading ReactOS as a deliberately layered compatibility tree with its own build, kernel, and user-mode boundaries.
+> This is not a guide to reproducing Windows. This guide reads ReactOS as a layered compatibility tree with its own build, kernel, and user-mode boundaries.
 
 ReactOS is easiest to understand as an operating system that is trying to be structurally familiar to the Windows NT family while remaining an independent implementation. That means the important questions are architectural: where the kernel starts, where Win32 begins, how the build composes the tree, and which directories correspond to kernel, user mode, and hardware support.
 
@@ -46,7 +46,7 @@ fileRecommendations:
 
 ReactOS uses the build system as part of the architecture. `README.md` explains the project goals and how the tree is meant to be built. `INSTALL` adds the practical setup constraints. `CMakeLists.txt` and the `configure` entry points show that the repository is composed around generated build files rather than a single hand-written makefile.
 
-That matters because compatibility work is not just code; it is also module selection, platform configuration, and build-time composition. If you understand how the tree is configured, you already understand a large part of how ReactOS behaves.
+That matters because compatibility work includes code, module selection, platform configuration, and build-time composition. If you understand how the tree is configured, you already understand a large part of how ReactOS behaves.
 
 ---
 id: ch2
@@ -66,7 +66,7 @@ fileRecommendations:
 
 ReactOS keeps the core operating system split into explicit layers. `ntoskrnl/` is where the NT-style kernel and executive live. `hal/` isolates hardware-dependent behavior so the kernel can remain portable across targets. `boot/` is where the system gets from firmware and loader state into the kernel’s control flow.
 
-This split is not cosmetic. It is how the project separates portability from policy and keeps compatibility work localized. When debugging boot or kernel behavior, start by determining which layer owns the failure.
+This split is not cosmetic. The split separates portability from policy and keeps compatibility work localized. When debugging boot or kernel behavior, start by determining which layer owns the failure.
 
 ---
 id: ch3
@@ -84,7 +84,7 @@ fileRecommendations:
       type: source
 ---
 
-ReactOS implements a large part of Windows compatibility above the kernel. `dll/` is the obvious place where Win32 APIs, system DLLs, and support libraries accumulate. `base/` holds foundational code that many layers reuse. `modules/` shows how the system is assembled into bootable or runnable pieces.
+ReactOS implements a large part of Windows compatibility above the kernel. `dll/` is the obvious place where Win32 APIs, system DLLs, and support libraries accumulate. `base/` holds foundational code reused across layers. `modules/` shows how the system is assembled into bootable or runnable pieces.
 
 This layer is where compatibility becomes visible to applications. Kernel correctness matters, but user-mode behavior is where most Windows-facing expectations are actually tested.
 
@@ -104,7 +104,7 @@ fileRecommendations:
       type: source
 ---
 
-ReactOS has to speak to real hardware, not just emulate Windows APIs. `drivers/` contains the device-facing code that turns compatibility goals into actual bootable systems. `sdk/` supports the developer and build surface that keeps the tree coherent. `media/` holds supporting content that helps explain the project and its install/build story.
+ReactOS has to speak to real hardware, as well as emulate Windows APIs. `drivers/` contains the device-facing code that turns compatibility goals into actual bootable systems. `sdk/` supports the developer and build surface that keeps the tree coherent. `media/` holds supporting content that helps explain the project and its install/build story.
 
 For a tree this size, the hardware boundary and the developer boundary are both part of the architecture. You cannot understand the system if you only look at the kernel.
 
@@ -138,4 +138,4 @@ A good reading order is:
 4. `drivers/` and `boot/` to understand how the system reaches hardware and starts up.
 5. `sdk/` and `modules/` to understand how the tree is assembled and extended.
 
-That order works because ReactOS is a compatibility tree, not just a single subsystem. The architecture is spread across build, kernel, user mode, and hardware layers, and the directory layout makes those layers visible before you open an implementation file.
+That order works because ReactOS is a compatibility tree, spanning more than one subsystem. The architecture is spread across build, kernel, user mode, and hardware layers, and the directory layout makes those layers visible before you open an implementation file.

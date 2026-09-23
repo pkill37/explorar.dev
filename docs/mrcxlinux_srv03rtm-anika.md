@@ -19,13 +19,13 @@ defaultOpenIds:
 
 # Windows Server 2003 In The Mind
 
-> This guide is about reading the tree as an execution path, not just as a list of directories.
+> This guide is about reading the tree as an execution path, beyond a list of directories.
 >
 > The goal is to identify the boot path, the kernel bring-up path, the memory and object foundations, and the release routines that turn an NT 5.2 codebase into a server operating system.
 
 Windows Server 2003 is easier to approach as a control-flow problem than as a taxonomy problem. Start where control enters the product, follow how the loader builds enough state to jump into the kernel, then follow the kernel as it initializes scheduling, memory, objects, processes, registry hives, cache, and I/O. The build files still matter, but they become much easier to read once you already know what the runtime is trying to assemble.
 
-The important mental shift is this: “open this folder” is usually not a useful first instruction. A better reading strategy is to anchor on a handful of files that explain real execution paths. In this tree, `base/boot/bldr/osloader.c`, `base/ntos/init/init.c`, `base/ntos/ke/kiinit.c`, `base/ntos/mm/mminit.c`, `base/ntos/ob/obinit.c`, `base/ntos/ps/psinit.c`, and `base/ntos/config/cminit.c` teach more than most directory listings.
+The important mental shift is this: “open this folder” often gives too little direction for a first instruction. A better reading strategy is to anchor on a handful of files that explain real execution paths. In this tree, `base/boot/bldr/osloader.c`, `base/ntos/init/init.c`, `base/ntos/ke/kiinit.c`, `base/ntos/mm/mminit.c`, `base/ntos/ob/obinit.c`, `base/ntos/ps/psinit.c`, and `base/ntos/config/cminit.c` teach more than most directory listings.
 
 ---
 id: ch1
@@ -67,7 +67,7 @@ base/boot/bootvid/bootvid.c -> base/boot/bldr/osloader.c : early display support
 
 The first question this chapter answers is: how does this system actually begin executing?
 
-`base/boot/bldr/osloader.c` is a better opening move than any top-level directory because it sits at the handoff point between boot-time scaffolding and the kernel image. Read outward from there. `base/boot/lib/blmemory.c` shows how the loader reasons about memory before `Mm` exists. `base/boot/lib/blload.c` and `base/boot/lib/peldr.c` show how executable images are found and mapped. `base/boot/lib/parseini.c` and `base/boot/bldr/regboot.c` show how configuration data and registry state influence boot decisions. `base/boot/bootvid/bootvid.c` gives you the visible side of early startup.
+`base/boot/bldr/osloader.c` is a better opening move than any top-level directory because it sits at the handoff point between boot-time scaffolding and the kernel image. Read outward from there. `base/boot/lib/blmemory.c` shows how the loader reasons about memory before `Mm` exists. `base/boot/lib/blload.c` and `base/boot/lib/peldr.c` show how executable images are found and mapped. `base/boot/lib/parseini.c` and `base/boot/bldr/regboot.c` show how configuration data and registry state influence boot decisions. `base/boot/bootvid/bootvid.c` gives you the visible side of initial startup.
 
 Only after those files make sense should you glance at `base/boot/makefil0`. At that point the build file stops being abstract and starts reading like a recipe for a code path you already understand.
 
@@ -118,7 +118,7 @@ This chapter is about the point where boot code stops and the kernel begins to b
 
 `base/ntos/init/init.c` is the file to stare at when you want to understand the system’s first durable kernel decisions. `base/ntos/ke/kiinit.c` and `base/ntos/ke/kernldat.c` show how the dispatcher, timing, and global kernel state become real. The architecture files matter because NT is explicit about where generic logic stops: `base/ntos/ke/i386/i386init.c` and `base/ntos/ke/amd64/initkr.c` show that split cleanly.
 
-The variant files `base/ntos/init/ntkrnlmp.c` and `base/ntos/init/ntkrnlpa.c` are worth reading early because they stop you from imagining “the kernel” as a single binary with one configuration. This tree ships multiple boot-time and memory-model personalities, and the source admits that directly.
+The variant files `base/ntos/init/ntkrnlmp.c` and `base/ntos/init/ntkrnlpa.c` are worth reading first because they stop you from imagining “the kernel” as a single binary with one configuration. This tree ships distinct boot-time and memory-model personalities, and the source admits that directly.
 
 ---
 id: ch3
@@ -219,7 +219,7 @@ This chapter is where “Windows internals” becomes concrete instead of mythic
 
 `base/ntos/ob/obinit.c` shows how the kernel’s object namespace comes alive. From there, `base/ntos/ob/obcreate.c`, `base/ntos/ob/obinsert.c`, and `base/ntos/ob/obhandle.c` explain object publication, handle management, and lifetime rules. `base/ntos/ob/obdir.c` matters because the namespace is itself data structure and policy.
 
-Then switch to processes. `base/ntos/ps/psinit.c` gives you the process manager’s starting assumptions, `base/ntos/ps/create.c` shows how execution contexts are born, `base/ntos/ps/psdelete.c` shows how they die, and `base/ntos/ps/psjob.c` reminds you this is a server OS, not just a desktop kernel. The supporting `Ke` files, especially `base/ntos/ke/thredsup.c`, `base/ntos/ke/wait.c`, `base/ntos/ke/procobj.c`, and `base/ntos/ke/thredobj.c`, are where those executive abstractions meet the dispatcher.
+Then switch to processes. `base/ntos/ps/psinit.c` gives you the process manager’s starting assumptions, `base/ntos/ps/create.c` shows how execution contexts are born, `base/ntos/ps/psdelete.c` shows how they die, and `base/ntos/ps/psjob.c` reminds you this is a server OS, more than a desktop kernel. The supporting `Ke` files, including `base/ntos/ke/thredsup.c`, `base/ntos/ke/wait.c`, `base/ntos/ke/procobj.c`, and `base/ntos/ke/thredobj.c`, are where those executive abstractions meet the dispatcher.
 
 ---
 id: ch5
@@ -274,7 +274,7 @@ base/ntos/mm/iosup.c -> base/ntos/io/iop.h : memory and I/O share subsystem boun
 
 This chapter explains why the kernel cannot be understood as scheduler plus memory manager alone.
 
-`base/ntos/config/cminit.c` and `base/ntos/config/cmboot.c` show how configuration survives reboot and becomes executable policy again. `base/ntos/config/hiveinit.c` and `base/ntos/config/hiveload.c` are the right place to learn that the registry is a storage engine as much as it is an API surface.
+`base/ntos/config/cminit.c` and `base/ntos/config/cmboot.c` show how configuration survives reboot and becomes executable policy again. `base/ntos/config/hiveinit.c` and `base/ntos/config/hiveload.c` are the right place to learn that the registry is both a storage engine and an API surface.
 
 Then read the cache manager. `base/ntos/cache/cachesub.c`, `base/ntos/cache/lazyrite.c`, `base/ntos/cache/prefetch.c`, and `base/ntos/cache/prefboot.c` show how Windows turns memory-backed file state into deferred writeback and startup optimization. Finish with `base/ntos/io/iop.h`, `base/ntos/io/iopcmn.h`, `base/ntos/io/netboot.c`, and `base/ntos/mm/iosup.c` to see the glue between cache, I/O, and memory.
 
@@ -313,7 +313,7 @@ The shell subtree teaches an important distinction: UI is not the same thing as 
 
 `shell/common.inc` and `shell/common.mk` are the shared layer. `shell/makefile.inc` and `shell/gnumakefile` show how the shell is composed. `shell/ccshell.ini` is a reminder that configuration is part of the product. `termsrv/project.mk` sits alongside that work because remote sessions are not an accessory to the shell; they are another path into it.
 
-If you want to understand the user-facing side of the tree, start by asking how the shell is built, not just what the shell looks like.
+If you want to understand the user-facing side of the tree, start by asking how the shell is built, as well as what the shell looks like.
 
 ---
 id: ch7
@@ -363,7 +363,7 @@ fileRecommendations:
 
 This chapter ties together device-facing code and the trust material around it.
 
-The driver tree is not just code. `drivers/archive.txt` records curated payloads, `drivers/project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia/project.mk`, `multimedia/directx/project.mk`, and `printscan/project.mk` show the same pattern in other product surfaces: a feature is a build contract plus a directory family, not just a set of .c files.
+The driver tree also records build and release contracts. `drivers/archive.txt` records curated payloads, `drivers/project.mk` defines the family boundary, and the signing material in `tools/` makes the release path tangible. `multimedia/project.mk`, `multimedia/directx/project.mk`, and `printscan/project.mk` show the same pattern in other product surfaces: a feature is a build contract plus a directory family, beyond a set of .c files.
 
 `certutil/generate.sh` is important here because it turns build trust into a reproducible step. In a tree like this, signing and packaging are part of the subsystem story, not an afterthought.
 
@@ -436,8 +436,8 @@ A good reading order is:
 3. Read `base/ntos/mm/mminit.c`, `base/ntos/mm/pagfault.c`, and `base/ntos/mm/pfnlist.c` to understand what memory means in this kernel.
 4. Read `base/ntos/ob/obinit.c`, `base/ntos/ps/psinit.c`, and `base/ntos/ps/create.c` to understand how names, handles, processes, and threads are created.
 5. Read `base/ntos/config/cminit.c`, `base/ntos/cache/cachesub.c`, and `base/ntos/io/iop.h` to understand how persistent state and file-backed I/O make the kernel usable.
-6. Only after that, read `base/ntos/project.mk`, `project.mk`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to see how the source path you just studied is assembled into a product.
+6. Only after that, read `base/ntos/project.mk`, `project.mk`, `tools/prebuild.cmd`, `tools/postbuild.cmd`, and `tools/oscdimg.cmd` to see how the source path you studied is assembled into a product.
 
 That sequence works because it follows dependency direction instead of taxonomy. Boot code prepares the kernel, kernel init prepares scheduling and memory, those subsystems enable objects and processes, and only then do registry, cache, and I/O become meaningful.
 
-The pedagogical takeaway is simple: read execution paths before build scaffolding. Recommending folders is usually boring because folders only tell you where things live; these files tell you why the system works.
+The pedagogical takeaway is simple: read execution paths before build scaffolding. Folder listings only show where files live; these files tell you why the system works.

@@ -113,7 +113,6 @@ export default function GuidePanel({
     [currentActiveId, onActiveChapterChange]
   );
 
-  const [showShareMenu, setShowShareMenu] = useState(false);
   const [selectionTooltip, setSelectionTooltip] = useState<SelectionTooltipState | null>(null);
 
   const handleBodyMouseUp = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
@@ -145,39 +144,6 @@ export default function GuidePanel({
       });
     }, 0);
   }, []);
-
-  const handleShare = (platform: string) => {
-    const shareText = `Explore source code with interactive learning on Explorar.dev! 🚀`;
-    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
-    const encodedText = encodeURIComponent(shareText);
-    const encodedUrl = encodeURIComponent(shareUrl);
-    const shareTextWithUrl = `${shareText} ${shareUrl}`;
-    const encodedTextWithUrl = encodeURIComponent(shareTextWithUrl);
-
-    let shareLink = '';
-    switch (platform) {
-      case 'twitter':
-        shareLink = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-        break;
-      case 'linkedin':
-        shareLink = `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`;
-        break;
-      case 'reddit':
-        shareLink = `https://reddit.com/submit?title=${encodedText}&url=${encodedUrl}`;
-        break;
-      case 'whatsapp':
-        shareLink = `https://wa.me/?text=${encodedTextWithUrl}`;
-        break;
-      case 'hackernews':
-        shareLink = `https://news.ycombinator.com/submitlink?u=${encodedUrl}&t=${encodedText}`;
-        break;
-    }
-
-    if (shareLink) {
-      window.open(shareLink, '_blank', 'width=550,height=420');
-      setShowShareMenu(false);
-    }
-  };
 
   const activeIndex = currentSections.findIndex((s) => s.id === currentActiveId);
   const total = currentSections.length;
@@ -245,7 +211,6 @@ export default function GuidePanel({
           )}
         </div>
 
-        {/* Share button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {onSidebarToggle && (
             <button
@@ -282,88 +247,6 @@ export default function GuidePanel({
               {sidebarToggleIcon}
             </button>
           )}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <button
-              onClick={() => setShowShareMenu(!showShareMenu)}
-              title="Share this page"
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--vscode-border)',
-                borderRadius: 3,
-                padding: '2px 6px',
-                cursor: 'pointer',
-                color: 'var(--vscode-text-muted, #555)',
-                fontSize: 10,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 3,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                e.currentTarget.style.borderColor =
-                  'var(--repo-accent, var(--vscode-text-accent, #0078d4))';
-                e.currentTarget.style.color = 'var(--vscode-text-primary)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = 'var(--vscode-border)';
-                e.currentTarget.style.color = 'var(--vscode-text-muted, #555)';
-              }}
-            >
-              ↑ Share
-            </button>
-            {showShareMenu && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 4,
-                  background: 'var(--vscode-bg-secondary)',
-                  border: '1px solid var(--vscode-border)',
-                  borderRadius: 4,
-                  padding: 4,
-                  zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  minWidth: 140,
-                }}
-                onMouseLeave={() => setShowShareMenu(false)}
-              >
-                {(['hackernews', 'twitter', 'reddit', 'linkedin', 'whatsapp'] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => handleShare(p)}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '6px 10px',
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: 3,
-                      cursor: 'pointer',
-                      color: 'var(--vscode-text-primary)',
-                      fontSize: 12,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--vscode-bg-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    {p === 'hackernews' && '🟠 Hacker News'}
-                    {p === 'twitter' && '🐦 Twitter'}
-                    {p === 'reddit' && '🤖 Reddit'}
-                    {p === 'linkedin' && '💼 LinkedIn'}
-                    {p === 'whatsapp' && '💬 WhatsApp'}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

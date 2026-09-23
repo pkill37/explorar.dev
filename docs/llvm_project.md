@@ -17,11 +17,11 @@ defaultOpenIds:
 
 ## Understanding LLVM Before Code
 
-> This isn't just a guide to using LLVM. It's an effort to understand how modern compilers think.
+> This isn't a guide to using LLVM. It's an effort to understand how modern compilers think.
 
-LLVM is a collection of modular and reusable compiler and toolchain technologies that has revolutionized how we build compilers. Unlike traditional monolithic compilers, LLVM separates concerns through a carefully designed intermediate representation (IR) that serves as a universal language between frontends and backends.
+LLVM is a collection of modular and reusable compiler and toolchain technologies that has revolutionized how we build compilers. Unlike traditional monolithic compilers, LLVM separates concerns through an intermediate representation (IR) that serves as a universal language between frontends and backends.
 
-Understanding LLVM means understanding the architecture of modern compilation: how source code transforms through multiple representations, how optimizations preserve semantics while improving performance, and how machine-independent code generation enables portability.
+Understanding LLVM means understanding the architecture of modern compilation: how source code transforms through successive representations, how optimizations preserve semantics while improving performance, and how machine-independent code generation enables portability.
 
 **LLVM powers the future of compilation. Let's understand how it works.**
 
@@ -55,7 +55,7 @@ fileRecommendations:
 
 ### The Philosophy: Separation of Concerns Through IR
 
-LLVM's revolutionary insight was to create a universal intermediate representation that completely separates:
+LLVM's revolutionary insight was to create a universal intermediate representation that separates:
 
 - **Frontend concerns**: Parsing, semantic analysis, language-specific optimizations
 - **Middle-end concerns**: Target-independent optimizations
@@ -63,7 +63,7 @@ LLVM's revolutionary insight was to create a universal intermediate representati
 
 This separation enables:
 
-- **Multiple frontends** → Single IR → Multiple backends
+- **Different frontends** → Single IR → Different backends
 - **Reusable optimization infrastructure**
 - **Language-agnostic tooling**
 - **Incremental compilation and JIT**
@@ -135,7 +135,7 @@ entry:
 LLVM optimizations are organized as **passes**:
 
 - **Analysis passes**: Gather information (e.g., dominator tree)
-- **Transform passes**: Modify IR (e.g., dead code elimination)
+- **Transform passes**: Change IR (e.g., dead code elimination)
 - **Utility passes**: Helper functionality
 
 **Pass Categories:**
@@ -206,13 +206,13 @@ fileRecommendations:
       type: source
 ---
 
-The LLVM Intermediate Representation (IR) is a low-level programming language similar to assembly, but with higher-level type information and a consistent three-address code representation. It serves as the universal language that enables LLVM's modular architecture.
+The LLVM Intermediate Representation (IR) is a low-level programming language resembling assembly, but with higher-level type information and a consistent three-address code representation. It serves as the universal language that enables LLVM's modular architecture.
 
 ### Understanding LLVM IR - Deep Dive
 
 **Why SSA (Static Single Assignment)?**
 
-SSA form is fundamental to LLVM IR. Each variable is assigned exactly once, which enables:
+SSA form is fundamental to LLVM IR. Each variable is assigned once, which enables:
 
 - **Simpler dataflow analysis**: Definitions and uses are explicit
 - **Efficient optimizations**: Dead code elimination, constant propagation
@@ -381,7 +381,7 @@ clang/lib/CodeGen/CodeGenModule.cpp -> clang/lib/CodeGen/CodeGenFunction.cpp : f
 
 ### The Clang AST: A Typed Syntax Tree
 
-Unlike a simple parse tree, Clang's AST carries full type information and represents the semantics of the program, not just its syntax.
+Unlike a simple parse tree, Clang's AST carries full type information and represents the semantics of the program, beyond its syntax.
 
 **Core AST node families:**
 
@@ -402,7 +402,7 @@ DeclStmt
             └── DeclRefExpr 'b' 'int'
 ```
 
-You can dump any C file's AST with:
+Dump any C file's AST with:
 
 ```bash
 clang -Xclang -ast-dump -fsyntax-only file.c
@@ -670,7 +670,7 @@ Examples of what InstCombine does:
 
 ### Loop Optimization Passes
 
-Loops are the highest-leverage optimization targets since they execute repeatedly.
+Loops are the highest-leverage optimization targets because their bodies run on each iteration.
 
 **Key loop passes:**
 

@@ -18,7 +18,7 @@ defaultOpenIds:
 
 FreeBSD is best read as a whole operating system whose kernel lives under `sys/` but is built, configured, installed, and documented from the same source tree as userland. This guide follows the kernel-facing paths first, then connects them back to release and build structure.
 
-Use the chapters as a set of reading drills. For each subsystem, first identify the public contract, then the build-time selection mechanism, then the runtime path that exercises it. FreeBSD rewards that order because many important decisions are not hidden in one central file; they are distributed across config files, headers, `SYSINIT` records, and subsystem implementations.
+Use the chapters as a set of reading drills. For each subsystem, first identify the public contract, then the build-time selection mechanism, then the runtime path that exercises it. FreeBSD rewards that order because key decisions are not hidden in one central file; they are distributed across config files, headers, `SYSINIT` records, and subsystem implementations.
 
 ---
 id: ch1
@@ -74,7 +74,7 @@ fileRecommendations:
 
 FreeBSD boot begins outside `sys/`, in the loader code under `stand/`. The loader prepares the kernel image, modules, environment, and metadata. Once architecture entry code has control, kernel startup becomes a sequence of ordered initializers rather than one single main routine.
 
-`SYSINIT` is the central contract. Subsystems register initialization functions with ordering constraints, and `sys/kern/init_main.c` drives the transition from early kernel state to process creation. This makes the boot path extensible without forcing every subsystem into a hand-written call chain.
+`SYSINIT` is the central contract. Subsystems register initialization functions with ordering constraints, and `sys/kern/init_main.c` drives the transition from initial kernel state to process creation. This makes the boot path extensible without forcing every subsystem into a hand-written call chain.
 
 When reading `sys/sys/kernel.h`, focus on the numeric order of `SI_SUB_*` stages. Drivers, VFS, protocol domains, root mounting, system calls, and kernel threads all have named positions. Then move to `sys/kern/init_main.c` and find the `SYSINIT` entries for `proc0`, root mounting, and creation of the first user process. This turns boot from a vague timeline into a concrete sorted list.
 
@@ -132,11 +132,11 @@ fileRecommendations:
       type: docs
 ---
 
-The VM and VFS subsystems are where FreeBSD's kernel becomes a resource manager. VM tracks address spaces, faults, objects, and page residency. VFS gives filesystems a common vnode interface so UFS, ZFS integration, pseudo-filesystems, and device-backed paths can participate in common syscalls.
+The VM and VFS subsystems are where FreeBSD's kernel becomes a resource manager. VM tracks address spaces, faults, objects, and page residency. VFS gives filesystems a common vnode interface so UFS, ZFS integration, pseudo-filesystems, and device-backed paths can support common syscalls.
 
 Read the fault path and vnode path together. A memory-mapped file crosses both systems: VM resolves address faults, while VFS supplies file-backed objects and coherency rules. The boundary is technical, but the runtime behavior is shared.
 
-For VM, trace a fault as a question about ownership: which map contains the address, which object backs it, and which page can satisfy it. `sys/vm/vm_map.c` gives the address-space structure; `sys/vm/vm_fault.c` shows the slow path where the kernel has to resolve missing or protected pages.
+For VM, trace a fault as a question about ownership: which map contains the address, which object backs it, and which page can resolve the fault. `sys/vm/vm_map.c` gives the address-space structure; `sys/vm/vm_fault.c` shows the slow path where the kernel has to resolve missing or protected pages.
 
 For VFS, start from the object model. `sys/sys/vnode.h` defines the common handle, while `sys/kern/vfs_subr.c` manages vnode lifetime, mount references, and shared helper paths. `sys/kern/vfs_syscalls.c` is the user-facing pressure test: open, mount, stat, rename, and friends must all reduce to common vnode and mount operations.
 
@@ -162,10 +162,10 @@ fileRecommendations:
       type: docs
 ---
 
-FreeBSD's driver model is built around newbus. Buses enumerate children, drivers probe and attach, and devices expose methods through shared kernel interfaces. `sys/kern/subr_bus.c` is the generic machinery; bus families such as PCI specialize the discovery and resource allocation path.
+FreeBSD's driver model is built around newbus. Buses discover children, drivers probe and attach, and devices expose methods through shared kernel interfaces. `sys/kern/subr_bus.c` is the generic machinery; bus families such as PCI specialize the discovery and resource allocation path.
 
-Networking follows the same kernel style: common interfaces, protocol-specific state machines, and subsystem initialization glue. The interface layer in `sys/net/if.c` is the useful starting point because every protocol and driver eventually meets it.
+Networking follows the same kernel style: common interfaces, protocol-specific state machines, and subsystem initialization glue. The interface layer in `sys/net/if.c` is the useful starting point because every protocol and driver connects to it.
 
-Read newbus from the center outward. `sys/kern/subr_bus.c` owns generic device state and probe/attach sequencing; `sys/sys/bus.h` exposes the method vocabulary drivers implement; `sys/dev/pci/pci.c` is one concrete bus that discovers children and allocates resources. This gives you a reusable pattern for every other bus family.
+Read newbus from the center outward. `sys/kern/subr_bus.c` owns generic device state and probe/attach sequencing; `sys/sys/bus.h` exposes the method vocabulary drivers use; `sys/dev/pci/pci.c` is one concrete bus that discovers children and allocates resources. This gives you a reusable pattern for every other bus family.
 
 For networking, pair `sys/net/if.c` with `sys/netinet/tcp_subr.c`. The interface layer answers "what is a network device to the kernel?" while the TCP file answers "how does one protocol register state, timers, and control paths?" The useful comparison is that both subsystems use shared registration and initialization machinery rather than a single global owner.

@@ -73,6 +73,73 @@ async function expectDebugLog(
 }
 
 test.describe('Editor Loading', () => {
+  test('opens root and nested files from a lazily loaded repository sidebar', async ({ page }) => {
+    const owner = 'sidebar-test';
+    const repo = 'runtime-repo';
+    const files = {
+      'main.c': 'int root_file = 42;\n',
+      'src/main.c': 'int nested_file = 24;\n',
+    };
+    await page.route(`**/repos/${owner}/${repo}/**`, (route) =>
+      route.fulfill({ status: 404, body: 'No staged corpus' })
+    );
+    await page.route(`https://api.github.com/repos/${owner}/${repo}/contents**`, (route) => {
+      const nested = new URL(route.request().url()).pathname.endsWith('/contents/src');
+      return route.fulfill({
+        json: nested
+          ? [{ name: 'main.c', path: 'src/main.c', type: 'file', size: 24 }]
+          : [
+              { name: 'main.c', path: 'main.c', type: 'file', size: 22 },
+              { name: 'src', path: 'src', type: 'dir' },
+            ],
+      });
+    });
+    await page.route(`https://raw.githubusercontent.com/${owner}/${repo}/main/**`, (route) => {
+      const path = new URL(route.request().url()).pathname.split('/').slice(4).join('/');
+      return route.fulfill({
+        contentType: 'text/plain',
+        body: files[path as keyof typeof files],
+      });
+    });
+
+    await page.goto(`/${owner}/${repo}/?ref=main`);
+    await openGuideFile(page, 'main.c');
+    await expect(page.getByRole('code').getByText('int root_file = 42;')).toBeVisible();
+    await openGuideFile(page, 'src/main.c');
+    await expect(page.getByRole('code').getByText('int nested_file = 24;')).toBeVisible();
+    await page.locator('[data-file-path="main.c"]').click();
+    await expect(page.getByRole('code').getByText('int root_file = 42;')).toBeVisible();
+  });
+
+  for (const target of ['blob/main/main.c', '?ref=main&file=main.c', 'blob/main/src/main.c']) {
+    test(`opens runtime URL target ${target} and follows homepage navigation`, async ({ page }) => {
+      const owner = 'navigation-test';
+      const repo = 'runtime-repo';
+      await page.route(`**/repos/${owner}/${repo}/**`, (route) =>
+        route.fulfill({ status: 404, body: 'No staged corpus' })
+      );
+      await page.route(`https://api.github.com/repos/${owner}/${repo}/contents**`, (route) =>
+        route.fulfill({ json: [{ name: 'main.c', path: 'main.c', type: 'file', size: 22 }] })
+      );
+      await page.route(`https://raw.githubusercontent.com/${owner}/${repo}/main/**`, (route) =>
+        route.fulfill({ contentType: 'text/plain', body: 'int url_target = 42;\n' })
+      );
+
+      const path = `/${owner}/${repo}/${target}`;
+      await page.goto(`/?github_path=${encodeURIComponent(path)}`);
+      await expect(page.getByRole('code').getByText('int url_target = 42;')).toBeVisible();
+
+      // Next observes native history changes as same-page client navigation.
+      await page.evaluate(() => window.history.pushState(null, '', '/'));
+      await expect(page.getByRole('heading', { name: /Open a portal to any repo/i })).toBeVisible();
+      await expect(page.getByRole('code').getByText('int url_target = 42;')).toHaveCount(0);
+      await page.goBack();
+      await expect(page.getByRole('code').getByText('int url_target = 42;')).toBeVisible();
+      await page.goForward();
+      await expect(page.getByRole('heading', { name: /Open a portal to any repo/i })).toBeVisible();
+    });
+  }
+
   test('renders Monaco after a successful cross-origin static file fetch', async ({ page }) => {
     await routeCorpusRepository({
       page,

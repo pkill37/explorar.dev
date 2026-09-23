@@ -1,9 +1,17 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function NotFound() {
   const router = useRouter();
+
+  useEffect(() => {
+    const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (window.location.pathname !== '/') {
+      router.replace(`/?github_path=${encodeURIComponent(path)}`);
+    }
+  }, [router]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-950 px-6 text-gray-100">

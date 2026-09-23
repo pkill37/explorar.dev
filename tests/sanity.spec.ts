@@ -11,7 +11,7 @@ test.describe('Sanity Checks', () => {
   test('homepage loads successfully', async ({ page }) => {
     const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(response?.status()).toBe(200);
-    await expect(page).toHaveTitle(/explorar/i);
+    await expect(page).toHaveTitle(/gitshaman/i);
   });
 
   test('no console errors on homepage', async ({ page }) => {
@@ -50,12 +50,11 @@ test.describe('Sanity Checks', () => {
 
   test('all images load successfully', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const images = page.locator('img');
-    const count = await images.count();
+    const imageSources = await page.$$eval('main img', (images) =>
+      images.map((img) => img.getAttribute('src'))
+    );
 
-    for (let i = 0; i < count; i++) {
-      const img = images.nth(i);
-      const src = await img.getAttribute('src');
+    for (const src of imageSources) {
       if (src && !src.startsWith('data:') && !src.startsWith('http')) {
         const publicPath = path.join(process.cwd(), 'public', src.replace(/^\/+/, ''));
         if (!fs.existsSync(publicPath)) {

@@ -17,7 +17,7 @@ defaultOpenIds:
 
 ## Understanding glibc Before Code
 
-> This isn't just a guide to using the C library. It's an effort to understand the foundation of every program on Linux.
+> This isn't a guide to using the C library. It's an effort to understand the foundation of every program on Linux.
 
 The GNU C Library (glibc) is the critical bridge between user programs and the Linux kernel. It provides the system call interface, implements the C standard library, and offers POSIX-compliant APIs that nearly every Linux program depends on. Understanding glibc means understanding how user-space programs interact with the kernel, how memory is managed, how threads work, and how standard functions are optimized for performance.
 
@@ -55,7 +55,7 @@ fileRecommendations:
 
 ### The Bridge Between User Space and Kernel
 
-glibc serves multiple critical roles:
+glibc serves these critical roles:
 
 - **System call wrapper**: Provides C functions that invoke Linux syscalls
 - **Standard library**: Implements C11/C17 standard functions
@@ -256,16 +256,16 @@ fileRecommendations:
 
 glibc's malloc is one of the most sophisticated memory allocators in existence. Understanding it reveals fundamental concepts in systems programming: memory organization, performance optimization, thread safety, and fragmentation management.
 
-Large allocations eventually meet the kernel's virtual-memory machinery. Compare glibc's [`__libc_malloc`](malloc/malloc.c:__libc_malloc) with Linux's [`vm_mmap_pgoff`](repo:torvalds/linux/mm/mmap.c:vm_mmap_pgoff) to follow that handoff from a user-space allocator to a process mapping.
+Large allocations reach the kernel's virtual-memory machinery. Compare glibc's [`__libc_malloc`](malloc/malloc.c:__libc_malloc) with Linux's [`vm_mmap_pgoff`](repo:torvalds/linux/mm/mmap.c:vm_mmap_pgoff) to follow that handoff from a user-space allocator to a process mapping.
 
 ### malloc Philosophy: Balancing Speed, Space, and Safety
 
-The allocator must satisfy competing goals:
+The allocator must balance competing goals:
 
 - **Speed**: Allocations must be fast (nanoseconds)
-- **Space efficiency**: Minimize fragmentation and overhead
+- **Space efficiency**: Reduce fragmentation and overhead
 - **Thread safety**: Support concurrent allocations
-- **Scalability**: Perform well with many threads
+- **Scalability**: Scale as thread count grows
 - **Security**: Resist heap exploitation
 
 ### Core Concepts
@@ -294,7 +294,7 @@ struct malloc_chunk {
   - `PREV_INUSE` (0x1): Previous chunk is allocated
   - `IS_MMAPPED` (0x2): Chunk obtained via mmap
   - `NON_MAIN_ARENA` (0x4): Chunk from non-main arena
-- Minimum chunk size: 32 bytes (on 64-bit)
+- Smallest chunk size: 32 bytes (on 64-bit)
 - Chunks are always 16-byte aligned (on 64-bit)
 
 **Example Chunk Layout:**
@@ -332,7 +332,7 @@ Free chunks are organized into bins (linked lists) by size:
 
 **Fastbins (16-80 bytes on 64-bit):**
 
-- LIFO (stack) of recently freed chunks
+- LIFO (stack) of chunks from the latest frees
 - 10 bins for sizes: 16, 24, 32, ..., 80 bytes
 - No coalescing (for speed)
 - Single-linked list
@@ -363,13 +363,13 @@ if (size <= FASTBIN_MAX_SIZE) {
 
 **Unsorted bin:**
 
-- Temporary holding area for recently freed chunks
-- Helps reuse recently freed memory
+- Temporary holding area for chunks from the latest frees
+- Helps reuse memory from the latest frees
 - Chunks sorted into appropriate bins during allocation
 
 **3. Arenas: Multi-threaded Memory Management**
 
-To avoid lock contention, malloc uses multiple arenas:
+To avoid lock contention, malloc uses separate arenas:
 
 ```c
 // Main arena: Uses sbrk() to grow heap
@@ -394,7 +394,7 @@ struct malloc_state {
 
 **4. The Top Chunk (Wilderness)**
 
-The top chunk is the remainder of the heap:
+The top chunk is the unused space at the end of the heap:
 
 - Always the highest chunk in arena
 - Source for new allocations when bins are empty
@@ -407,7 +407,7 @@ Allocations >= 128KB (default) use mmap directly:
 
 - Bypasses arena/bin mechanism
 - Each allocation is a separate mmap region
-- Freed via munmap (immediately returns to OS)
+- Freed via munmap (returns memory to the OS on release)
 - Avoids fragmentation in main heap
 
 ### malloc() Implementation Flow
@@ -571,7 +571,7 @@ Fast per-thread caching layer (added in glibc 2.26):
 
 **Memory Overhead:**
 
-- Minimum: 16 bytes per allocation (header)
+- At least 16 bytes per allocation (header)
 - Typical: 5-10% for mixed workloads
 - Worst case: 50%+ with heavy fragmentation
 
@@ -639,7 +639,7 @@ fileRecommendations:
       type: source
 ---
 
-glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships multiple variants selected at runtime based on the CPU's capabilities.
+glibc provides architecture-optimized implementations of the C standard string and memory functions. Rather than one implementation per function, glibc ships CPU-specific variants selected at runtime based on the CPU's capabilities.
 
 
 ```chapter-graph
@@ -668,7 +668,7 @@ IFUNC_IMPL (array, caller, strlen,
 )
 ```
 
-At program startup (before `main()`), the resolver runs once and patches the GOT to point directly to the best implementation. All subsequent calls go directly to the selected function — zero overhead after the first call.
+At program startup (before `main()`), the resolver runs once and patches the GOT to point directly to the best implementation. All later calls go directly to the selected function — zero overhead after the first call.
 
 ### Deep Dive: strlen Implementations
 

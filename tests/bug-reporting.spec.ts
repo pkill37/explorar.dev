@@ -69,7 +69,7 @@ test.describe('Static bug reporting', () => {
       .getByRole('link', { name: 'Open GitHub Issue' })
       .getAttribute('href');
 
-    expect(issueHref).toContain('https://github.com/pkill37/explorar.dev/issues/new');
+    expect(issueHref).toContain('https://github.com/pkill37/gitshaman.com/issues/new');
     expect(issueHref).toContain('Bug+report%3A+%2Flinux-kernel');
     expect(issueHref).toContain('The+repository+cards+did+not+respond');
     expect(issueHref).toContain('bug+report+test+warning');
@@ -128,7 +128,7 @@ test.describe('Static bug reporting', () => {
 
     const issue = await readGeneratedIssue(page);
 
-    expect(issue.href).toContain('https://github.com/pkill37/explorar.dev/issues/new');
+    expect(issue.href).toContain('https://github.com/pkill37/gitshaman.com/issues/new');
     expect(issue.title).toBe('Bug report: /linux-kernel/');
     expect(issue.labels).toBe('bug,user-report');
     expect(issue.body).toContain('## What happened?');

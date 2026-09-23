@@ -4,8 +4,10 @@ const NODE_ONLY_TEST_FILES = new Set([
   'tests/code-index-builder.spec.ts',
   'tests/corpus-sqlite-index.spec.ts',
   'tests/deploy-r2.spec.ts',
+  'tests/github-url.spec.ts',
   'tests/guide-lint.spec.ts',
   'tests/repo-source-routing.spec.ts',
+  'tests/semantic-query-service.spec.ts',
 ]);
 
 function shouldStartWebServer(): boolean {
@@ -20,6 +22,8 @@ function shouldStartWebServer(): boolean {
 
   return !requestedTestFiles.every((file) => NODE_ONLY_TEST_FILES.has(file));
 }
+
+const useProductionExport = process.env.PERFORMANCE_BUILD === '1';
 
 /**
  * Playwright configuration for testing the static web app
@@ -46,9 +50,10 @@ export default defineConfig({
   ...(shouldStartWebServer()
     ? {
         webServer: {
-          command:
-            'tsx scripts/prepare-public-assets.ts --sqljs && NEXT_OUTPUT_EXPORT=false next dev --turbopack --port 8000',
-          url: 'http://localhost:8000',
+          command: useProductionExport
+            ? 'serve out -p 8000'
+            : 'tsx scripts/prepare-public-assets.ts --sqljs && next dev --turbopack --port 8000',
+          url: process.env.BASE_URL || 'http://localhost:8000',
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
         },

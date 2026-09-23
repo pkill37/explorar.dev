@@ -1,31 +1,63 @@
 import { test, expect } from '@playwright/test';
 
+async function installVitalsObservers(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    const state = { lcp: 0, cls: 0, longTasks: [] as number[] };
+    Object.assign(window, { __gitshamanVitals: state });
+
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const paint = entry as PerformanceEntry & { renderTime?: number; loadTime?: number };
+        state.lcp = paint.renderTime || paint.loadTime || entry.startTime;
+      }
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+        if (!shift.hadRecentInput) state.cls += shift.value ?? 0;
+      }
+    }).observe({ type: 'layout-shift', buffered: true });
+
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) state.longTasks.push(entry.duration);
+    }).observe({ type: 'longtask', buffered: true });
+  });
+}
+
+async function readVitals(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __gitshamanVitals: { lcp: number; cls: number; longTasks: number[] };
+      }
+    ).__gitshamanVitals;
+    return {
+      ...state,
+      totalBlockingTime: state.longTasks.reduce(
+        (total, duration) => total + Math.max(0, duration - 50),
+        0
+      ),
+    };
+  });
+}
+
 /**
  * Web Vitals Performance Tests
  * Measures Core Web Vitals: LCP, FID, CLS, FCP, TTFB
  */
 test.describe('Web Vitals Performance', () => {
   test('homepage meets performance thresholds', async ({ page }) => {
+    await installVitalsObservers(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-
-    // Measure Largest Contentful Paint (LCP)
-    const lcp = await page.evaluate(() => {
-      return new Promise<number>((resolve) => {
-        const observer = new PerformanceObserver((list) => {
-          const entries = list.getEntries();
-          const lastEntry = entries[entries.length - 1] as PerformanceEntry & {
-            renderTime?: number;
-            loadTime?: number;
-          };
-          resolve(lastEntry.renderTime || lastEntry.loadTime || 0);
-        });
-        observer.observe({ entryTypes: ['largest-contentful-paint'] });
-        setTimeout(() => resolve(0), 5000);
-      });
-    });
+    await page.waitForTimeout(1000);
+    const vitals = await readVitals(page);
 
     // LCP should be under 2.5s for good performance
-    expect(lcp).toBeLessThan(2500);
+    expect(vitals.lcp).toBeGreaterThan(0);
+    expect(vitals.lcp).toBeLessThanOrEqual(2500);
+    expect(vitals.cls).toBeLessThanOrEqual(0.1);
+    expect(vitals.totalBlockingTime).toBeLessThanOrEqual(200);
 
     // Measure First Contentful Paint (FCP)
     const fcp = await page.evaluate(() => {
@@ -74,26 +106,10 @@ test.describe('Web Vitals Performance', () => {
   });
 
   test('measures Cumulative Layout Shift (CLS)', async ({ page }) => {
+    await installVitalsObservers(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-
-    const cls = await page.evaluate(() => {
-      return new Promise<number>((resolve) => {
-        let clsValue = 0;
-        const observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            const layoutShift = entry as PerformanceEntry & {
-              hadRecentInput?: boolean;
-              value?: number;
-            };
-            if (!layoutShift.hadRecentInput && layoutShift.value !== undefined) {
-              clsValue += layoutShift.value;
-            }
-          }
-        });
-        observer.observe({ entryTypes: ['layout-shift'] });
-        setTimeout(() => resolve(clsValue), 5000);
-      });
-    });
+    await page.waitForTimeout(1000);
+    const { cls } = await readVitals(page);
 
     // CLS should be under 0.1 for good performance
     expect(cls).toBeLessThan(0.1);
@@ -116,33 +132,21 @@ test.describe('Web Vitals Performance', () => {
     const jsResources = resources.filter((r) => r.type === 'script');
     const totalJSSize = jsResources.reduce((sum: number, r) => sum + r.size, 0);
 
-    // Total JS should be under 2MB (compressed)
-    expect(totalJSSize).toBeLessThan(2 * 1024 * 1024);
+    // The production export has a stricter deterministic gzip budget; this catches network regressions.
+    expect(totalJSSize).toBeLessThan(300 * 1024);
+
+    const remoteImages = resources.filter(
+      (resource) =>
+        resource.type === 'img' && new URL(resource.name).origin !== new URL(page.url()).origin
+    );
+    expect(remoteImages).toHaveLength(0);
   });
 
   test('no layout shifts during page load', async ({ page }) => {
+    await installVitalsObservers(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const layoutShifts = await page.evaluate(() => {
-      return new Promise<number[]>((resolve) => {
-        const shifts: number[] = [];
-        const observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            const layoutShift = entry as PerformanceEntry & {
-              hadRecentInput?: boolean;
-              value?: number;
-            };
-            if (!layoutShift.hadRecentInput && layoutShift.value !== undefined) {
-              shifts.push(layoutShift.value);
-            }
-          }
-        });
-        observer.observe({ entryTypes: ['layout-shift'] });
-        setTimeout(() => resolve(shifts), 3000);
-      });
-    });
-
-    // Check that major layout shifts (>0.1) don't occur
-    const majorShifts = layoutShifts.filter((shift) => shift > 0.1);
-    expect(majorShifts).toHaveLength(0);
+    await page.waitForTimeout(1000);
+    const { cls } = await readVitals(page);
+    expect(cls).toBeLessThanOrEqual(0.1);
   });
 });

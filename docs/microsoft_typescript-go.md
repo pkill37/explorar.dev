@@ -19,7 +19,7 @@ defaultOpenIds:
 
 ## Understanding TypeScript Before Code
 
-> This is not a guide to writing TypeScript. It is a guide to understanding the
+> This is not a guide to writing TypeScript. This guide explains the
 > TypeScript 7 native compiler and language tooling implementation.
 
 TypeScript 7 moves the compiler and language tooling onto a native Go foundation. The implementation
@@ -68,7 +68,7 @@ formatting, and testing helpers. The command in `cmd/tsgo` is thin by design: it
 hands work to internal packages.
 
 The `README.md` states the TypeScript 7 context and feature status. Treat it as release context, then
-move quickly into `internal/compiler`, `internal/parser`, `internal/binder`, and `internal/checker`.
+move into `internal/compiler`, `internal/parser`, `internal/binder`, and `internal/checker`.
 
 ```chapter-graph
 cmd/tsgo/main.go -> internal/execute/tsc.go : dispatches command-line execution
@@ -79,9 +79,9 @@ internal/compiler/program.go -> internal/checker/checker.go : asks for semantic 
 
 ### Read Around The Compatibility Goal
 
-TypeScript 7 is a port, not a redesign from first principles. Many package and function names mirror
-the older compiler's architecture. When a file looks surprisingly faithful to the old implementation,
-that is usually intentional: compatibility is a product requirement.
+TypeScript 7 is a port, not a redesign from first principles. Package and function names often mirror
+the older compiler's architecture. When a file looks faithful to the old implementation,
+that often reflects the need to preserve compatibility.
 
 ---
 id: ch2
@@ -325,5 +325,5 @@ internal/fourslash/fourslash.go -> internal/ls/languageservice.go : tests exerci
 
 Use tests to learn the compatibility surface. Compiler tests explain diagnostics and emit expectations;
 fourslash tests explain editor behavior; project tests explain watch and configuration behavior. For a
-port like TypeScript 7, tests are not just safeguards. They are a catalog of observable behavior that
+port like TypeScript 7, tests serve as more than safeguards. They are a catalog of observable behavior that
 the native implementation must preserve.
