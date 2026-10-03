@@ -158,6 +158,7 @@ async function main(): Promise<void> {
       skip: [],
       depth: 1,
       list: false,
+      reindex: false,
     });
 
     if (corpusState.staleRepos.length === 0) {
@@ -193,6 +194,11 @@ async function main(): Promise<void> {
   }
 
   await runConcurrentGroup(4, 7, 'Guide validation', [
+    {
+      name: 'Lint guide prose',
+      command: 'node',
+      args: ['scripts/lint-guide-prose.mjs'],
+    },
     {
       name: 'Validate guide frontmatter',
       command: 'tsx',

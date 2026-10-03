@@ -880,6 +880,57 @@ function collectRelationshipsForFile(
   return relationships;
 }
 
+const DATAFLOW_IGNORED_IDENTIFIERS = new Set([
+  'return',
+  'sizeof',
+  'true',
+  'false',
+  'NULL',
+  'nullptr',
+]);
+
+function collectIntraproceduralDefUse(content: string): string[] {
+  const relationships: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string) => {
+    if (!seen.has(value)) {
+      seen.add(value);
+      relationships.push(value);
+    }
+  };
+
+  for (const line of content.split('\n')) {
+    const assignment = line.match(
+      /^\s*(?:(?:const|volatile|static|unsigned|signed|struct\s+\w+|[A-Za-z_]\w*)\s+)+(?:\*\s*)?([A-Za-z_]\w*)\s*=\s*(.+?);\s*$/
+    );
+    if (assignment) {
+      const target = assignment[1];
+      for (const source of assignment[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
+        if (source !== target && !DATAFLOW_IGNORED_IDENTIFIERS.has(source)) {
+          add(`${source}→${target}`);
+        }
+      }
+      continue;
+    }
+
+    const simpleAssignment = line.match(/^\s*([A-Za-z_]\w*)\s*=\s*(.+?);\s*$/);
+    if (simpleAssignment) {
+      for (const source of simpleAssignment[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
+        if (source !== simpleAssignment[1] && !DATAFLOW_IGNORED_IDENTIFIERS.has(source)) {
+          add(`${source}→${simpleAssignment[1]}`);
+        }
+      }
+    }
+
+    const returned = line.match(/^\s*return\s+(.+?);\s*$/);
+    for (const source of returned?.[1].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
+      if (!DATAFLOW_IGNORED_IDENTIFIERS.has(source)) add(`${source}→return`);
+    }
+  }
+
+  return relationships.slice(0, 200);
+}
+
 function flattenSymbols(content: string, filePath: string): IndexedSymbol[] {
   const indexed: IndexedSymbol[] = [];
   const ext = getFileExtension(filePath);
@@ -1163,12 +1214,10 @@ export function buildCodeIndex(
   for (const [relativePath, relationshipSymbols] of relationshipSymbolsMap) {
     const absolutePath = path.join(repoDir, relativePath);
     let content = '';
-    if (relationshipIndexes.shouldBuildCallEdges) {
-      try {
-        content = readFileContent(absolutePath).content;
-      } catch {
-        content = '';
-      }
+    try {
+      content = readFileContent(absolutePath).content;
+    } catch {
+      content = '';
     }
 
     edgeBatch.push(
@@ -1179,6 +1228,15 @@ export function buildCodeIndex(
         relationshipIndexes
       )
     );
+    const defUseRelationships = collectIntraproceduralDefUse(content);
+    if (defUseRelationships.length > 0) {
+      edgeBatch.push({
+        source: relativePath,
+        target: relativePath,
+        type: 'dataflow',
+        symbols: defUseRelationships,
+      });
+    }
 
     if (edgeBatch.length >= 1_000) {
       insertEdgeBatch(edgeBatch);

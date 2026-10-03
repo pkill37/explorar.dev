@@ -1,6 +1,10 @@
 {
-  "name": "Explorar",
-  "short_name": "Explorar",
+  "name": "GitShaman",
+  "short_name": "GitShaman",
+  "description": "Semantic code intelligence for exploring large repositories through indexed symbols, references, dependency graphs, and curated guides.",
+  "start_url": "/",
+  "scope": "/",
+  "categories": ["developer tools", "education", "productivity"],
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

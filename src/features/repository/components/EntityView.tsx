@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import SidebarSearchHeader from './SidebarSearchHeader';
-import { fetchRepositoryFile } from '@/lib/github-api';
+import { fetchRepositoryFile, getTrustedVersion } from '@/lib/github-api';
 import { getProjectConfig, type GuideSection } from '@/lib/project-guides';
 import { getGuideByRepo } from '@/features/guides/docs-loader';
 import { buildGraphData, buildGraphDataFromSections } from '@/lib/graph-data';
@@ -978,8 +978,12 @@ export function EntityView({
         await Promise.all(
           batch.slice(i, i + BATCH_SIZE).map(async (fp: string) => {
             try {
-              const fullText = (await fetchRepositoryFile(owner, repo, branch, fp, { sourceMode }))
-                .content;
+              const fullText = (
+                await fetchRepositoryFile(owner, repo, branch, fp, {
+                  sourceMode,
+                  allowGitHubFallback: branch !== getTrustedVersion(owner, repo),
+                })
+              ).content;
               const text = fullText.length > BYTES_CAP ? fullText.slice(0, BYTES_CAP) : fullText;
               const entities = extractEntities(fp, text);
 
@@ -1168,7 +1172,6 @@ export function EntityView({
       }}
     >
       <SidebarSearchHeader
-        titleLabel={`${owner}/${repo}`}
         query={searchQuery}
         onQueryChange={onSearchQueryChange ?? (() => undefined)}
         placeholder="Search entities"

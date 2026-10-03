@@ -1,7 +1,7 @@
 // Markdown parser utility for guide files
 import React from 'react';
 import matter from 'gray-matter';
-import { marked } from 'marked';
+import { marked, type Tokens } from 'marked';
 import { GuideSection, FileRecommendation } from '@/lib/project-guides';
 import { createFileRecommendationsComponent } from '@/lib/project-guides';
 import { getCuratedRepoAccent } from '@/lib/curated-repos';
@@ -50,16 +50,17 @@ type OpenManPageInTab = (name: string, section: string) => void;
 function createMarkdownRenderer(symbolScopePaths: string[]) {
   const renderer = new marked.Renderer();
 
-  renderer.link = (href, title, text) => {
+  renderer.link = function ({ href, title, tokens }: Tokens.Link) {
     const safeHref = href?.trim() || '#';
     // A markdown link can wrap an inline-code span. Since codespan navigation
     // also renders an anchor, remove that nested anchor before rendering the
     // outer link so the resulting HTML contains one accessible link.
-    const linkText = text.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1');
+    const renderedText = this.parser.parseInline(tokens);
+    const linkText = renderedText.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1');
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
 
     if (hasUnsafeScheme(safeHref)) {
-      return `<span>${text}</span>`;
+      return `<span>${renderedText}</span>`;
     }
 
     const navigationTarget = parseMarkdownNavigationTarget(safeHref, undefined, {
@@ -79,7 +80,7 @@ function createMarkdownRenderer(symbolScopePaths: string[]) {
     return `<a href="${escapeHtml(safeHref)}"${titleAttr}${targetAttr}>${linkText}</a>`;
   };
 
-  renderer.codespan = function (code) {
+  renderer.codespan = function ({ text: code }: Tokens.Codespan) {
     const decodedCode = decodeHtmlEntities(code);
     const navigationTarget = parseMarkdownNavigationTarget(decodedCode);
     if (navigationTarget?.kind === 'man-page') {

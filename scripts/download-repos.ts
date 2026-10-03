@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { CURATED_REPOS, type CuratedRepoConfig, toRepoKey } from '../src/lib/curated-repos';
+import { CODE_INDEX_FILE_NAME } from '../src/lib/code-index';
 import { type CodeIndexBuildLogger, type CodeIndexBuildStats } from './code-index-builder';
 import { getCorpusBuildSignature, type CorpusBuildTreeNode } from './corpus-build-signature';
 import { CORPUS_REPOS_DIR } from './static-asset-paths';
@@ -19,6 +20,7 @@ type ScriptOptions = {
   skip: string[]; // entries like "owner/repo"
   depth: number;
   list: boolean;
+  reindex: boolean;
 };
 
 export type CorpusState = {
@@ -30,6 +32,11 @@ type RepoCodeIndexStats = CodeIndexBuildStats & {
   owner: string;
   repo: string;
   revision: string;
+};
+
+type RepoCorpusState = {
+  sourceCurrent: boolean;
+  indexCurrent: boolean;
 };
 
 type CodeIndexRunStats = {
@@ -112,12 +119,18 @@ function parseArgs(argv: string[]): ScriptOptions {
   const skip: string[] = [];
   let depth = 1;
   let list = false;
+  let reindex = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] ?? '';
 
     if (arg === '--list') {
       list = true;
+      continue;
+    }
+
+    if (arg === '--reindex') {
+      reindex = true;
       continue;
     }
 
@@ -144,7 +157,7 @@ function parseArgs(argv: string[]): ScriptOptions {
     }
   }
 
-  return { only, skip, depth, list };
+  return { only, skip, depth, list, reindex };
 }
 
 function parseRepoSelector(selector: string): { key: string; branchOverride?: string } {
@@ -377,9 +390,12 @@ async function getLocalSHA(repoDir: string): Promise<string | null> {
  * pipeline is pinned to immutable refs, so freshness is derived from local
  * build inputs only.
  */
-async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): Promise<boolean> {
+function inspectRepoCorpusState(repoDir: string, config: CuratedRepoConfig): RepoCorpusState {
   const manifestPath = path.join(repoDir, 'repo-manifest.json');
-  if (!fs.existsSync(manifestPath)) return false;
+  const indexPath = path.join(repoDir, CODE_INDEX_FILE_NAME);
+  if (!fs.existsSync(manifestPath)) {
+    return { sourceCurrent: false, indexCurrent: false };
+  }
 
   let storedSignature: string | undefined;
   let manifestTree: CorpusBuildTreeNode[] | undefined;
@@ -389,14 +405,18 @@ async function shouldSkipDownload(repoDir: string, config: CuratedRepoConfig): P
     storedSignature = manifest.buildSignature;
     manifestTree = manifest.tree;
   } catch {
-    return false;
+    return { sourceCurrent: false, indexCurrent: false };
   }
 
   if (!storedSignature || !Array.isArray(manifestTree)) {
-    return false;
+    return { sourceCurrent: false, indexCurrent: false };
   }
 
-  return storedSignature === getCorpusBuildSignature(config, manifestTree);
+  const sourceCurrent = storedSignature === getCorpusBuildSignature(config, manifestTree);
+  return {
+    sourceCurrent,
+    indexCurrent: sourceCurrent && fs.existsSync(indexPath),
+  };
 }
 
 export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusState> {
@@ -405,8 +425,8 @@ export async function inspectCorpusState(opts: ScriptOptions): Promise<CorpusSta
   const staleRepos: string[] = [];
   for (const repo of repos) {
     const repoDir = path.join(REPOS_DIR, repo.owner, repo.repo, repo.revision);
-    const isCurrent = await shouldSkipDownload(repoDir, repo);
-    if (!isCurrent) {
+    const state = inspectRepoCorpusState(repoDir, repo);
+    if (!state.sourceCurrent || !state.indexCurrent) {
       staleRepos.push(`${repo.owner}/${repo.repo}@${repo.revision}`);
     }
   }
@@ -703,7 +723,8 @@ type PreparedRepo = {
 async function prepareRepo(
   config: CuratedRepoConfig,
   depth: number = 1,
-  logger: BuildLogger = immediateLogger
+  logger: BuildLogger = immediateLogger,
+  options: { reindex?: boolean } = {}
 ): Promise<PreparedRepo | null> {
   const { owner, repo, revision } = config;
   const repoDir = path.join(REPOS_DIR, owner, repo, revision);
@@ -713,9 +734,21 @@ async function prepareRepo(
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
-  if (await shouldSkipDownload(repoDir, config)) {
+  const corpusState = inspectRepoCorpusState(repoDir, config);
+  if (corpusState.sourceCurrent && corpusState.indexCurrent && !options.reindex) {
     logger.log(`skip: ${owner}/${repo}@${revision} pinned build matches`);
     return null;
+  }
+
+  if (corpusState.sourceCurrent && (!corpusState.indexCurrent || options.reindex)) {
+    const indexPath = path.join(repoDir, CODE_INDEX_FILE_NAME);
+    if (options.reindex && fs.existsSync(indexPath)) {
+      fs.rmSync(indexPath, { force: true });
+    }
+    logger.log(
+      `   Source current; rebuilding ${options.reindex ? 'fresh' : 'missing'} ${CODE_INDEX_FILE_NAME}`
+    );
+    return { config, repoDir };
   }
 
   try {
@@ -760,9 +793,12 @@ async function indexPreparedRepo(
       revision: config.revision,
     };
   } catch (error) {
-    if (fs.existsSync(repoDir)) {
-      fs.rmSync(repoDir, { recursive: true, force: true });
-    }
+    // Indexing is an enrichment step. Preserve the downloaded source snapshot
+    // so guide validation and a later retry can still use it when a native
+    // analyzer or SQLite worker fails.
+    logger.warn(
+      `   Preserving source snapshot after code-index failure: ${config.owner}/${config.repo}@${config.revision}`
+    );
     throw error;
   }
 }
@@ -825,7 +861,7 @@ async function main() {
     const logger = createRepoLogger();
     try {
       logger.log(`\nStarting ${repo.owner}/${repo.repo}@${repo.revision}`);
-      const prepared = await prepareRepo(repo, opts.depth, logger);
+      const prepared = await prepareRepo(repo, opts.depth, logger, { reindex: opts.reindex });
       if (prepared) {
         preparedRepos.push(prepared);
       }

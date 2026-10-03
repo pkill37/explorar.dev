@@ -58,7 +58,7 @@ fileRecommendations:
 ---
 
 
-### CPython Is Not Just a Compiler. It Is an Interpreter.
+### CPython Compiles and Interprets Code
 
 CPython is both a compiler and an interpreter. It compiles Python source code to bytecode, then executes that bytecode on a stack-based virtual machine. Understanding this dual nature reveals how Python achieves its balance between high-level expressiveness and runtime efficiency. The compilation phase handles syntax analysis and optimization, while the interpreter handles execution, memory management, and dynamic behavior.
 
@@ -70,13 +70,13 @@ Key files: [Include/object.h](Include/object.h) defines `PyObject`, and [Objects
 
 ### The Global Interpreter Lock (GIL): Concurrency in CPython
 
-The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple native threads from executing Python bytecodes at once. While this simplifies memory management and makes CPython thread-safe, it also means that CPU-bound Python code cannot fully utilize multiple cores. Understanding the GIL reveals the trade-offs in CPython's design and why it exists despite its limitations. For the lower layers, compare glibc's [`pthread_create`](repo:bminor/glibc/nptl/pthread_create.c:pthread_create) with Linux's [`kernel_clone`](repo:torvalds/linux/kernel/fork.c:kernel_clone): a Python thread ultimately depends on both the POSIX user-space API and a kernel task.
+The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing concurrent native threads from executing Python bytecodes at once. While this simplifies memory management and makes CPython thread-safe, it also means that CPU-bound Python code cannot use all available cores. Understanding the GIL reveals the trade-offs in CPython's design and why it exists despite its limitations. For the lower layers, compare glibc's [`pthread_create`](repo:bminor/glibc/nptl/pthread_create.c:pthread_create) with Linux's [`kernel_clone`](repo:torvalds/linux/kernel/fork.c:kernel_clone): a Python thread ultimately depends on both the POSIX user-space API and a kernel task.
 
 See [Doc/c-api/init.rst](Doc/c-api/init.rst) for interpreter initialization and the GIL lifecycle.
 
 ### Memory Management: Reference Counting and Garbage Collection
 
-CPython uses a combination of reference counting and a cyclic garbage collector for memory management. Every object maintains a reference count, and when it reaches zero, the object is immediately deallocated. However, reference counting alone cannot handle circular references, so CPython includes a garbage collector that detects and collects cycles. Understanding this dual approach reveals how CPython balances performance with correctness.
+CPython uses a combination of reference counting and a cyclic garbage collector for memory management. Every object maintains a reference count, and when it reaches zero, deallocation runs at that point. Reference counting alone cannot handle circular references, so CPython includes a garbage collector that detects and collects cycles. Understanding this dual approach reveals how CPython balances performance with correctness.
 
 See [Doc/c-api/gcsupport.rst](Doc/c-api/gcsupport.rst) for garbage collector support documentation.
 
@@ -131,7 +131,7 @@ The CPython source code is organized into clear directories, each serving a spec
 
 ### The Compilation Pipeline: From Source to Bytecode
 
-CPython's compilation process transforms Python source code into bytecode through several stages: tokenization, parsing, AST generation, and bytecode generation. Understanding this pipeline reveals how Python's syntax is analyzed and how optimizations are applied before execution.
+CPython's compilation process transforms Python source code into bytecode through four stages: tokenization, parsing, AST generation, and bytecode generation. Understanding this pipeline reveals how Python's syntax is analyzed and how optimizations are applied before execution.
 
 Key files in the pipeline:
 - [Parser/tokenizer.c](Parser/tokenizer.c) — Tokenizes Python source code
@@ -211,13 +211,13 @@ See [Doc/c-api/typeobj.rst](Doc/c-api/typeobj.rst) for the full type object slot
 
 ### Reference Counting: Automatic Memory Management
 
-CPython uses reference counting as its primary memory management mechanism. Every object maintains a count of how many references point to it. When this count reaches zero, the object is immediately deallocated. This provides deterministic memory management but requires careful handling to avoid premature deallocation or leaks. The memory below CPython's object layer is a useful cross-reference: glibc's [`__libc_malloc`](repo:bminor/glibc/malloc/malloc.c:__libc_malloc) manages user-space heap storage, while Linux's [`do_mmap`](repo:torvalds/linux/mm/mmap.c:do_mmap) creates the virtual-memory areas that back larger mappings.
+CPython uses reference counting as its primary memory management mechanism. Every object maintains a count of the references pointing to it. When this count reaches zero, deallocation runs at that point. This provides deterministic memory management but requires careful handling to avoid premature deallocation or leaks. The memory below CPython's object layer is a useful cross-reference: glibc's [`__libc_malloc`](repo:bminor/glibc/malloc/malloc.c:__libc_malloc) manages user-space heap storage, while Linux's [`do_mmap`](repo:torvalds/linux/mm/mmap.c:do_mmap) creates the virtual-memory areas that back larger mappings.
 
-The macros `Py_INCREF` and `Py_DECREF` in [Objects/object.c](Objects/object.c) and [Include/object.h](Include/object.h) implement reference counting.
+The macros `Py_INCREF` and `Py_DECREF` in [Objects/object.c](Objects/object.c) and [Include/object.h](Include/object.h) provide reference counting.
 
 ### Garbage Collection: Handling Cycles
 
-While reference counting handles most memory management, it cannot detect or break circular references. CPython includes a cyclic garbage collector that periodically scans for unreachable cycles and collects them. Understanding the garbage collector reveals how CPython handles complex object graphs and why some objects may not be immediately deallocated.
+While reference counting handles most memory management, it cannot detect or break circular references. CPython includes a cyclic garbage collector that periodically scans for unreachable cycles and collects them. Understanding the garbage collector reveals how CPython handles complex object graphs and why some objects may survive until a later collection.
 
 Key files:
 - [Modules/gcmodule.c](Modules/gcmodule.c) — Garbage collector implementation
@@ -278,7 +278,7 @@ Key files:
 
 ### Strings: Unicode and Immutability
 
-Python strings are immutable sequences of Unicode code points. CPython uses several internal representations to optimize for different string characteristics (ASCII, compact Unicode, or legacy strings). Understanding string implementation reveals how Python handles text encoding, string interning, and memory efficiency.
+Python strings are immutable sequences of Unicode code points. CPython uses distinct internal representations to optimize for different string characteristics (ASCII, compact Unicode, or legacy strings). Understanding string implementation reveals how Python handles text encoding, string interning, and memory efficiency.
 
 Key files:
 - [Objects/unicodeobject.c](Objects/unicodeobject.c) — Unicode string implementation (about 15,000 lines)
@@ -286,7 +286,7 @@ Key files:
 
 ### Lists: Dynamic Arrays
 
-Python lists are implemented as dynamic arrays (similar to C++'s `std::vector`). They maintain a contiguous block of pointers to objects, automatically resizing when capacity is exceeded. Understanding list implementation reveals how Python achieves O(1) indexing while supporting dynamic growth.
+Python lists are implemented as dynamic arrays (like C++'s `std::vector`). They maintain a contiguous block of pointers to objects, automatically resizing when capacity is exceeded. Understanding list implementation reveals how Python achieves O(1) indexing while supporting dynamic growth.
 
 Key files:
 - [Objects/listobject.c](Objects/listobject.c) — List implementation
@@ -400,7 +400,7 @@ Python/ceval.c -> Python/import.c : calls PyImport_ImportModuleLevelObject
 
 ### The Import System: Loading Code Dynamically
 
-Python's import system is responsible for finding, loading, and initializing modules. It searches through a list of paths (sys.path), caches loaded modules, and handles both built-in modules (written in C) and Python modules. Understanding the import system reveals how Python organizes code and enables dynamic program structure.
+Python's import system finds, loads, and initializes modules. It searches through a list of paths (sys.path), caches loaded modules, and handles both built-in modules (written in C) and Python modules. Understanding the import system reveals how Python organizes code and enables dynamic program structure.
 
 Key files:
 - [Python/import.c](Python/import.c) — Import system implementation
@@ -509,7 +509,7 @@ Include/Python.h -> Include/pyerrors.h : C API exposes exception types
 
 ### Descriptors: The Magic Behind Properties
 
-Python's descriptor protocol enables powerful features like properties, class methods, and static methods. Descriptors are objects that define how attribute access works for a class. Understanding descriptors reveals how Python's object-oriented features are implemented and how you can create custom behavior for attribute access.
+Python's descriptor protocol enables powerful features like properties, class methods, and static methods. Descriptors are objects that define how attribute access works for a class. Understanding descriptors reveals how Python's object-oriented features are implemented and how custom attribute-access behavior works.
 
 Key files:
 - [Objects/descrobject.c](Objects/descrobject.c) — Descriptor implementation
@@ -525,7 +525,7 @@ Key files:
 
 ### The C API: Extending Python
 
-CPython provides a comprehensive C API that allows you to extend Python with C code or embed Python in C applications. Understanding the C API reveals how Python's features are implemented and how you can create high-performance extensions.
+CPython provides a comprehensive C API for extending Python with C code or embedding Python in C applications. Understanding the C API reveals how Python's features are implemented and how high-performance extensions connect to the runtime.
 
 Key files:
 - [Include/Python.h](Include/Python.h) — Main C API header (includes everything)
